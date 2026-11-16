@@ -965,7 +965,9 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   fusiona en la guía de papel de la obra (`mergeChapterIntoGuide`). Sin red:
   nada de OMDb/SubDL/Trakt/R2; sin `imdbId` ni póster; identidad
   `lecta-subs:v1:<tipo>:<título normalizado>:<idioma>`. El archivo nunca sale
-  del dispositivo. `SCREEN_ZONE_ENABLED` (false) sigue apagando el worker
+  del dispositivo. La portada es opcional y la elige el usuario (imagen
+  → `coverToJpegBlob`, ≤ 400 kB, solo en su IndexedDB); sin imagen, portada
+  tipográfica. Nunca pósters de terceros. `SCREEN_ZONE_ENABLED` (false) sigue apagando el worker
   `/api/screen/*` y purga del dispositivo las obras viejas con `imdbId`.
   `ScreenShelf`/`ScreenPrepareSheet` y `screen-discover` quedan sin uso
   (código dormido, no se borra).

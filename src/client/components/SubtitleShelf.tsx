@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import BookCover from "./BookCover";
+import { coverToJpegBlob } from "../lib/cover";
 import {
   isValidSubtitleRef,
   subtitleErrorMessage,
@@ -37,8 +38,15 @@ type Props = {
   onPrepareWork: (args: {
     ref: SubtitleWorkRef;
     guide: SubtitleGuide;
+    /** Imagen que eligió el usuario como portada (JPEG ya reducido). */
+    cover?: Blob;
   }) => Promise<boolean>;
 };
+
+// Imagen de portada: la elige el usuario, queda solo en su dispositivo.
+// Se acepta cualquier imagen razonable y se reduce a un JPEG chico.
+const COVER_MAX_INPUT_BYTES = 10 * 1024 * 1024;
+const COVER_MAX_OUTPUT_BYTES = 400_000;
 
 const parseIntField = (value: string): number | undefined => {
   if (!/^\d{1,3}$/.test(value.trim())) return undefined;
@@ -57,11 +65,13 @@ export default function SubtitleShelf({
   const [season, setSeason] = useState("1");
   const [episode, setEpisode] = useState("1");
   const [fileName, setFileName] = useState("");
+  const [imageName, setImageName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // «Quitar» en dos pasos: el hash en confirmación o null.
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const imageRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // «Otro episodio»: repite título, tipo e idioma de la obra y propone
@@ -99,9 +109,28 @@ export default function SubtitleShelf({
       );
       return;
     }
+    const image = imageRef.current?.files?.[0];
+    if (
+      image &&
+      (!image.type.startsWith("image/") || image.size > COVER_MAX_INPUT_BYTES)
+    ) {
+      setError("Esa imagen no sirve: elige una foto o un póster de menos de 10 MB.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
+      let cover: Blob | undefined;
+      if (image) {
+        const jpeg = await coverToJpegBlob(image);
+        // Si no se pudo decodificar, coverToJpegBlob devuelve el original:
+        // una imagen que sigue grande no se guarda.
+        if (jpeg.size > COVER_MAX_OUTPUT_BYTES) {
+          setError("No pudimos usar esa imagen. Prueba con otra.");
+          return;
+        }
+        cover = jpeg;
+      }
       const result = await subtitleFileToGuide(file, language);
       if (!result.ok) {
         setError(subtitleErrorMessage(result.reason));
@@ -114,13 +143,16 @@ export default function SubtitleShelf({
           capitalOnly: result.capitalOnly,
           phrases: result.phrases,
         },
+        ...(cover ? { cover } : {}),
       });
       if (!saved) {
         setError("No pudimos guardar la guía en este dispositivo.");
         return;
       }
       if (fileRef.current) fileRef.current.value = "";
+      if (imageRef.current) imageRef.current.value = "";
       setFileName("");
+      setImageName("");
       // Siguiente episodio listo para la próxima vez.
       if (type === "tv") setEpisode(String((ref.episode ?? 0) + 1));
     } finally {
@@ -215,6 +247,21 @@ export default function SubtitleShelf({
             }
           />
         </label>
+        <label className="subs-field">
+          <span className="meta">Imagen (opcional)</span>
+          <input
+            ref={imageRef}
+            type="file"
+            accept="image/*"
+            onChange={(event) =>
+              setImageName(event.target.files?.[0]?.name ?? "")
+            }
+          />
+          <span className="meta">
+            Un póster o foto tuya: se queda en tu dispositivo. Sin imagen
+            usamos una portada con el título.
+          </span>
+        </label>
         {error ? (
           <p className="meta subs-error" role="alert">
             {error}
@@ -225,6 +272,7 @@ export default function SubtitleShelf({
             {busy ? "Preparando…" : "Preparar vocabulario"}
           </button>
           {fileName ? <span className="meta"> {fileName}</span> : null}
+          {imageName ? <span className="meta"> · {imageName}</span> : null}
         </div>
       </form>
 

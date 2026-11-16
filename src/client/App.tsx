@@ -1749,6 +1749,7 @@ export default function App() {
   const installSubtitleWork = async (
     ref: SubtitleWorkRef,
     guide: SubtitleGuide,
+    cover?: Blob,
   ): Promise<ShelfItem | null> => {
     const scope = captureDbScope();
     // Import diferido: solo esta zona lo usa, sin peso en el arranque.
@@ -1800,6 +1801,9 @@ export default function App() {
         title: ref.title || previous?.title || undefined,
         author: ref.type === "tv" ? "Serie" : "Película",
         language: ref.language,
+        // La imagen que eligió el usuario; si no manda otra, se conserva
+        // la anterior. Sin ninguna, la tarjeta pinta la portada tipográfica.
+        cover: cover ?? previous?.cover,
         data: new Blob([]),
         paperOnly: true,
         mediaKind: ref.type,
@@ -1846,8 +1850,9 @@ export default function App() {
   const handlePrepareScreenWork = async (args: {
     ref: SubtitleWorkRef;
     guide: SubtitleGuide;
+    cover?: Blob;
   }): Promise<boolean> => {
-    const item = await installSubtitleWork(args.ref, args.guide).catch(
+    const item = await installSubtitleWork(args.ref, args.guide, args.cover).catch(
       () => null,
     );
     if (!item) return false;

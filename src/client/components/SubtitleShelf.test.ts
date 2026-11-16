@@ -3,6 +3,14 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SubtitleShelf from "./SubtitleShelf";
+
+// jsdom no decodifica imágenes (Image nunca dispara onload): el
+// redimensionado real se prueba en cover.test; aquí se simula su salida.
+const coverMock = vi.hoisted(() => vi.fn());
+vi.mock("../lib/cover", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/cover")>()),
+  coverToJpegBlob: coverMock,
+}));
 import type { ShelfItem } from "./Shelf";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -12,6 +20,8 @@ let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  coverMock.mockReset();
+  coverMock.mockImplementation(async (blob: Blob) => blob);
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -54,6 +64,14 @@ const setValue = (el: HTMLInputElement | HTMLSelectElement, value: string) => {
 
 const chooseFile = (file: File) => {
   const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+  Object.defineProperty(input, "files", { value: [file], configurable: true });
+  act(() => {
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+};
+
+const chooseImage = (file: File) => {
+  const input = host.querySelector<HTMLInputElement>('input[accept="image/*"]')!;
   Object.defineProperty(input, "files", { value: [file], configurable: true });
   act(() => {
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -103,6 +121,48 @@ describe("SubtitleShelf", () => {
     expect(arg.ref).toEqual({ type: "tv", title: "Dark", language: "en", season: 1, episode: 1 });
     expect(arg.guide.forms).toContain("lighthouse");
     expect(arg.guide.forms.every((f: string) => !/\s/.test(f))).toBe(true);
+  });
+
+  it("sin imagen no manda portada", async () => {
+    const onPrepare = await render();
+    setValue(host.querySelector<HTMLInputElement>("#subs-title")!, "Dark");
+    chooseFile(new File([srt], "ep.srt"));
+    await submit();
+    expect(onPrepare.mock.calls[0][0].cover).toBeUndefined();
+    expect(coverMock).not.toHaveBeenCalled();
+  });
+
+  it("con imagen manda la portada reducida", async () => {
+    const small = new Blob(["jpeg"], { type: "image/jpeg" });
+    coverMock.mockResolvedValue(small);
+    const onPrepare = await render();
+    setValue(host.querySelector<HTMLInputElement>("#subs-title")!, "Dark");
+    chooseFile(new File([srt], "ep.srt"));
+    chooseImage(new File(["png"], "poster.png", { type: "image/png" }));
+    await submit();
+    expect(coverMock).toHaveBeenCalledTimes(1);
+    expect(onPrepare.mock.calls[0][0].cover).toBe(small);
+  });
+
+  it("un archivo que no es imagen se rechaza sin preparar", async () => {
+    const onPrepare = await render();
+    setValue(host.querySelector<HTMLInputElement>("#subs-title")!, "Dark");
+    chooseFile(new File([srt], "ep.srt"));
+    chooseImage(new File(["x"], "nota.txt", { type: "text/plain" }));
+    await submit();
+    expect(host.textContent).toContain("Esa imagen no sirve");
+    expect(onPrepare).not.toHaveBeenCalled();
+  });
+
+  it("una imagen que no se pudo reducir (sigue grande) no se guarda", async () => {
+    coverMock.mockResolvedValue(new Blob([new Uint8Array(500_000)], { type: "image/png" }));
+    const onPrepare = await render();
+    setValue(host.querySelector<HTMLInputElement>("#subs-title")!, "Dark");
+    chooseFile(new File([srt], "ep.srt"));
+    chooseImage(new File(["png"], "poster.png", { type: "image/png" }));
+    await submit();
+    expect(host.textContent).toContain("No pudimos usar esa imagen");
+    expect(onPrepare).not.toHaveBeenCalled();
   });
 
   it("un archivo sin diálogo muestra el error y no prepara", async () => {
