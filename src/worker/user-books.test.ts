@@ -312,30 +312,35 @@ describe("User Books Cloud Sync (pg en memoria, R2, Kindle fallback)", () => {
     expect(downloaded.byteLength).toBe(minimalBytes.byteLength);
   });
 
-  it("loadEpubBufferForKindle resuelve desde catálogo y con fallback a user_books", async () => {
-    // 1. Desde catálogo
+  it("loadEpubBufferForKindle no sirve el catálogo y resuelve libros de user_books", async () => {
+    // 1. El catálogo no es camino del portal Kindle (ni con slug ni con hash)
+    const catHash = "c".repeat(64);
     r2Store.set("catalog/cat-book.epub", minimalBytes.buffer as ArrayBuffer);
-    const fromCat = await loadEpubBufferForKindle(
-      { BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
-      "user-1",
-      "cat-book",
-    );
-    expect(fromCat).not.toBeNull();
+    r2Store.set(`catalog/${catHash}.epub`, minimalBytes.buffer as ArrayBuffer);
+    for (const id of ["cat-book", catHash]) {
+      const fromCat = await loadEpubBufferForKindle(
+        { BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
+        "user-1",
+        id,
+      );
+      expect(fromCat).toBeNull();
+    }
 
     // 2. Desde user_books
-    store.set("user-1:my-book", {
+    const myHash = "d".repeat(64);
+    store.set(`user-1:${myHash}`, {
       user_id: "user-1",
-      book_id: "my-book",
+      book_id: myHash,
       title: "My Book",
       author: "Author",
-      r2_key: "user-books/user-1/my-book.epub",
+      r2_key: `user-books/user-1/${myHash}.epub`,
     });
-    r2Store.set("user-books/user-1/my-book.epub", minimalBytes.buffer as ArrayBuffer);
+    r2Store.set(`user-books/user-1/${myHash}.epub`, minimalBytes.buffer as ArrayBuffer);
 
     const fromUser = await loadEpubBufferForKindle(
       { BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
       "user-1",
-      "my-book",
+      myHash,
     );
     expect(fromUser).not.toBeNull();
   });
