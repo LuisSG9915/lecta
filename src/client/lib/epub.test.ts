@@ -136,4 +136,24 @@ describe("detectBookLanguage", () => {
     } as unknown as EpubBook;
     expect(await detectBookLanguage(book)).toBe("en");
   });
+
+  it("respeta «es» declarado aunque el front matter venga en inglés", async () => {
+    // Regresión: los EPUB de Gutenberg abren con licencia y portada en
+    // inglés; la heurística sobre las primeras secciones volteaba el
+    // idioma de libros en español a «en».
+    const book = {
+      metadata: { language: "es" },
+      sections: [
+        {
+          createDocument: async () => ({
+            body: {
+              textContent:
+                "The Project Gutenberg eBook of the book. This eBook is for the use of anyone anywhere at no cost and with almost no restrictions.",
+            },
+          }),
+        },
+      ],
+    } as unknown as EpubBook;
+    expect(await detectBookLanguage(book)).toBe("es");
+  });
 });

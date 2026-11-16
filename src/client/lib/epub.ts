@@ -277,7 +277,11 @@ export async function detectBookLanguage(
 
   if (!isAmbiguous) {
     const norm = normalizeLanguage(rawLang);
-    if (norm && norm !== "es") return norm;
+    // dc:language es declarativo: si el EPUB dice «es» se respeta —
+    // re-juzgarlo con el texto volteaba a «en» los libros en español
+    // cuyo front matter (licencia de Gutenberg, dedicatorias) viene
+    // en inglés. La heurística queda para metadatos ausentes o «und».
+    if (norm) return norm;
   }
 
   // Comprobar descripción si existe

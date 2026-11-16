@@ -1340,7 +1340,10 @@ export default function App() {
     };
   }, [sessionUserId, refreshLibrary]);
 
-  const selectBook = async (file: File) => {
+  const selectBook = async (
+    file: File,
+    metaOverride?: { language?: string },
+  ) => {
     setError("");
     setMessage("Comprobando el archivo…");
     try {
@@ -1359,7 +1362,9 @@ export default function App() {
       const initialMeta = {
         title: quickMeta?.title,
         author: quickMeta?.author,
-        language: quickMeta?.language,
+        // El catálogo conoce el idioma (RDF oficial): manda sobre el
+        // metadato del EPUB para los libros de «Obtener».
+        language: metaOverride?.language ?? quickMeta?.language,
         sectionCount: quickMeta?.sections,
         genre: genreFromSubjects(quickMeta?.subjects ?? []) || undefined,
         metaVersion: quickMeta ? 1 : undefined,
@@ -1383,7 +1388,9 @@ export default function App() {
               {
                 title: fullMeta.title || initialMeta.title,
                 author: fullMeta.author || initialMeta.author,
-                language: fullMeta.language || initialMeta.language,
+                language:
+                  metaOverride?.language ??
+                  (fullMeta.language || initialMeta.language),
                 sectionCount: fullMeta.sectionCount || initialMeta.sectionCount,
                 cover: fullMeta.cover ?? undefined,
                 genre: fullMeta.genre || initialMeta.genre,
@@ -1434,11 +1441,15 @@ export default function App() {
   // validación, dedup por hash (si ya está, abre el existente) y subida
   // a la cuenta. Devuelve el hash del libro guardado para que la
   // tarjeta sepa ofrecer «Abrir» sin volver a descargarlo.
-  const getCatalogBook = async (item: Pick<CatalogBook, "id" | "title" | "author">) => {
+  const getCatalogBook = async (
+    item: Pick<CatalogBook, "id" | "title" | "author" | "language">,
+  ) => {
     const file = await downloadCatalogEpub(item);
     if (!file) throw new Error("catalog download failed");
     const hash = await sha256Hex(file);
-    await selectBook(file);
+    // El idioma del índice del catálogo es el que el lector vio en la
+    // tarjeta: se impone sobre el que declare el EPUB.
+    await selectBook(file, { language: item.language });
     return hash;
   };
 
