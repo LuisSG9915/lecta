@@ -1019,10 +1019,9 @@ kindleRoutes.get("/preview/page", async (c) => {
   // La navegación DENTRO del marco funciona (K8 fix): acepta section/page/toc
   // y los enlaces /k/read se reescriben a esta misma ruta de preview.
   // El parámetro book viaja dentro del regex de reescritura y del HTML:
-  // solo caracteres seguros (hashes reales o slugs de prueba), nada de
-  // metacaracteres de regex ni de HTML.
+  // solo un sha256 en hex, nada de metacaracteres de regex ni de HTML.
   const bookQuery = c.req.query("book") || "";
-  let bookHash = /^[\w.-]{1,80}$/.test(bookQuery) ? bookQuery : "";
+  let bookHash = KINDLE_BOOK_HASH.test(bookQuery) ? bookQuery : "";
   const requestedSection = Math.max(
     0,
     Number.parseInt(c.req.query("section") ?? "0", 10) || 0,
@@ -1032,9 +1031,13 @@ kindleRoutes.get("/preview/page", async (c) => {
     bookHash = (await firstKindleBookHash(c.env, user.id)) ?? "";
   }
   if (bookHash) {
-    chapter = (
-      await loadKindleChapterForRead(c, user.id, bookHash, requestedSection)
-    ).chapter;
+    const loaded = await loadKindleChapterForRead(c, user.id, bookHash, requestedSection);
+    // Un libro pedido por ?book= que no es de la cuenta no cae a la muestra:
+    // 404, igual que /k/read.
+    if (loaded.notFound && bookHash === bookQuery) {
+      return c.text("Libro no encontrado", 404);
+    }
+    chapter = loaded.chapter;
     // Sección fuera de rango → volver a la primera
     if (!chapter && requestedSection > 0) {
       chapter = (await loadKindleChapterForRead(c, user.id, bookHash, 0)).chapter;
@@ -1469,15 +1472,50 @@ kindleRoutes.get("/logout", async (c) => {
   return new Response(null, { status: 302, headers });
 });
 
-// Función de carga de binario EPUB para /k con soporte de catálogo y libros de usuario
+// Función de carga de binario EPUB para /k: solo libros del usuario
 /** EPUB máximo servible por /read (K4): por encima, el ZIP entero en
  * memoria + el parseo por página no son viables ni en cacheado. */
 export const KINDLE_MAX_EPUB_BYTES = 40 * 1024 * 1024;
 
 type EpubObjectLike = { arrayBuffer(): Promise<ArrayBuffer>; size?: number };
 
-/** Devuelve el objeto R2 del EPUB (misma cadena de candidatos que antes)
- * sin consumir el body: permite revisar .size antes de descargar. */
+/** Id de libro en /k/read: sha256 del archivo en hex (igual que HASH_PATTERN
+ * de app.ts). Nada de slugs: no hay camino a catalog/ desde el portal. */
+const KINDLE_BOOK_HASH = /^[a-f0-9]{64}$/;
+
+/** ¿El libro es del usuario de la sesión /k? Corre ANTES de leer kcache/:
+ * ese caché es compartido por hash y los hashes de Comunidad son públicos
+ * (GET /api/books/community), así que sin esta guardia otra cuenta leería
+ * capítulos e imágenes de un libro ajeno. Primero R2 (head, sin cuerpo) y
+ * luego user_books, en el mismo orden de candidatos que el cargador. */
+export async function kindleUserOwnsBook(
+  env: WorkerEnv,
+  userId: string,
+  bookId: string,
+): Promise<boolean> {
+  if (!KINDLE_BOOK_HASH.test(bookId)) return false;
+  const bucket = env.BOOKS;
+  if (bucket) {
+    for (const key of [
+      `books/${userId}/${bookId}.epub`,
+      `user-books/${userId}/${bookId}.epub`,
+    ]) {
+      if (await bucket.head(key).catch(() => null)) return true;
+    }
+  }
+  if (!getConnectionString(env)) return false;
+  const row = await withClient(env, async (client) => {
+    const res = await client.query(
+      `SELECT 1 AS owned FROM user_books WHERE user_id = $1 AND book_id = $2 LIMIT 1`,
+      [userId, bookId],
+    );
+    return res.rows[0];
+  }).catch(() => null);
+  return Boolean(row);
+}
+
+/** Devuelve el objeto R2 del EPUB del usuario sin consumir el body:
+ * permite revisar .size antes de descargar. */
 export async function loadEpubObjectForKindle(
   env: WorkerEnv,
   userId: string | null,
@@ -1486,12 +1524,8 @@ export async function loadEpubObjectForKindle(
   const bucket = env.BOOKS;
   if (!bucket) return null;
 
-  // 1. Intentar desde catálogo público en R2
-  const catalogObj = await bucket.get(`catalog/${bookId}.epub`);
-  if (catalogObj) return catalogObj;
-
-  // 2. Fallback a libros propios del usuario vinculado en /k
-  if (!userId) return null;
+  // Solo libros propios del usuario vinculado en /k
+  if (!userId || !KINDLE_BOOK_HASH.test(bookId)) return null;
   if (getConnectionString(env)) {
     const userBook = await withClient(env, async (client) => {
       const res = await client.query<{ r2_key: string }>(
@@ -1580,6 +1614,9 @@ async function loadKindleChapterForRead(
   notFound?: boolean;
   tooBig?: boolean;
 }> {
+  if (!(await kindleUserOwnsBook(c.env, userId, hash))) {
+    return { chapter: null, notFound: true };
+  }
   const bucket = c.env.BOOKS;
   const cached = await getCachedChapter(bucket, hash, sectionIndex);
   if (cached) return { chapter: cached };
@@ -2105,6 +2142,10 @@ kindleRoutes.get("/read/:hash/resource", async (c) => {
   const resourcePath = c.req.query("path");
   if (!resourcePath) {
     return c.text("Ruta de recurso faltante", 400);
+  }
+
+  if (!(await kindleUserOwnsBook(c.env, session.user.id, hash))) {
+    return c.text("Libro no encontrado", 404);
   }
 
   // Recurso cacheado por (hash, ruta): evita bajar el EPUB entero por imagen

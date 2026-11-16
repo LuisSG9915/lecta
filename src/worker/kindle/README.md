@@ -50,7 +50,7 @@ The main app also wires these exports at top level ([`../app.ts`](../app.ts)):
   `KINDLE_HTML_CSP`, `KINDLE_HTML_CSP_FRAMED`, `kindleHtmlCspFor`,
   `allowKindleStatus`, `normalizeMargin`, `generateFourCharKindleCode`,
   `createKindleLinkCode`, `linkKindleCodeFromMobile`, `consumeLinkedKindleCode`,
-  `KINDLE_MAX_EPUB_BYTES` (40 MB), `loadEpubObjectForKindle`,
+  `KINDLE_MAX_EPUB_BYTES` (40 MB), `kindleUserOwnsBook`, `loadEpubObjectForKindle`,
   `loadEpubBufferForKindle`, `parseKindleViewportCookie`.
 - `epub-reader.ts`: `parseZipEntries`, `readZipEntryBytes`, `readZipEntryText`,
   `parseEpub`, `getEpubChapter`, `getEpubResource`, `sanitizeKindleHtml`,
@@ -106,7 +106,10 @@ The main app also wires these exports at top level ([`../app.ts`](../app.ts)):
 - R2 (`env.BOOKS`): reads `books/{userId}/…` EPUBs; writes
   best-effort cache keys `kcache/ch/{hash}/{section}.json` and
   `kcache/res/{hash}/{path}` (via `waitUntil`); `/k` shelf may write EPUB metadata
-  back to the object.
+  back to the object. `kcache/` is shared by hash and Community hashes are
+  public, so `/k/read/:hash`, its `/resource` route and `/k/preview/page?book=`
+  run `kindleUserOwnsBook` (sha256 only; `books/{userId}/`, `user-books/{userId}/`
+  or a `user_books` row) before touching the cache. No `catalog/` path.
 - Creates Better Auth sessions on link/login (`createScopedAuth`, signed cookies
   via `setSignedCookie`).
 - Sets device cookies (`lecta_k_vp`, `lecta_k_margin`, `lecta_k_layout`,

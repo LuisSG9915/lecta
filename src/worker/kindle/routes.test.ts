@@ -72,7 +72,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
     list: vi.fn(async () => ({
       objects: [
         {
-          key: "books/user-1/mock-hash-1.epub",
+          key: "books/user-1/abababababababababababababababababababababababababababababababab.epub",
           customMetadata: {
             title: "Libro de prueba",
             author: "Equipo Lecta",
@@ -84,14 +84,18 @@ describe("Kindle Routes (/k and /kindle)", () => {
     get: vi.fn(defaultEpubGet),
     put: vi.fn(async (_key: string, _value: unknown) => undefined),
     delete: vi.fn(async () => undefined),
-    head: vi.fn(async () => null),
+    // El EPUB de prueba es del usuario de la sesión (guardia de propiedad
+    // de /k/read): el head responde para su clave .epub.
+    head: vi.fn(async (key: string) =>
+      key.includes("abababababababababababababababababababababababababababababababab") && key.endsWith(".epub") ? { key } : null,
+    ),
   };
 
   // Implementación por defecto: solo sirve el EPUB de prueba para claves
   // .epub; las claves kcache/* responden null (miss) salvo que la prueba
   // las siembre explícitamente.
   async function defaultEpubGet(key: string) {
-    if (key.includes("mock-hash-1") && key.endsWith(".epub")) {
+    if (key.includes("abababababababababababababababababababababababababababababababab") && key.endsWith(".epub")) {
       return {
         arrayBuffer: async () => minimalBytes.buffer.slice(
           minimalBytes.byteOffset,
@@ -134,7 +138,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
     it("una cuenta free recibe la nota HTML con 402 y sin <script>", async () => {
       getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
       loadUserPlanMock.mockResolvedValue(freePlan as never);
-      const res = await app.request("/k/read/mock-hash-1", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab", {}, env);
       expect(res.status).toBe(402);
       expect(res.headers.get("content-type")).toContain("text/html");
       const html = await res.text();
@@ -454,7 +458,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
           return {
             rows: [
               {
-                bookHash: "mock-hash-1",
+                bookHash: "abababababababababababababababababababababababababababababababab",
                 sectionIndex: 0,
                 progress: 0.5,
                 syncedAt: "2026-11-01T10:00:00Z",
@@ -593,7 +597,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
   describe("GET /k/read/:hash", () => {
     it("redirige al login si no hay sesión iniciada", async () => {
-      const res = await app.request("/k/read/mock-hash-1", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab", {}, env);
       expect(res.status).toBe(302);
       expect(res.headers.get("Location")).toContain("/k/login");
     });
@@ -606,9 +610,9 @@ describe("Kindle Routes (/k and /kindle)", () => {
         rows: [{ sectionIndex: 1, ratio: 0.5 }],
       });
 
-      const res = await app.request("/k/read/mock-hash-1", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab", {}, env);
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1&margin=md");
+      expect(res.headers.get("Location")).toBe("/k/read/abababababababababababababababababababababababababababababababab?section=1&margin=md");
     });
 
     it("con section=0 muestra el capítulo 1 paginado con cabecera compacta y botón para pasar página", async () => {
@@ -616,7 +620,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         user: { id: "user-1", email: "lector@example.com" },
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Capítulo uno");
@@ -628,7 +632,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain('data-w="antigua"');
       expect(html).toContain('data-w="estrecha"');
       expect(html).toContain('data-w="perenne"');
-      expect(html).not.toContain('href="/k/read/mock-hash-1?section=0&amp;page=0&amp;lookup=');
+      expect(html).not.toContain('href="/k/read/abababababababababababababababababababababababababababababababab?section=0&amp;page=0&amp;lookup=');
       // Botón directo para pasar página o avanzar al siguiente capítulo
       expect(html).toContain("[ Sig. → ]");
       // El contenido del libro se presenta limpio sin cajas inferiores de vocabulario
@@ -640,7 +644,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
-      const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0", {}, env);
       expect(res.status).toBe(200);
       const timing = res.headers.get("Server-Timing") ?? "";
       expect(timing).toMatch(/session;dur=\d+(\.\d)?/);
@@ -667,7 +671,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         ],
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&lookup=perenne", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&lookup=perenne", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("inline-lookup-card");
@@ -697,7 +701,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         ],
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&prep=1", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&prep=1", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Antes de leer");
@@ -721,7 +725,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
 
       try {
-        const res = await app.request("/k/read/mock-hash-1?section=0&prep=1", {}, env);
+        const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&prep=1", {}, env);
         expect(res.status).toBe(200);
         // Debe consultar findEntriesForForms para 'en'
         expect(dbQueryMock).toHaveBeenCalledWith(
@@ -737,7 +741,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&mode=paragraphs", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&mode=paragraphs", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("mode-paragraphs");
@@ -748,7 +752,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&mode=anchors", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&mode=anchors", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("mode-anchors");
@@ -760,14 +764,14 @@ describe("Kindle Routes (/k and /kindle)", () => {
         user: { id: "user-1", email: "lector@example.com" },
       });
 
-      const resSm = await app.request("/k/read/mock-hash-1?section=0&page=0&margin=sm", {}, env);
+      const resSm = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&margin=sm", {}, env);
       expect(resSm.status).toBe(200);
       const setCookieSm = resSm.headers.get("Set-Cookie");
       expect(setCookieSm).toContain("lecta_k_margin=sm; Path=/; Max-Age=31536000; SameSite=Lax");
       const htmlSm = await resSm.text();
       expect(htmlSm).toContain("reader-container margin-sm");
 
-      const resLg = await app.request("/k/read/mock-hash-1?section=0&page=0&margin=lg", {}, env);
+      const resLg = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&margin=lg", {}, env);
       expect(resLg.status).toBe(200);
       const setCookieLg = resLg.headers.get("Set-Cookie");
       expect(setCookieLg).toContain("lecta_k_margin=lg; Path=/; Max-Age=31536000; SameSite=Lax");
@@ -781,7 +785,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
 
       const res = await app.request(
-        "/k/read/mock-hash-1?section=0&page=0",
+        "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0",
         { headers: { Cookie: "lecta_k_margin=lg" } },
         env,
       );
@@ -795,7 +799,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         user: { id: "user-1", email: "lector@example.com" },
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&margin=invalid", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&margin=invalid", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("reader-container margin-md");
@@ -818,7 +822,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       );
 
       try {
-        const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+        const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0", {}, env);
         expect(res.status).toBe(200);
         const html = await res.text();
         // Con totalPages = 11 (0..10), ratio = 0.5 corresponde a pageIndex = 5 (página 6 de 11)
@@ -862,7 +866,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       ]);
 
       try {
-        const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+        const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0", {}, env);
         expect(res.status).toBe(200);
         const html = await res.text();
         // Debe coincidir con anchorPageIdx = 3 (Página 4 de 5)
@@ -883,7 +887,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       for (const path of ["OEBPS/nav.xhtml", "OEBPS/chapter1.xhtml"]) {
         const res = await app.request(
-          "/k/read/mock-hash-1/resource?path=" + encodeURIComponent(path),
+          "/k/read/abababababababababababababababababababababababababababababababab/resource?path=" + encodeURIComponent(path),
           {},
           env,
         );
@@ -962,13 +966,13 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("lemma", "perenne");
       formData.append("pos", "adjetivo");
       formData.append("meaning", "Que dura indefinidamente.");
-      formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
       const location = res.headers.get("Location");
-      expect(location).toContain("/k/read/mock-hash-1?section=0&page=0");
+      expect(location).toContain("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
       expect(location).toContain("savedWord=perenne");
 
       // Verificar que se insertó en la base de datos
@@ -989,8 +993,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("pos", "adjetivo");
       formData.append("meaning", "Que dura indefinidamente.");
       formData.append("context", "El árbol perenne resistía las nevadas.");
-      formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
@@ -1011,7 +1015,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("lemma", "perenne");
       formData.append("pos", "adjetivo");
       formData.append("meaning", "Que dura indefinidamente.");
-      formData.append("bookHash", "mock-hash-1");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
       formData.append("returnTo", "/k/lookup?q=perenne");
 
       const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
@@ -1033,8 +1037,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("pos", "adj.");
       formData.append("meaning", "Lasting for a very short time.");
       formData.append("language", "en-US");
-      formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
@@ -1061,12 +1065,12 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const formData = new FormData();
       formData.append("lemma", "perenne");
       formData.append("known", "1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&prep=1");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&prep=1");
 
       const res = await app.request("/k/knowledge/mark", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
       const location = res.headers.get("Location");
-      expect(location).toContain("/k/read/mock-hash-1?section=0&prep=1");
+      expect(location).toContain("/k/read/abababababababababababababababababababababababababababababababab?section=0&prep=1");
       expect(location).toContain("markedKnown=perenne");
 
       expect(dbQueryMock).toHaveBeenCalledWith(
@@ -1153,8 +1157,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("questionIndex", "0");
       formData.append("totalQuestions", "3");
       formData.append("correctCount", "0");
-      formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/practice/answer", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
@@ -1174,8 +1178,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("questionIndex", "2");
       formData.append("totalQuestions", "3");
       formData.append("correctCount", "2");
-      formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/practice/answer", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
@@ -1195,8 +1199,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("questionIndex", "0");
       formData.append("totalQuestions", "3");
       formData.append("correctCount", "0");
-      formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("bookHash", "abababababababababababababababababababababababababababababababab");
+      formData.append("returnTo", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/practice/answer", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
@@ -1233,13 +1237,13 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("action", "known");
       formData.append("lemma", "perenne");
       formData.append("lang", "es");
-      formData.append("bookId", "mock-hash-1");
+      formData.append("bookId", "abababababababababababababababababababababababababababababababab");
       formData.append("chapter", "0");
-      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("returnUrl", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
       expect(res.status).toBe(303);
-      expect(res.headers.get("Location")).toContain("/k/read/mock-hash-1");
+      expect(res.headers.get("Location")).toContain("/k/read/abababababababababababababababababababababababababababababababab");
       expect(dbQueryMock).toHaveBeenCalledWith(
         expect.stringMatching(/INSERT INTO lecta_user_knowledge[\s\S]*'preparation'/),
         expect.arrayContaining(["user-1", "es", "perenne"]),
@@ -1255,9 +1259,9 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("action", "save");
       formData.append("lemma", "soledad");
       formData.append("lang", "es");
-      formData.append("bookId", "mock-hash-1");
+      formData.append("bookId", "abababababababababababababababababababababababababababababababab");
       formData.append("chapter", "0");
-      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("returnUrl", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
       expect(res.status).toBe(303);
@@ -1274,7 +1278,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
       const body = new URLSearchParams({
         action: "save",
-        bookId: "mock-hash-1",
+        bookId: "abababababababababababababababababababababababababababababababab",
         chapter: "0",
         lemma: "efímero",
         form: "efímera",
@@ -1311,14 +1315,14 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("action", "mute_book");
-      formData.append("bookId", "mock-hash-1");
+      formData.append("bookId", "abababababababababababababababababababababababababababababababab");
       formData.append("chapter", "0");
-      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("returnUrl", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
       expect(res.status).toBe(303);
       const setCookie = res.headers.get("Set-Cookie");
-      expect(setCookie).toContain("lecta_k_mute_mock-hash-1=1");
+      expect(setCookie).toContain("lecta_k_mute_abababababababababababababababababababababababababababababababab=1");
       expect(res.headers.get("Location")).toContain("primed=1");
     });
 
@@ -1329,9 +1333,9 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("action", "disable_all");
-      formData.append("bookId", "mock-hash-1");
+      formData.append("bookId", "abababababababababababababababababababababababababababababababab");
       formData.append("chapter", "0");
-      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("returnUrl", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
       expect(res.status).toBe(303);
@@ -1345,7 +1349,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         user: { id: "user-1", email: "lector@example.com" },
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&primed=1", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&primed=1", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Capítulo uno");
@@ -1359,7 +1363,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
 
       const res = await app.request(
-        "/k/read/mock-hash-1?section=0&page=0",
+        "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0",
         { headers: { Cookie: "lecta_k_priming_off=1" } },
         env,
       );
@@ -1376,8 +1380,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
 
       const res = await app.request(
-        "/k/read/mock-hash-1?section=0&page=0",
-        { headers: { Cookie: "lecta_k_mute_mock-hash-1=1" } },
+        "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0",
+        { headers: { Cookie: "lecta_k_mute_abababababababababababababababababababababababababababababababab=1" } },
         env,
       );
       expect(res.status).toBe(200);
@@ -1420,7 +1424,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         return Promise.resolve({ rows: [] });
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Antes de leer · Capítulo uno");
@@ -1439,7 +1443,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("action", "enable_all");
-      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("returnUrl", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
       expect(res.status).toBe(303);
@@ -1454,14 +1458,14 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("action", "mute_book");
-      formData.append("bookId", "mock-hash-1");
+      formData.append("bookId", "abababababababababababababababababababababababababababababababab");
       formData.append("chapter", "0");
-      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+      formData.append("returnUrl", "/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0");
 
       const res = await app.request("/k/priming/action", { method: "POST", body: formData }, env);
       expect(res.status).toBe(303);
       const setCookie = res.headers.get("Set-Cookie");
-      expect(setCookie).toContain("lecta_k_mute_mock-hash-1=1");
+      expect(setCookie).toContain("lecta_k_mute_abababababababababababababababababababababababababababababababab=1");
     });
   });
 
@@ -1472,7 +1476,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
       dbQueryMock.mockImplementation(async (sql: string) => {
         if (typeof sql === "string" && sql.includes("lecta_user_positions")) {
-          return { rows: [{ bookHash: "mock-hash-1", sectionIndex: 1, progress: 0.42 }] };
+          return { rows: [{ bookHash: "abababababababababababababababababababababababababababababababab", sectionIndex: 1, progress: 0.42 }] };
         }
         return { rows: [] };
       });
@@ -1480,7 +1484,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const res = await app.request("/k", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("/k/read/mock-hash-1?section=1");
+      expect(html).toContain("/k/read/abababababababababababababababababababababababababababababababab?section=1");
       expect(html).not.toContain("page=");
     });
 
@@ -1526,7 +1530,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(res.status).toBe(200);
 
       const act = dbQueryMock.mock.calls.find((call) =>
@@ -1719,7 +1723,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         return { rows: [] };
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("mode-anchors");
@@ -1736,14 +1740,14 @@ describe("Kindle Routes (/k and /kindle)", () => {
       resetKindleCacheMemory();
       dbQueryMock.mockResolvedValue({ rows: [] });
 
-      const res1 = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const res1 = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(res1.status).toBe(200);
 
       const epubGetsAfterFirst = mockBooksBucket.get.mock.calls.filter(
         (call) => typeof call[0] === "string" && call[0].endsWith(".epub"),
       ).length;
 
-      await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       const epubGetsAfterSecond = mockBooksBucket.get.mock.calls.filter(
         (call) => typeof call[0] === "string" && call[0].endsWith(".epub"),
       ).length;
@@ -1753,7 +1757,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       // … y haber escrito el artefacto kcache/ch/…json en R2
       expect(
         mockBooksBucket.put.mock.calls.some((call) =>
-          typeof call[0] === "string" && call[0].startsWith("kcache/ch/mock-hash-1/"),
+          typeof call[0] === "string" && call[0].startsWith("kcache/ch/abababababababababababababababababababababababababababababababab/"),
         ),
       ).toBe(true);
     });
@@ -1767,13 +1771,13 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       // Sembrar el recurso directamente en el mock de R2
       mockBooksBucket.get.mockImplementation(async (key: string) => {
-        if (key === "kcache/res/mock-hash-1/OEBPS/img.png") {
+        if (key === "kcache/res/abababababababababababababababababababababababababababababababab/OEBPS/img.png") {
           return {
             arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
             httpMetadata: { contentType: "image/png" },
           };
         }
-        if (key.includes("mock-hash-1") && key.endsWith(".epub")) {
+        if (key.includes("abababababababababababababababababababababababababababababababab") && key.endsWith(".epub")) {
           return {
             arrayBuffer: async () => minimalBytes.buffer.slice(
               minimalBytes.byteOffset,
@@ -1785,7 +1789,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       });
 
       const res = await app.request(
-        "/k/read/mock-hash-1/resource?path=OEBPS/img.png",
+        "/k/read/abababababababababababababababababababababababababababababababab/resource?path=OEBPS/img.png",
         {},
         env,
       );
@@ -1807,7 +1811,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       dbQueryMock.mockResolvedValue({ rows: [] });
 
       // El lector incluye «Índice» porque minimal.epub trae nav.xhtml
-      const read = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const read = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(read.status).toBe(200);
       const readHtml = await read.text();
       expect(readHtml).toContain(">Índice</a>");
@@ -1815,7 +1819,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       // Las acciones secundarias ya no saturan la barra: van dentro del menú
       expect(readHtml).toContain("Aa · Menú");
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&toc=1", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&toc=1", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain(">Índice</h1>");
@@ -1846,7 +1850,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       resetKindleCacheMemory();
       dbQueryMock.mockResolvedValue({ rows: [] });
       mockBooksBucket.get.mockImplementation(async (key: string) => {
-        if (key.includes("mock-hash-1") && key.endsWith(".epub")) {
+        if (key.includes("abababababababababababababababababababababababababababababababab") && key.endsWith(".epub")) {
           return {
             size: 60 * 1024 * 1024,
             arrayBuffer: async () => {
@@ -1857,7 +1861,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
         return null;
       });
 
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const res = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(res.status).toBe(400);
       const html = await res.text();
       expect(html).toContain("demasiado grande");
@@ -1945,7 +1949,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(outer.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
       const ajustes = await app.request("/k/ajustes", {}, env);
       expect(ajustes.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
-      const read = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const read = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0", {}, env);
       expect(read.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
     });
 
@@ -1956,8 +1960,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       // Los links de lectura ya no apuntan a /k/read (que saldría del preview)
-      expect(html).not.toContain('href="/k/read/mock-hash-1');
-      expect(html).toContain("/k/preview/page?book=mock-hash-1");
+      expect(html).not.toContain('href="/k/read/abababababababababababababababababababababababababababababababab');
+      expect(html).toContain("/k/preview/page?book=abababababababababababababababababababababababababababababababab");
       // Los overrides viajan por la navegación interna
       expect(html).toContain("mode=anchors");
       expect(html).toContain("size=xl");
@@ -1986,8 +1990,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const html = await res.text();
       expect(html).toContain("toc-list");
       // Las entradas del índice también navegan dentro del preview
-      expect(html).toContain("/k/preview/page?book=mock-hash-1");
-      expect(html).not.toContain('href="/k/read/mock-hash-1');
+      expect(html).toContain("/k/preview/page?book=abababababababababababababababababababababababababababababababab");
+      expect(html).not.toContain('href="/k/read/abababababababababababababababababababababababababababababababab');
     });
 
     it("GET /k/preview/page ignora un parámetro book malicioso", async () => {
@@ -2014,5 +2018,99 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("tetera");
     });
   });
-});
 
+  // Revisión de derechos de Explora (ronda 4, I1): kcache/ es compartido por
+  // hash y los hashes de Comunidad son públicos. La propiedad se comprueba
+  // ANTES de leer el caché; si no, otra cuenta lee el libro de A.
+  describe("kcache solo para el dueño del libro", () => {
+    const HASH_A = "cd".repeat(32);
+    const store = new Map<string, { data: ArrayBuffer; httpMetadata?: Record<string, string> }>();
+    const toBuffer = (v: unknown): ArrayBuffer => {
+      if (v instanceof ArrayBuffer) return v;
+      const u8 = v as Uint8Array;
+      return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
+    };
+    const bucket = {
+      list: vi.fn(async ({ prefix }: { prefix: string }) => ({
+        objects: [...store.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })),
+      })),
+      get: vi.fn(async (key: string) => {
+        const hit = store.get(key);
+        if (!hit) return null;
+        return {
+          size: hit.data.byteLength,
+          httpMetadata: hit.httpMetadata,
+          arrayBuffer: async () => hit.data.slice(0),
+          text: async () => new TextDecoder().decode(hit.data),
+        };
+      }),
+      head: vi.fn(async (key: string) => (store.has(key) ? { key } : null)),
+      put: vi.fn(async (key: string, value: unknown, opts?: { httpMetadata?: Record<string, string> }) => {
+        store.set(key, { data: toBuffer(value), httpMetadata: opts?.httpMetadata });
+      }),
+      delete: vi.fn(async () => undefined),
+    };
+    const leakEnv = { ...env, BOOKS: bucket as unknown };
+    const asUser = (id: string) =>
+      getSessionMock.mockResolvedValue({ user: { id, email: `${id}@example.com` } });
+
+    beforeEach(() => {
+      store.clear();
+      store.set(`books/user-a/${HASH_A}.epub`, {
+        data: toBuffer(minimalBytes),
+      });
+      // A ya abrió el libro en el Kindle: hay recurso cacheado en R2
+      store.set(`kcache/res/${HASH_A}/OEBPS/img.png`, {
+        data: new Uint8Array([1, 2, 3]).buffer,
+        httpMetadata: { contentType: "image/png" },
+      });
+    });
+
+    it("B recibe 404 en read, resource y preview con el hash de A; A sigue leyendo", async () => {
+      asUser("user-a");
+      const ownRead = await app.request(`/k/read/${HASH_A}?section=0&page=0`, {}, leakEnv);
+      expect(ownRead.status).toBe(200);
+      expect(
+        [...store.keys()].some((k) => k.startsWith(`kcache/ch/${HASH_A}/`)),
+      ).toBe(true);
+
+      asUser("user-b");
+      const read = await app.request(`/k/read/${HASH_A}?section=0&page=0`, {}, leakEnv);
+      expect(read.status).toBe(404);
+      expect(await read.text()).not.toContain("epub-content");
+
+      const res = await app.request(
+        `/k/read/${HASH_A}/resource?path=OEBPS/img.png`,
+        {},
+        leakEnv,
+      );
+      expect(res.status).toBe(404);
+
+      const preview = await app.request(`/k/preview/page?book=${HASH_A}`, {}, leakEnv);
+      expect(preview.status).toBe(404);
+
+      asUser("user-a");
+      const again = await app.request(`/k/read/${HASH_A}?section=0&page=0`, {}, leakEnv);
+      expect(again.status).toBe(200);
+      const ownRes = await app.request(
+        `/k/read/${HASH_A}/resource?path=OEBPS/img.png`,
+        {},
+        leakEnv,
+      );
+      expect(ownRes.status).toBe(200);
+      const ownPreview = await app.request(`/k/preview/page?book=${HASH_A}`, {}, leakEnv);
+      expect(ownPreview.status).toBe(200);
+      expect(await ownPreview.text()).toContain("epub-content");
+    });
+
+    it("/k/read solo acepta un sha256: un slug de catálogo no sirve el EPUB", async () => {
+      store.set("catalog/quijote.epub", { data: toBuffer(minimalBytes) });
+      asUser("user-b");
+      const read = await app.request("/k/read/quijote?section=0&page=0", {}, leakEnv);
+      expect([400, 404]).toContain(read.status);
+      const res = await app.request("/k/read/quijote/resource?path=OEBPS/img.png", {}, leakEnv);
+      expect([400, 404]).toContain(res.status);
+      expect(bucket.get).not.toHaveBeenCalledWith("catalog/quijote.epub");
+    });
+  });
+});
