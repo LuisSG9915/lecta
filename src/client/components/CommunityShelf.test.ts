@@ -418,4 +418,45 @@ describe("CommunityShelf", () => {
     expect(host.textContent).toContain("Opciones del libro");
     expect(buttonByText(host, "Ver libros gratuitos")).toBeUndefined();
   });
+
+  it("plega el filtro de idioma en «Más filtros» y deja los géneros a la vista", async () => {
+    const books = [
+      book("es1", { title: "Cien años", language: "es", genre: "Clásicos" }),
+      book("en1", { title: "Pride", language: "en", genre: "Clásicos" }),
+      book("es2", { title: "Sin género", language: "es", genre: "" }),
+    ];
+    await act(async () => {
+      root.render(
+        h(CommunityShelf, { fetchBooks: async () => okBooks(books) }),
+      );
+      await flush();
+    });
+
+    const details = host.querySelector("details.discover-more-filters")!;
+    expect(details).toBeTruthy();
+    expect(details.querySelector("summary")?.textContent).toContain(
+      "Más filtros",
+    );
+
+    // El idioma vive dentro del plegable; los géneros quedan fuera.
+    const langGroup = host.querySelector<HTMLElement>(
+      '[aria-label="Filtrar guías por idioma"]',
+    )!;
+    expect(details.contains(langGroup)).toBe(true);
+    const genreGroup = host.querySelector<HTMLElement>(
+      '[aria-label="Filtrar guías por género"]',
+    )!;
+    expect(genreGroup).toBeTruthy();
+    expect(details.contains(genreGroup)).toBe(false);
+
+    // El filtro sigue funcionando desde el plegable.
+    const enPill = [...langGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "EN",
+    )!;
+    await act(async () => enPill.click());
+    expect(titles()).toEqual(["Pride"]);
+    expect(details.querySelector("summary")?.textContent).toContain(
+      "1 activo",
+    );
+  });
 });

@@ -913,11 +913,30 @@
   font-size: var(--fs-sm);
 }
 
+/* Géneros en una sola línea que se desliza (mismo gesto que
+   .discover-filters): en móvil no apilan una fila de píldoras por
+   cada género antes de llegar a los resultados. */
 .shelf-community-filters {
   display: flex;
   gap: var(--s-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
   margin-bottom: var(--s-3);
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    black 0%,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%);
+}
+
+.shelf-community-filters::-webkit-scrollbar {
+  display: none;
 }
 
 /* Buscador + «Ver todos» del catálogo dentro de Explora. */

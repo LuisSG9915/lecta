@@ -464,32 +464,43 @@ export default function CommunityShelf({
               ))}
             </div>
           ) : null}
+          {/* El idioma es filtro secundario: plegado en «Más filtros»
+              (mismo gesto que el catálogo) para no apilar filas de
+              píldoras sobre los resultados. */}
           {languages.length > 1 ? (
-            <div
-              className="shelf-community-filters"
-              role="group"
-              aria-label="Filtrar guías por idioma"
-            >
-              <button
-                type="button"
-                className={`discover-filter-pill${lang === null ? " discover-filter-pill--active" : ""}`}
-                aria-pressed={lang === null}
-                onClick={() => setLang(null)}
-              >
-                Todas
-              </button>
-              {languages.map((language) => (
-                <button
-                  key={language}
-                  type="button"
-                  className={`discover-filter-pill${lang === language ? " discover-filter-pill--active" : ""}`}
-                  aria-pressed={lang === language}
-                  onClick={() => setLang(language)}
+            <details className="discover-more-filters">
+              <summary className="meta">
+                Más filtros
+                {lang !== null ? " · 1 activo" : ""}
+              </summary>
+              <div className="discover-more-filters-content">
+                <div
+                  className="discover-filters"
+                  role="group"
+                  aria-label="Filtrar guías por idioma"
                 >
-                  {language.toUpperCase()}
-                </button>
-              ))}
-            </div>
+                  <button
+                    type="button"
+                    className={`discover-filter-pill${lang === null ? " discover-filter-pill--active" : ""}`}
+                    aria-pressed={lang === null}
+                    onClick={() => setLang(null)}
+                  >
+                    Todas
+                  </button>
+                  {languages.map((language) => (
+                    <button
+                      key={language}
+                      type="button"
+                      className={`discover-filter-pill${lang === language ? " discover-filter-pill--active" : ""}`}
+                      aria-pressed={lang === language}
+                      onClick={() => setLang(language)}
+                    >
+                      {language.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </details>
           ) : null}
           <div className="discover-toolbar">
             <input
