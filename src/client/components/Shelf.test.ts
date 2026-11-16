@@ -190,8 +190,11 @@ describe("Shelf - Explora diferido", () => {
     expect(fallback?.textContent).toContain("Explora");
     expect(host.querySelector(".shelf-explore-tabs")).toBeNull();
 
-    // Al resolver el chunk aparecen las pestañas reales.
+    // Al resolver el chunk aparecen las pestañas reales. Se espera el
+    // mismo import() que usa React.lazy: con la suite cargada el chunk
+    // tardaba más que unas cuantas microtareas y la prueba fallaba sola.
     await act(async () => {
+      await import("./ExploreShelf");
       for (let i = 0; i < 10; i++) await Promise.resolve();
     });
     expect(host.querySelector(".shelf-explore-tabs")).toBeTruthy();
