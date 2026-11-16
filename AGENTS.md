@@ -44,9 +44,9 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
   warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
   del React Compiler y limpió los 20 que quedaban): un warning nuevo rompe el gate.
-  `check:size` va en **207.01 kB** de 215 kB gzip (avisa al 90 %, es decir a partir de
+  `check:size` va en **207.14 kB** de 215 kB gzip (avisa al 90 %, es decir a partir de
   193.5 kB — el aviso sale siempre y hay que fijarse en el margen que imprime, no en su
-  presencia); en peso quedan ~8 kB de margen.
+  presencia); en peso quedan ~7.9 kB de margen.
 - La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 183 archivos con
   jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
   mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6
@@ -986,6 +986,21 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   póster → `ScreenPrepareSheet`, «Otro episodio», «Quitar» con
   confirmación) y en el filtro «Origen» del Cuaderno (`wordOrigin` en
   `notebook-model.ts`).
+- **Explora (v3, 2026-11-16)**: `ExploreShelf` y `DiscoverRail` son chunks lazy
+  precargados en idle (mismo patrón que `CompanionPanel`); el contexto compartido
+  vive en `src/client/components/explore-context.ts` para que `CommunityShelf`
+  no arrastre el chunk padre. Comunidad monta al abrir (pestaña por defecto) y
+  reporta su conteo por el puente (`onLoaded`); catálogo y pantalla montan en su
+  primera visita y quedan montados ocultos (`opened` por pestaña), con
+  `tabIndex={0}` en los paneles y contadores accesibles («Comunidad, 12 guías»).
+  «Libros gratuitos» tiene un solo campo: `freeQuery` filtra el riel curado en
+  vivo y `catalogQuery` (Enter o la fila «Buscar en todos los clásicos» de
+  `GutenbergSearch`, que en modo controlado no usa debounce) busca en Gutenberg;
+  `pendingQuery` oculta resultados viejos mientras hay texto sin enviar.
+  Comunidad pliega el idioma en `details.discover-more-filters`, deja los géneros
+  en una línea con scroll (`.shelf-community-filters`) y ordena por afinidad con
+  `compareBookCoverages` — las sin medir conservan el orden del servidor al final
+  y la medición sigue siendo solo de lo visible (`attempted*Ref`, sin bucles).
 - **Búsqueda Gutenberg lenta**: el `LIKE '%…%'` hace FULL SCAN en
   CockroachDB (p50 ~926 ms medido con 60k filas sintéticas). Si crece,
   evaluar columna `search_tokens` con índice antes de tocar el plan.
