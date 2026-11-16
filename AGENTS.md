@@ -955,6 +955,19 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   gutenberg.org con `CATALOG_PG_FETCH=1` (apagado: un miss → 404). Los EPUB
   del catálogo nunca suben a la sync de pago (`selectBook(..., { catalog: true })`).
   `gutenberg-index.mjs --load` exige `--gate-ok` (compuerta §4 del documento).
+- **«Series y películas» con subtítulos propios** (2026-11-16): la pestaña
+  vuelve como `SubtitleShelf` (`SUBTITLE_ZONE_ENABLED`, `screen-zone.ts`). El
+  usuario trae un .srt/.vtt/.ass; el navegador lo normaliza
+  (`src/shared/subtitle-parse.ts`), saca formas/nombres propios/claves de
+  frases (`subtitleToForms`, `detectMultiwordPhrases`) en
+  `src/client/lib/subtitle-works.ts` y `installSubtitleWork` (`App.tsx`) la
+  fusiona en la guía de papel de la obra (`mergeChapterIntoGuide`). Sin red:
+  nada de OMDb/SubDL/Trakt/R2; sin `imdbId` ni póster; identidad
+  `lecta-subs:v1:<tipo>:<título normalizado>:<idioma>`. El archivo nunca sale
+  del dispositivo. `SCREEN_ZONE_ENABLED` (false) sigue apagando el worker
+  `/api/screen/*` y purga del dispositivo las obras viejas con `imdbId`.
+  `ScreenShelf`/`ScreenPrepareSheet` y `screen-discover` quedan sin uso
+  (código dormido, no se borra).
 - **EPUB sin la marca Project Gutenberg** (R4/M4c): el worker sirve los EPUB
   del catálogo desde `catalog/v2/<id>.epub` y limpia los `pg-` al bajarlos
   (`debrandGutenbergEpub`, `src/shared/gutenberg-debrand.ts`). Para el

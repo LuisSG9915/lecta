@@ -2917,3 +2917,30 @@
 .screen-discover-rail .eyebrow {
   margin: 0;
 }
+
+/* «Series y películas» con subtítulos propios (SubtitleShelf) */
+.subs-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.subs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+
+.subs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+
+.subs-field input[type="text"] {
+  inline-size: 5rem;
+}
+
+.subs-error {
+  color: var(--vermilion);
+}

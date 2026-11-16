@@ -77,7 +77,7 @@ import { useCompanion } from "./CompanionProvider";
 import CoatChoice, { needsCoatChoice } from "./CoatChoice";
 import { useUserPlan } from "../lib/account-plan";
 import Sheet from "./Sheet";
-import { SCREEN_ZONE_ENABLED } from "../lib/screen-zone";
+import { SUBTITLE_ZONE_ENABLED } from "../lib/screen-zone";
 
 // Ítem de la estantería: lo que hace falta para dibujar la tarjeta,
 // sin el archivo. remoteOnly marca los que existen en la cuenta pero
@@ -1908,7 +1908,7 @@ export default function Shelf({
             community={communitySection}
             screen={screenSection}
             screenCount={screenCount}
-            screenEnabled={SCREEN_ZONE_ENABLED}
+            screenEnabled={SUBTITLE_ZONE_ENABLED}
             onOpenAccount={onOpenAccount}
             catalog={
               onGetCatalogBook ? (

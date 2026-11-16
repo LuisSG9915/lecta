@@ -353,20 +353,43 @@ export function mergeScreenChapter(
   const id = screenChapterId(ref);
   const label = screenChapterLabel(ref);
   if (!id || !label) return null;
+  return mergeChapterIntoGuide(
+    guide,
+    { id, label, forms: object.forms, capitalOnly: object.capitalOnly },
+    object.language,
+    meta,
+  );
+}
 
+// Núcleo común: añade (o reemplaza) un capítulo «solo palabras» en la
+// guía de la obra y la devuelve saneada. Lo usan tanto las guías que
+// llegaban del worker como las que el navegador arma desde el archivo
+// de subtítulos del usuario (subtitle-works.ts).
+export function mergeChapterIntoGuide(
+  guide: PaperBookGuide | null,
+  chapterData: {
+    id: string;
+    label: string;
+    forms: readonly string[];
+    capitalOnly: readonly string[];
+  },
+  language: string,
+  meta: ScreenChapterMeta,
+): PaperBookGuide | null {
   const base =
     guide && guide.bookHash === meta.bookHash ? guide.chapters : [];
   const chapter: PaperGuideChapter = {
-    id,
-    label,
+    id: chapterData.id,
+    label: chapterData.label,
     depth: 0,
     kind: "chapter",
-    forms: [...object.forms],
-    capitalOnly: [...object.capitalOnly],
+    forms: [...chapterData.forms],
+    capitalOnly: [...chapterData.capitalOnly],
   };
-  const chapters = [...base.filter((ch) => ch.id !== id), chapter].sort(
-    compareChapters,
-  );
+  const chapters = [
+    ...base.filter((ch) => ch.id !== chapterData.id),
+    chapter,
+  ].sort(compareChapters);
 
   return sanitizePaperBookGuide(
     {
@@ -374,7 +397,7 @@ export function mergeScreenChapter(
       bookHash: meta.bookHash,
       title: meta.title,
       author: meta.author ?? "",
-      language: object.language,
+      language,
       updatedAt: Date.now(),
       chapters,
     },

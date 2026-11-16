@@ -18,7 +18,7 @@ const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
 const PaperReading = lazy(() => import("./components/PaperReading"));
 const CommunityShelf = lazy(() => import("./components/CommunityShelf"));
-const ScreenShelf = lazy(() => import("./components/ScreenShelf"));
+const SubtitleShelf = lazy(() => import("./components/SubtitleShelf"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
 const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"));
@@ -106,9 +106,9 @@ import {
 import { downloadBookWithStatus, fetchBookGuide, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
 import { paperGuideSessionKey, sanitizePaperBookGuide } from "../shared/paper-guide";
 import type {
-  ScreenGuideObject,
-  ScreenWorkRef,
-} from "../shared/screen-guide";
+  SubtitleWorkRef,
+} from "./lib/subtitle-works";
+import type { SubtitleGuide } from "./components/SubtitleShelf";
 import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
@@ -1738,35 +1738,33 @@ export default function App() {
     setPaperBook(null);
   };
 
-  // «Series y películas»: la guía que devuelve el worker es de UN
-  // episodio/película (ScreenGuideObject «solo palabras»). Se fusiona
-  // en la PaperBookGuide de la obra completa — un capítulo por
-  // episodio, «movie» para películas — y se guarda en la misma clave
-  // de sesión que usa el modo papel, así que usePaperReading la abre
-  // sin cambios. El StoredBook es paperOnly + mediaKind: nunca hay
-  // EPUB y jamás se sube a la cuenta.
-  const installScreenWork = async (
-    ref: ScreenWorkRef,
-    object: ScreenGuideObject,
-    title: string,
+  // «Series y películas» con subtítulos propios: el navegador armó la
+  // guía de UN episodio/película desde el archivo del usuario (solo
+  // palabras; el texto ya se descartó). Se fusiona en la PaperBookGuide
+  // de la obra completa — un capítulo por episodio, «movie» para
+  // películas — y se guarda en la misma clave de sesión que usa el modo
+  // papel, así que usePaperReading la abre sin cambios. El StoredBook
+  // es paperOnly + mediaKind, sin imdbId ni póster: nunca hay EPUB y
+  // jamás se sube a la cuenta.
+  const installSubtitleWork = async (
+    ref: SubtitleWorkRef,
+    guide: SubtitleGuide,
   ): Promise<ShelfItem | null> => {
     const scope = captureDbScope();
-    // Imports diferidos: el parser de subtítulos y el cliente /api/screen
-    // solo los usa esta zona — nada de eso paga peso en el arranque.
+    // Import diferido: solo esta zona lo usa, sin peso en el arranque.
     const [
-      { screenWorkHash, screenChapterId },
+      { subtitleWorkHash, subtitleChapterId, subtitleChapterLabel },
       {
-        mergeScreenChapter,
-        screenPosterUrl,
+        mergeChapterIntoGuide,
         mergeScreenChapterPhrases,
         parseScreenPhrasesRecord,
         screenPhrasesKey,
       },
     ] = await Promise.all([
-      import("../shared/screen-guide"),
+      import("./lib/subtitle-works"),
       import("./lib/screen"),
     ]);
-    const hash = await screenWorkHash(ref.type, ref.imdbId, ref.language);
+    const hash = await subtitleWorkHash(ref);
     if (!hash) return null;
     const guideKey = paperGuideSessionKey(hash);
     const raw = await loadSessionValue(guideKey, scope).catch(() => null);
@@ -1778,37 +1776,33 @@ export default function App() {
         // Sesión ilegible: se reconstruye solo con el capítulo nuevo.
       }
     }
-    const merged = mergeScreenChapter(existing, object, {
-      bookHash: hash,
-      title: title || existing?.title || "",
-      author: existing?.author,
-    });
+    const chapterId = subtitleChapterId(ref);
+    const merged = mergeChapterIntoGuide(
+      existing,
+      {
+        id: chapterId,
+        label: subtitleChapterLabel(ref),
+        forms: guide.forms,
+        capitalOnly: guide.capitalOnly,
+      },
+      ref.language,
+      { bookHash: hash, title: ref.title, author: existing?.author },
+    );
     if (!merged) return null;
     await saveSessionValue(guideKey, JSON.stringify(merged), scope).catch(
       () => undefined,
     );
     const previous = await getStoredBook(hash, scope).catch(() => undefined);
-    // Portada: la del póster del worker (proxy propio, CSP 'self'); si
-    // ya había una o la descarga falla, el libro queda sin portada.
-    let cover = previous?.cover;
-    if (!cover) {
-      cover =
-        (await fetch(screenPosterUrl(ref.imdbId))
-          .then((res) => (res.ok ? res.blob() : null))
-          .catch(() => null)) ?? undefined;
-    }
     const stored = await saveBook(
       {
         hash,
-        name: title || previous?.title || hash,
-        title: title || previous?.title || undefined,
+        name: ref.title || previous?.title || hash,
+        title: ref.title || previous?.title || undefined,
         author: ref.type === "tv" ? "Serie" : "Película",
         language: ref.language,
-        cover,
         data: new Blob([]),
         paperOnly: true,
         mediaKind: ref.type,
-        imdbId: ref.imdbId,
         addedAt: previous?.addedAt ?? Date.now(),
       },
       scope,
@@ -1817,19 +1811,16 @@ export default function App() {
     // Las frases del episodio (claves del banco, nunca texto) se
     // acumulan por capítulo en `screenPhrases:v1:<hash>` para que la
     // hoja las muestre antes que las palabras.
-    const chapterId = screenChapterId(ref);
-    if (chapterId && object.phrases.length) {
+    if (guide.phrases.length) {
       const phrasesKey = screenPhrasesKey(hash);
       const rawPhrases = await loadSessionValue(phrasesKey, scope).catch(
         () => null,
       );
-      const record = rawPhrases
-        ? parseScreenPhrasesRecord(rawPhrases)
-        : {};
+      const record = rawPhrases ? parseScreenPhrasesRecord(rawPhrases) : {};
       await saveSessionValue(
         phrasesKey,
         JSON.stringify(
-          mergeScreenChapterPhrases(record, chapterId, object.phrases),
+          mergeScreenChapterPhrases(record, chapterId, guide.phrases),
         ),
         scope,
       ).catch(() => undefined);
@@ -1845,37 +1836,18 @@ export default function App() {
       sectionCount: stored.sectionCount,
       language: stored.language,
       mediaKind: stored.mediaKind,
-      imdbId: stored.imdbId,
       paperOnly: true,
     };
   };
 
-  // Capítulos ya preparados de una obra de pantalla (ids «sNN eNN» /
-  // «movie»): la hoja de preparación los usa para marcar episodios y
-  // proponer el siguiente. Lee la misma clave de sesión que escribe
-  // installScreenWork; cualquier fallo devuelve lista vacía.
-  const loadScreenChapters = async (hash: string): Promise<string[]> => {
-    const scope = captureDbScope();
-    const raw = await loadSessionValue(paperGuideSessionKey(hash), scope).catch(
-      () => null,
-    );
-    if (!raw) return [];
-    try {
-      const guide = sanitizePaperBookGuide(JSON.parse(raw), hash);
-      return guide?.chapters.map((ch) => ch.id) ?? [];
-    } catch {
-      return [];
-    }
-  };
-
-  // ScreenShelf ya pidió la guía al worker; aquí solo se instala y se
-  // abre el índice de la obra (episodio/película recién preparada).
+  // SubtitleShelf ya armó la guía desde el archivo del usuario; aquí
+  // solo se instala y se abre el índice de la obra (episodio/película
+  // recién preparada).
   const handlePrepareScreenWork = async (args: {
-    ref: ScreenWorkRef;
-    guide: ScreenGuideObject;
-    title: string;
+    ref: SubtitleWorkRef;
+    guide: SubtitleGuide;
   }): Promise<boolean> => {
-    const item = await installScreenWork(args.ref, args.guide, args.title).catch(
+    const item = await installSubtitleWork(args.ref, args.guide).catch(
       () => null,
     );
     if (!item) return false;
@@ -1894,16 +1866,18 @@ export default function App() {
     void refreshLibrary();
   };
 
-  // Zona «Series y películas» apagada (docs/designs/2026-11-15-explora-
-  // derechos.md, M0/M2): las obras de pantalla que quedaron en este
-  // dispositivo se borran con sus guías derivadas de subtítulos. Corre
-  // en cada base local (cuenta o anónima) en cuanto su biblioteca carga;
-  // sin obras de pantalla no hace nada.
+  // Zona OMDb/SubDL apagada (docs/designs/2026-11-15-explora-derechos.md,
+  // M0/M2): las obras que vinieron de ahí (llevan imdbId) se borran del
+  // dispositivo con sus guías derivadas de subtítulos de terceros. Las
+  // obras armadas con los subtítulos del propio usuario (sin imdbId) se
+  // conservan. Corre en cada base local en cuanto su biblioteca carga.
   useEffect(() => {
-    if (SCREEN_ZONE_ENABLED || screenWorks.length === 0) return;
+    if (SCREEN_ZONE_ENABLED) return;
+    const legacy = screenWorks.filter((work) => work.imdbId);
+    if (legacy.length === 0) return;
     const scope = captureDbScope();
     void Promise.all(
-      screenWorks.map((work) => deleteStoredBook(work.hash, scope).catch(() => undefined)),
+      legacy.map((work) => deleteStoredBook(work.hash, scope).catch(() => undefined)),
     ).then(() => refreshLibrary());
   }, [screenWorks, refreshLibrary]);
 
@@ -2302,12 +2276,11 @@ export default function App() {
                     screenSection={
                       sessionUserId ? (
                         <Suspense fallback={null}>
-                          <ScreenShelf
+                          <SubtitleShelf
                             works={screenWorks}
                             onOpenWork={handlePaperBook}
                             onRemoveWork={(hash) => void removeScreenWork(hash)}
                             onPrepareWork={handlePrepareScreenWork}
-                            loadPreparedChapters={loadScreenChapters}
                           />
                         </Suspense>
                       ) : undefined

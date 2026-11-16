@@ -119,7 +119,7 @@ export default function LegalNotice({
             <p>
               Tú conservas la titularidad y los derechos sobre cualquier archivo EPUB que cargues en tu
               estantería. Eres responsable de contar con los derechos o autorizaciones pertinentes para los libros
-              que decidas almacenar o sincronizar.
+              que decidas almacenar o sincronizar. Lo mismo aplica a los archivos de subtítulos que traigas para preparar el vocabulario de una serie o película: se procesan en tu dispositivo, no se suben a ningún servidor y solo guardamos una lista de palabras, nunca el diálogo.
             </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>
               Datos léxicos, licencias abiertas y cumplimiento ODbL 1.0
