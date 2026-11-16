@@ -948,11 +948,25 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   `DATABASE_URL_DEV`, `--remote` para `lecta` solo con autorización). La búsqueda del cliente
   vive en `src/client/lib/gutenberg.ts` y `GutenbergSearch.tsx` es chunk
   lazy bajo el riel curado de «Libros gratuitos».
-- **Pantalla**: rutas `/api/screen/*` en `src/worker/screen.ts` (OMDb +
-  SubDL; llaves `OMDB_API_KEY`/`SUBDL_API_KEY` en `.dev.vars`, nunca en el
-  repo). Guías en R2 `screen-guides/v1/<type>-<imdbId>[-sNN eNN]-<lang>.json`.
-  Sonda real: `node scripts/screen-probe.mjs --env-file=.env` (imprime solo
-  estados HTTP y nombres de campo, llaves redactadas).
+- **Pantalla**: rutas `/api/screen/*` en `src/worker/screen.ts` y
+  `src/worker/screen-discover.ts` (OMDb + SubDL + Trakt; llaves
+  `OMDB_API_KEY`/`SUBDL_API_KEY`/`TRACKT_API_KEY` en `.dev.vars`, nunca en
+  el repo; sin `TRACKT_API_KEY` los rieles sirven la lista curada de
+  `screen-curated.ts`). Guías en R2 `screen-guides/v1/<type>-<imdbId>[-sNN eNN]-<lang>.json`;
+  pósters en `screen/posters/<imdbId>.jpg` (inmutable, ahorra cuota OMDb);
+  descubrimiento en `screen-discover/v1/rails.json` (fresca 12 h, sirve la
+  vencida si Trakt cae) y `related-<type>-<imdbId>.json` (14 días, cuota
+  `screen-related` 30/h). Rutas: `/api/screen/discover`,
+  `/api/screen/related?imdbId=&type=`, `/api/screen/poster`. **OMDb
+  devuelve `Response: "True"` con mayúscula** — `omdbOk()` compara sin
+  caso; los fixtures deben usar el valor real. Portadas Gutenberg:
+  `/api/catalog/pg-<n>/cover` → R2 `catalog/pg-<n>.cover.jpg`.
+  Sondas reales: `node scripts/screen-probe.mjs --env-file=.env`,
+  `node scripts/trakt-probe.mjs --env-file=.env` y
+  `node scripts/screen-curated-check.mjs --env-file=.env` (verifica los
+  27 imdbId curados contra OMDb); todas imprimen solo estados HTTP y
+  nombres de campo, llaves redactadas. La política de Trakt exige el
+  crédito visible en Cuenta → «Acerca de y Diagnóstico» (ya está).
 - **Regla «solo palabras»**: de los subtítulos jamás se guarda ni devuelve
   diálogo, citas, marcas de tiempo ni orden narrativo. La guía
   (`src/shared/screen-guide.ts`) solo lleva formas normalizadas,
@@ -960,11 +974,15 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   `src/shared/foreign-idioms.ts`). El cliente las funde en
   `paperGuide:v1:<screenWorkHash>` y las frases por capítulo en
   `screenPhrases:v1:<hash>`; ambas claves mueren con `deleteStoredBook`.
+  Los rieles de descubrimiento solo llevan `imdbId`/`type`/`title`/`year`/
+  `hasPoster` — metadatos públicos, nunca contenido de obras.
 - **Obras de pantalla**: `StoredBook`/`ShelfItem` llevan `mediaKind:
-  "movie" | "tv"`, `paperOnly` y Blob vacío (sin EPUB ni sync). Viven fuera
-  de la estantería (`shelfBooks` las excluye), en «Tus títulos» de la
-  pestaña «Series y películas» de Explora y en el filtro «Origen» del
-  Cuaderno (`wordOrigin` en `notebook-model.ts`).
+  "movie" | "tv"`, `imdbId`, `paperOnly` y Blob vacío (sin EPUB ni sync).
+  Viven fuera de la estantería (`shelfBooks` las excluye), en «Tus
+  títulos» de la pestaña «Series y películas» de Explora (tarjetas con
+  póster → `ScreenPrepareSheet`, «Otro episodio», «Quitar» con
+  confirmación) y en el filtro «Origen» del Cuaderno (`wordOrigin` en
+  `notebook-model.ts`).
 - **Búsqueda Gutenberg lenta**: el `LIKE '%…%'` hace FULL SCAN en
   CockroachDB (p50 ~926 ms medido con 60k filas sintéticas). Si crece,
   evaluar columna `search_tokens` con índice antes de tocar el plan.
