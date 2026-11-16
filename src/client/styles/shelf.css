@@ -1065,6 +1065,24 @@
   border-block-end-color: var(--accent-primary);
 }
 
+/* Contador de la pestaña (guías / títulos): píldora discreta, el
+   número es texto — no depende solo del color. */
+.shelf-explore-count {
+  margin-inline-start: var(--s-1);
+  padding: 0 var(--s-1);
+  border-radius: var(--r-pill);
+  background: var(--paper-sunken);
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (forced-colors: active) {
+  .shelf-explore-count {
+    border: 1px solid CanvasText;
+  }
+}
+
 .shelf-explore-hint {
   padding: var(--s-3) 0;
 }

@@ -27,7 +27,7 @@ import {
   sanitizePaperBookGuide,
   type PaperBookGuide,
 } from "../../shared/paper-guide";
-import { ExploreCommunityEmptyContext } from "./explore-context";
+import { ExploreCommunityContext } from "./explore-context";
 import Sheet from "./Sheet";
 import type { ShelfItem } from "./Shelf";
 import {
@@ -101,7 +101,8 @@ export default function CommunityShelf({
   loadInputs = inputsForCoverage,
   lookupForms = lookupGuideForms,
 }: Props) {
-  const notifyEmptyFromContext = useContext(ExploreCommunityEmptyContext);
+  const bridge = useContext(ExploreCommunityContext);
+  const onCommunityLoaded = bridge?.onLoaded;
   const [books, setBooks] = useState<CommunityBook[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -148,9 +149,11 @@ export default function CommunityShelf({
         attemptedGuideRef.current.clear();
         attemptedCoverageRef.current.clear();
         setBooks(res.books);
+        // Reporta el conteo siempre (alimenta el badge de la pestaña);
+        // con 0 el puente además salta a otra pestaña si procede.
+        onCommunityLoaded?.(res.books.length);
         if (res.books.length === 0) {
           onEmpty?.();
-          notifyEmptyFromContext?.();
         }
       })
       .catch(() => {
@@ -161,7 +164,7 @@ export default function CommunityShelf({
     return () => {
       cancelled = true;
     };
-  }, [fetchBooks, reloadToken, onEmpty, notifyEmptyFromContext]);
+  }, [fetchBooks, reloadToken, onEmpty, onCommunityLoaded]);
 
   const retryLoad = () => {
     setLoadError(false);
@@ -412,6 +415,20 @@ export default function CommunityShelf({
             >
               Compartir un libro tuyo
             </button>
+          ) : bridge?.openCatalog ? (
+            <>
+              <p className="meta">
+                Todavía no tienes libros para compartir. Empieza con un
+                clásico gratuito.
+              </p>
+              <button
+                type="button"
+                className="btn shelf-community-share-cta"
+                onClick={bridge.openCatalog}
+              >
+                Ver libros gratuitos
+              </button>
+            </>
           ) : (
             <p className="meta">
               Opciones del libro → «Compartir a la comunidad».

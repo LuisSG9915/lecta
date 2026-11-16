@@ -148,6 +148,8 @@ export type ShelfProps = {
   // Contenido de la pestaña «Series y películas» de Explora: obras
   // audiovisuales preparadas + buscador OMDb/SubDL (solo con sesión).
   screenSection?: React.ReactNode;
+  /** Obras de pantalla instaladas → contador de la pestaña. */
+  screenCount?: number;
   // «Obtener» del riel Descubre y de «Más clásicos»: el padre baja el
   // EPUB y lo pasa al flujo normal de añadir libro. Puede resolver con
   // el hash del libro guardado (GutenbergSearch lo usa para «Abrir»).
@@ -225,6 +227,7 @@ export default function Shelf({
   onShareBook,
   communitySection,
   screenSection,
+  screenCount,
   onGetCatalogBook,
   onDownloadBook,
   downloadingHash,
@@ -1901,6 +1904,7 @@ export default function Shelf({
           <ExploreShelf
             community={communitySection}
             screen={screenSection}
+            screenCount={screenCount}
             onOpenAccount={onOpenAccount}
             catalog={
               onGetCatalogBook ? (

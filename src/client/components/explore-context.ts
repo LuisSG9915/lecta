@@ -6,11 +6,19 @@ import { createContext } from "react";
 // y para que CommunityShelf (lazy) y ExploreShelf (lazy desde F0)
 // compartan la misma instancia.
 
+export type ExploreCommunityBridge = {
+  /** Comunidad cargó bien: número de guías (0 = vacía). */
+  onLoaded: (count: number) => void;
+  /** Cambia a «Libros gratuitos»; null si esa pestaña no existe. */
+  openCatalog: (() => void) | null;
+};
+
 /**
- * Comunidad → Explora: avisa que cargó vacía para que la pestaña
- * salte a «Libros gratuitos» cuando el lector no eligió pestaña.
- * El callback debe ser estable o el efecto de carga se re-dispara.
+ * Comunidad → Explora: reporta cuántas guías cargó (para el contador
+ * de la pestaña y para el salto automático cuando está vacía) y
+ * permite que el estado vacío ofrezca «Ver libros gratuitos».
+ * Las funciones deben ser estables o el efecto de carga de
+ * Comunidad se re-dispara en cada render.
  */
-export const ExploreCommunityEmptyContext = createContext<
-  (() => void) | null
->(null);
+export const ExploreCommunityContext =
+  createContext<ExploreCommunityBridge | null>(null);

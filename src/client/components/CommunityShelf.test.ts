@@ -3,6 +3,10 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommunityShelf from "./CommunityShelf";
+import {
+  ExploreCommunityContext,
+  type ExploreCommunityBridge,
+} from "./explore-context";
 import { attachCommunityBook } from "../lib/books";
 import type { CommunityBook, CommunityBooksResult } from "../lib/books";
 import type { ShelfItem } from "./Shelf";
@@ -343,5 +347,75 @@ describe("CommunityShelf", () => {
     });
 
     expect(onShareBook).toHaveBeenCalledWith(own, "Clásicos");
+  });
+
+  const withBridge = (
+    bridge: ExploreCommunityBridge,
+    props: Parameters<typeof CommunityShelf>[0],
+  ) =>
+    h(
+      ExploreCommunityContext.Provider,
+      { value: bridge },
+      h(CommunityShelf, props),
+    );
+
+  it("reporta el número de guías al puente tras cargar bien", async () => {
+    const onLoaded = vi.fn();
+    await act(async () => {
+      root.render(
+        withBridge(
+          { onLoaded, openCatalog: null },
+          {
+            fetchBooks: async () =>
+              okBooks([book("h1"), book("h2"), book("h3")]),
+          },
+        ),
+      );
+      await flush();
+    });
+    expect(onLoaded).toHaveBeenCalledWith(3);
+  });
+
+  it("no reporta conteo cuando la carga falla", async () => {
+    const onLoaded = vi.fn();
+    await act(async () => {
+      root.render(
+        withBridge(
+          { onLoaded, openCatalog: null },
+          { fetchBooks: async () => ({ ok: false, books: [] }) },
+        ),
+      );
+      await flush();
+    });
+    expect(onLoaded).not.toHaveBeenCalled();
+  });
+
+  it("vacío sin libros compartibles ofrece «Ver libros gratuitos»", async () => {
+    const openCatalog = vi.fn();
+    await act(async () => {
+      root.render(
+        withBridge(
+          { onLoaded: vi.fn(), openCatalog },
+          { fetchBooks: async () => okBooks([]) },
+        ),
+      );
+      await flush();
+    });
+    expect(host.textContent).toContain("Todavía no tienes libros");
+    const cta = buttonByText(host, "Ver libros gratuitos")!;
+    expect(cta).toBeTruthy();
+    await act(async () => cta.click());
+    expect(openCatalog).toHaveBeenCalled();
+  });
+
+  it("vacío sin puente conserva la pista de «Compartir a la comunidad»", async () => {
+    await act(async () => {
+      root.render(
+        h(CommunityShelf, { fetchBooks: async () => okBooks([]) }),
+      );
+      await flush();
+    });
+    expect(host.textContent).toContain("Opciones del libro");
+    expect(buttonByText(host, "Ver libros gratuitos")).toBeUndefined();
   });
 });

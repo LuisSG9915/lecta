@@ -2283,6 +2283,7 @@ export default function App() {
                         </Suspense>
                       ) : undefined
                     }
+                    screenCount={sessionUserId ? screenWorks.length : undefined}
                     onStartCalibration={handleOpenCalibration}
                     onRemove={removeBook}
                     onAdd={(file) => void selectBook(file)}

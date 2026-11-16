@@ -3,7 +3,10 @@ import { act, createElement as h, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ExploreShelf from "./ExploreShelf";
-import { ExploreCommunityEmptyContext } from "./explore-context";
+import {
+  ExploreCommunityContext,
+  type ExploreCommunityBridge,
+} from "./explore-context";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -163,20 +166,14 @@ describe("ExploreShelf — montaje diferido del catálogo", () => {
     ).not.toBeNull();
   });
 
-  it("cuando Comunidad avisa que está vacía se monta y activa el catálogo", async () => {
-    const EmptyTrigger = () => {
-      const notify = useContext(ExploreCommunityEmptyContext);
-      return h(
-        "button",
-        { type: "button", onClick: () => notify?.() },
-        "avisar vacío",
-      );
+  it("cuando Comunidad reporta 0 guías se monta y activa el catálogo", async () => {
+    let bridge: ExploreCommunityBridge | null = null;
+    const Probe = () => {
+      bridge = useContext(ExploreCommunityContext);
+      return h("p", null, "Comunidad");
     };
-    await render({ community: h(EmptyTrigger), catalog: catalogNode });
-    const trigger = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent === "avisar vacío",
-    )!;
-    await act(async () => trigger.click());
+    await render({ community: h(Probe), catalog: catalogNode });
+    await act(async () => bridge!.onLoaded(0));
     expect(panel("catalog")!.hidden).toBe(false);
     expect(
       panel("catalog")!.querySelector("[data-testid='catalog-body']"),
@@ -188,5 +185,72 @@ describe("ExploreShelf — montaje diferido del catálogo", () => {
     for (const id of ["community", "catalog", "screen"]) {
       expect(panel(id)!.tabIndex).toBe(0);
     }
+  });
+});
+
+describe("ExploreShelf — contadores de pestaña", () => {
+  const tabByText = (label: string) =>
+    [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (b) => b.textContent?.includes(label),
+    )!;
+
+  it("Comunidad muestra el número de guías que reporta el puente", async () => {
+    let bridge: ExploreCommunityBridge | null = null;
+    const Probe = () => {
+      bridge = useContext(ExploreCommunityContext);
+      return h("p", null, "Comunidad");
+    };
+    await render({ community: h(Probe) });
+    // Sin reporte aún: sin contador.
+    expect(tabByText("Comunidad").querySelector(".shelf-explore-count")).toBeNull();
+
+    await act(async () => bridge!.onLoaded(12));
+    const tab = tabByText("Comunidad");
+    expect(tab.querySelector(".shelf-explore-count")?.textContent).toBe("12");
+    expect(tab.getAttribute("aria-label")).toBe("Comunidad, 12 guías");
+  });
+
+  it("el singular y el tope 99+ se ajustan", async () => {
+    let bridge: ExploreCommunityBridge | null = null;
+    const Probe = () => {
+      bridge = useContext(ExploreCommunityContext);
+      return h("p", null, "Comunidad");
+    };
+    await render({ community: h(Probe) });
+    await act(async () => bridge!.onLoaded(1));
+    expect(tabByText("Comunidad").getAttribute("aria-label")).toBe(
+      "Comunidad, 1 guía",
+    );
+    await act(async () => bridge!.onLoaded(140));
+    expect(
+      tabByText("Comunidad").querySelector(".shelf-explore-count")
+        ?.textContent,
+    ).toBe("99+");
+  });
+
+  it("Series y películas muestra los títulos instalados; 0 no muestra nada", async () => {
+    await render({ screenCount: 3 });
+    const tab = tabByText("Series y películas");
+    expect(tab.querySelector(".shelf-explore-count")?.textContent).toBe("3");
+    expect(tab.getAttribute("aria-label")).toBe(
+      "Series y películas, 3 títulos",
+    );
+
+    await render({ screenCount: 0 });
+    expect(
+      tabByText("Series y películas").querySelector(".shelf-explore-count"),
+    ).toBeNull();
+  });
+
+  it("openCatalog cambia a la pestaña de catálogo", async () => {
+    let bridge: ExploreCommunityBridge | null = null;
+    const Probe = () => {
+      bridge = useContext(ExploreCommunityContext);
+      return h("p", null, "Comunidad");
+    };
+    await render({ community: h(Probe), catalog: h("p", null, "Catálogo") });
+    expect(bridge!.openCatalog).not.toBeNull();
+    await act(async () => bridge!.openCatalog!());
+    expect(panel("catalog")!.hidden).toBe(false);
   });
 });

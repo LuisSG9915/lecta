@@ -1,12 +1,16 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { ExploreCommunityEmptyContext } from "./explore-context";
+import {
+  ExploreCommunityContext,
+  type ExploreCommunityBridge,
+} from "./explore-context";
 
 // «Explora»: una sola sección para lo que no está en tu estantería —
 // las guías que otros lectores compartieron (Comunidad), el catálogo
@@ -27,6 +31,8 @@ type Props = {
   catalog?: ReactNode;
   /** Pestaña Series y películas; null sin sesión → invita a entrar. */
   screen?: ReactNode;
+  /** Obras de pantalla instaladas; alimenta el contador de la pestaña. */
+  screenCount?: number;
   /** Acción para ir a Perfil a iniciar sesión cuando no hay cuenta activa. */
   onOpenAccount?: () => void;
 };
@@ -35,6 +41,7 @@ export default function ExploreShelf({
   community,
   catalog,
   screen,
+  screenCount,
   onOpenAccount,
 }: Props) {
   const initialTab: TabId = community
@@ -67,15 +74,45 @@ export default function ExploreShelf({
     }
   }, [hasCommunity, hasCatalog, showTab]);
 
-  // Si la comunidad termina de cargar vacía y el lector aún no eligió
-  // pestaña manualmente, mostramos «Libros gratuitos» para no dejar
-  // una pantalla vacía como vista inicial. El callback es estable: no
-  // depende del nodo del catálogo ni del estado, así que no re-dispara
-  // la carga de Comunidad en cada render.
-  const handleCommunityEmpty = useCallback(() => {
-    if (userPickedTabRef.current) return;
-    showTab(hasCatalog ? "catalog" : "screen");
-  }, [hasCatalog, showTab]);
+  // Contador de la pestaña Comunidad: llega por el puente cuando la
+  // lista termina de cargar (undefined = aún no se sabe).
+  const [communityCount, setCommunityCount] = useState<number | undefined>(
+    undefined,
+  );
+
+  // Comunidad reporta su carga: alimenta el contador y, si quedó
+  // vacía y el lector no eligió pestaña, salta a catálogo o pantalla
+  // para no dejar una pantalla vacía como vista inicial. Estable:
+  // no depende del nodo ni del estado, no re-dispara la carga.
+  const onCommunityLoaded = useCallback(
+    (count: number) => {
+      setCommunityCount(count);
+      if (count === 0 && !userPickedTabRef.current) {
+        showTab(hasCatalog ? "catalog" : "screen");
+      }
+    },
+    [hasCatalog, showTab],
+  );
+
+  const selectTab = useCallback(
+    (next: TabId, focus = false) => {
+      userPickedTabRef.current = true;
+      showTab(next);
+      if (focus) tabRefs.current[next]?.focus();
+    },
+    [showTab],
+  );
+
+  // Puente hacia Comunidad: contador + la salida «Ver libros
+  // gratuitos» del estado vacío. Memoizado para que el efecto de
+  // carga de CommunityShelf no se re-dispare en cada render.
+  const communityBridge = useMemo<ExploreCommunityBridge>(
+    () => ({
+      onLoaded: onCommunityLoaded,
+      openCatalog: hasCatalog ? () => selectTab("catalog") : null,
+    }),
+    [onCommunityLoaded, hasCatalog, selectTab],
+  );
 
   if (!community && !catalog && !screen) return null;
 
@@ -87,12 +124,6 @@ export default function ExploreShelf({
     ...(hasCatalog ? (["catalog"] as const) : []),
     "screen",
   ];
-
-  const selectTab = (next: TabId, focus = false) => {
-    userPickedTabRef.current = true;
-    showTab(next);
-    if (focus) tabRefs.current[next]?.focus();
-  };
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const at = tabs.indexOf(tab);
@@ -128,25 +159,44 @@ export default function ExploreShelf({
     </p>
   );
 
-  const tabButton = (id: TabId, label: string) => (
-    <button
-      key={id}
-      ref={(el) => {
-        tabRefs.current[id] = el;
-      }}
-      type="button"
-      role="tab"
-      id={`explore-tab-${id}`}
-      className="shelf-explore-tab"
-      aria-selected={tab === id}
-      aria-controls={`explore-panel-${id}`}
-      tabIndex={tab === id ? 0 : -1}
-      onClick={() => selectTab(id)}
-      onKeyDown={onTabKeyDown}
-    >
-      {label}
-    </button>
-  );
+  // Contador de la pestaña: número visible y nombre accesible con el
+  // sustantivo («12 guías»). Con 0 o sin dato no se muestra nada.
+  const tabButton = (
+    id: TabId,
+    label: string,
+    count?: { value: number; singular: string; plural: string },
+  ) => {
+    const showCount = count !== undefined && count.value > 0;
+    return (
+      <button
+        key={id}
+        ref={(el) => {
+          tabRefs.current[id] = el;
+        }}
+        type="button"
+        role="tab"
+        id={`explore-tab-${id}`}
+        className="shelf-explore-tab"
+        aria-selected={tab === id}
+        aria-controls={`explore-panel-${id}`}
+        aria-label={
+          showCount
+            ? `${label}, ${count.value} ${count.value === 1 ? count.singular : count.plural}`
+            : undefined
+        }
+        tabIndex={tab === id ? 0 : -1}
+        onClick={() => selectTab(id)}
+        onKeyDown={onTabKeyDown}
+      >
+        {label}
+        {showCount ? (
+          <span className="shelf-explore-count" aria-hidden="true">
+            {count.value > 99 ? "99+" : count.value}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
 
   return (
     <section className="shelf-explore" aria-label="Explora">
@@ -156,9 +206,25 @@ export default function ExploreShelf({
         role="tablist"
         aria-label="Secciones para descubrir"
       >
-        {tabButton("community", "Comunidad")}
+        {tabButton(
+          "community",
+          "Comunidad",
+          communityCount !== undefined
+            ? {
+                value: communityCount,
+                singular: "guía",
+                plural: "guías",
+              }
+            : undefined,
+        )}
         {hasCatalog ? tabButton("catalog", "Libros gratuitos") : null}
-        {tabButton("screen", "Series y películas")}
+        {tabButton(
+          "screen",
+          "Series y películas",
+          screenCount !== undefined
+            ? { value: screenCount, singular: "título", plural: "títulos" }
+            : undefined,
+        )}
       </div>
 
       <div
@@ -168,12 +234,12 @@ export default function ExploreShelf({
         tabIndex={0}
         hidden={tab !== "community"}
       >
-        <ExploreCommunityEmptyContext.Provider value={handleCommunityEmpty}>
+        <ExploreCommunityContext.Provider value={communityBridge}>
           {community ??
             invite(
               "Inicia sesión para ver las guías que otros lectores compartieron.",
             )}
-        </ExploreCommunityEmptyContext.Provider>
+        </ExploreCommunityContext.Provider>
       </div>
       {hasCatalog ? (
         <div
