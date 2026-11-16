@@ -680,10 +680,12 @@ export default function Shelf({
   type ShelfFilter = "all" | "reading" | "unread" | "finished";
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  // Buscador único de «Libros gratuitos»: filtra a la vez el riel
-  // curado y los resultados de Gutenberg (una sola pregunta, dos
-  // fuentes del mismo catálogo público).
+  // Buscador único de «Libros gratuitos»: `freeQuery` es el texto en
+  // vivo que filtra el riel curado; `catalogQuery` es el texto ya
+  // enviado (Enter), que es el que busca Gutenberg — así el catálogo
+  // completo no dispara una búsqueda por cada tecla.
   const [freeQuery, setFreeQuery] = useState("");
+  const [catalogQuery, setCatalogQuery] = useState("");
   const [sortBy, setSortBy] = useState<ShelfSortBy>("recent");
 
   const activeStrategy: StrategyPreset = useMemo(() => {
@@ -1915,14 +1917,32 @@ export default function Shelf({
                   >
                     Busca por título o autor
                   </label>
-                  <input
-                    id="free-books-search"
-                    type="search"
-                    className="shelf-community-search"
-                    value={freeQuery}
-                    onChange={(event) => setFreeQuery(event.target.value)}
-                    placeholder="Título o autor"
-                  />
+                  <form
+                    role="search"
+                    className="free-books-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      setCatalogQuery(freeQuery.trim());
+                    }}
+                  >
+                    <input
+                      id="free-books-search"
+                      type="search"
+                      className="shelf-community-search"
+                      value={freeQuery}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setFreeQuery(value);
+                        // Al borrar el campo Gutenberg vuelve de
+                        // inmediato a los más descargados.
+                        if (!value.trim()) setCatalogQuery("");
+                      }}
+                      placeholder="Título o autor"
+                    />
+                    <button type="submit" className="btn">
+                      Buscar
+                    </button>
+                  </form>
                   {/* El riel curado también es lazy: sus ~11 kB no
                       pesan en el arranque. */}
                   <Suspense fallback={null}>
@@ -1935,13 +1955,22 @@ export default function Shelf({
                     />
                   </Suspense>
                   {/* Debajo del riel curado: los clásicos de Gutenberg
-                      (libros pg- bajo demanda) responden a la misma
-                      búsqueda. */}
+                      (libros pg- bajo demanda) responden a la búsqueda
+                      enviada — Enter en el campo o el botón de la
+                      fila «Buscar en todos los clásicos». */}
                   <Suspense fallback={null}>
                     <GutenbergSearch
                       onGet={onGetCatalogBook}
                       onOpenAccount={onOpenAccount}
-                      query={freeQuery}
+                      query={catalogQuery}
+                      pendingQuery={
+                        freeQuery.trim() !== catalogQuery
+                          ? freeQuery.trim()
+                          : ""
+                      }
+                      onSubmitPending={() =>
+                        setCatalogQuery(freeQuery.trim())
+                      }
                       library={library}
                       onOpen={onOpen}
                     />

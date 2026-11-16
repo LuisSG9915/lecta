@@ -315,22 +315,55 @@ describe("GutenbergSearch", () => {
     ).not.toBeNull();
   });
 
-  it("con query controlada no pinta el input propio y busca con ese texto", async () => {
-    vi.useFakeTimers();
-    try {
-      const fetchSearch = vi.fn(async () => page([]));
-      await render({ fetchSearch, query: "dickens" });
-      // El campo único vive en la pestaña: aquí no hay etiqueta ni input.
-      expect(host.querySelector("#gutenberg-search-field")).toBeNull();
-      expect(host.querySelector(".gutenberg-search-label")).toBeNull();
-      await act(async () => {
-        vi.advanceTimersByTime(400);
-      });
-      const [params] = callArgs(fetchSearch);
-      expect(params.q).toBe("dickens");
-    } finally {
-      vi.useRealTimers();
-    }
+  it("con query controlada no pinta el input propio y busca sin debounce", async () => {
+    // La query controlada ya llega enviada (Enter en el campo
+    // compartido): no hay espera de 350 ms como en el modo libre.
+    const fetchSearch = vi.fn(async () => page([]));
+    await render({ fetchSearch, query: "dickens" });
+    // El campo único vive en la pestaña: aquí no hay etiqueta ni input.
+    expect(host.querySelector("#gutenberg-search-field")).toBeNull();
+    expect(host.querySelector(".gutenberg-search-label")).toBeNull();
+    expect(fetchSearch).toHaveBeenCalledTimes(1);
+    const [params] = callArgs(fetchSearch);
+    expect(params.q).toBe("dickens");
+  });
+
+  it("con texto pendiente muestra la fila de envío y oculta resultados viejos", async () => {
+    const onSubmitPending = vi.fn();
+    const fetchSearch = vi.fn(async () =>
+      page([book("pg-1342", { title: "Don Quijote" })]),
+    );
+    await render({
+      fetchSearch,
+      query: "dickens",
+      pendingQuery: "dicken",
+      onSubmitPending,
+    });
+    // La búsqueda enviada trajo resultados, pero el texto pendiente
+    // los reemplaza por la invitación a buscar en todo el catálogo.
+    const pending = host.querySelector(".gutenberg-pending");
+    expect(pending?.textContent).toContain(
+      "Buscar «dicken» en todos los clásicos",
+    );
+    expect(host.querySelector(".discover-title")).toBeNull();
+    expect(host.querySelector(".discover-rail")).toBeNull();
+
+    const button = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Buscar «dicken»"),
+    )!;
+    await act(async () => button.click());
+    expect(onSubmitPending).toHaveBeenCalledTimes(1);
+  });
+
+  it("anuncia el recuento de la búsqueda enviada con role=status", async () => {
+    const fetchSearch = vi.fn(async () =>
+      page([book("pg-1"), book("pg-2")], { hasMore: true }),
+    );
+    await render({ fetchSearch, query: "dickens" });
+    const count = [...host.querySelectorAll('[role="status"]')].find((el) =>
+      el.textContent?.includes("clásicos"),
+    );
+    expect(count?.textContent).toContain("2+ clásicos para «dickens»");
   });
 
   it("sin búsqueda lista en riel; con texto pasa a cuadrícula", async () => {

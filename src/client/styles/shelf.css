@@ -951,6 +951,23 @@
   margin-block-start: 0;
 }
 
+/* Campo + botón «Buscar»: una fila; el campo crece y el botón queda
+   a la altura táctil del resto de acciones. */
+.free-books-form {
+  display: flex;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+
+.free-books-form .shelf-community-search {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.free-books-form .btn {
+  flex: none;
+}
+
 /* «Más filtros» plegable (mismo gesto que el Cuaderno, pero en flujo:
    en esta pestaña no hay sitio para un panel flotante). */
 .discover-more-filters {

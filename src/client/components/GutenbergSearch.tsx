@@ -38,8 +38,16 @@ type Props = {
   onOpenAccount?: () => void;
   // Búsqueda controlada: «Libros gratuitos» tiene un solo campo para
   // este panel y para el riel curado. Si viene definida no se pinta
-  // el input propio.
+  // el input propio y el texto llega ya enviado (Enter en el campo
+  // compartido): sin debounce, el cambio de `query` dispara la
+  // búsqueda directo.
   query?: string;
+  // Texto escrito que aún no se envió a buscar en Gutenberg (el
+  // riel curado sí lo filtra en vivo). Con valor se muestra la fila
+  // «Buscar en todos los clásicos» en vez de resultados viejos.
+  pendingQuery?: string;
+  // Envía el texto pendiente a la búsqueda de Gutenberg.
+  onSubmitPending?: () => void;
   // Estantería visible: un pg- ya obtenido (mismo hash) ofrece
   // «Abrir» en vez de «Obtener».
   library?: ShelfItem[];
@@ -97,6 +105,8 @@ export default function GutenbergSearch({
   onGet,
   onOpenAccount,
   query: queryProp,
+  pendingQuery,
+  onSubmitPending,
   library,
   onOpen,
   fetchSearch = searchGutenberg,
@@ -143,13 +153,20 @@ export default function GutenbergSearch({
   const abortRef = useRef<AbortController | null>(null);
 
   // El texto libre espera 350 ms; los filtros se aplican al instante.
+  // En modo controlado el debounce no aplica: `query` ya es el texto
+  // enviado (Enter), no lo que se está escribiendo.
   useEffect(() => {
+    if (queryProp !== undefined) return;
     const timer = setTimeout(
       () => setDebouncedQuery(query),
       SEARCH_DEBOUNCE_MS,
     );
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, queryProp]);
+
+  // Texto que realmente se busca: controlado = lo enviado; libre =
+  // tras el debounce.
+  const searchQuery = queryProp !== undefined ? queryProp : debouncedQuery;
 
   const load = useCallback(
     async (nextPage: number, append: boolean) => {
@@ -164,7 +181,7 @@ export default function GutenbergSearch({
       }
       const result = await fetchSearch(
         {
-          q: debouncedQuery,
+          q: searchQuery,
           lang: lang || undefined,
           topic: topic ?? undefined,
           page: nextPage,
@@ -189,7 +206,7 @@ export default function GutenbergSearch({
       setStatus("idle");
       setLoadingMore(false);
     },
-    [debouncedQuery, lang, topic, fetchSearch],
+    [searchQuery, lang, topic, fetchSearch],
   );
 
   // Montaje y cada cambio de búsqueda/filtros: página 0 nueva. La
@@ -239,7 +256,7 @@ export default function GutenbergSearch({
   // de descubrimiento (como el catálogo curado); en cuanto hay una
   // búsqueda o filtro activo pasa a cuadrícula para leerla entera.
   const browseMode =
-    !debouncedQuery.trim() && topic === null && lang === "";
+    !searchQuery.trim() && topic === null && lang === "";
 
   // La portada real (bajo demanda por el worker) con caída a la
   // tipográfica generada: un solo markup para tarjeta y vista previa.
@@ -361,12 +378,28 @@ export default function GutenbergSearch({
         </div>
       </details>
 
-      {status === "loading" ? (
+      {/* Texto escrito que aún no se envió a Gutenberg: la selección
+          curada ya lo filtra en vivo, aquí solo se ofrece buscarlo en
+          el catálogo completo sin mostrar resultados viejos. */}
+      {pendingQuery ? (
+        <p className="meta gutenberg-pending">
+          ¿No está arriba?{" "}
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={onSubmitPending}
+          >
+            Buscar «{pendingQuery}» en todos los clásicos
+          </button>
+        </p>
+      ) : null}
+
+      {pendingQuery ? null : status === "loading" ? (
         <p className="meta" role="status">
           Buscando…
         </p>
       ) : null}
-      {status === "error" ? (
+      {pendingQuery ? null : status === "error" ? (
         <p className="meta" role="alert">
           No pudimos buscar ahora.{" "}
           <button
@@ -378,11 +411,25 @@ export default function GutenbergSearch({
           </button>
         </p>
       ) : null}
-      {status === "idle" && books.length === 0 ? (
+      {pendingQuery ? null : status === "idle" && books.length === 0 ? (
         <p className="meta">No encontramos libros con esa búsqueda.</p>
       ) : null}
 
-      {books.length > 0 ? (
+      {/* Recuento de la búsqueda enviada: role=status lo anuncia sin
+          interrumpir; sin texto (modo explorar) no hay recuento. */}
+      {!pendingQuery &&
+      status === "idle" &&
+      searchQuery.trim() &&
+      books.length > 0 ? (
+        <p className="meta" role="status">
+          {books.length}
+          {hasMore ? "+" : ""}{" "}
+          {books.length === 1 && !hasMore ? "clásico" : "clásicos"} para «
+          {searchQuery}»
+        </p>
+      ) : null}
+
+      {!pendingQuery && books.length > 0 ? (
         <ul
           className={`discover-rail${browseMode ? "" : " discover-rail--grid"}`}
           aria-busy={status === "loading"}
@@ -552,7 +599,7 @@ export default function GutenbergSearch({
         </Sheet>
       ) : null}
 
-      {hasMore ? (
+      {!pendingQuery && hasMore ? (
         <button
           type="button"
           className="btn--quiet discover-view-toggle"
@@ -562,7 +609,7 @@ export default function GutenbergSearch({
           {loadingMore ? "Cargando…" : "Ver más"}
         </button>
       ) : null}
-      {moreError ? (
+      {!pendingQuery && moreError ? (
         <p className="meta" role="alert">
           No pudimos cargar más. Inténtalo de nuevo.
         </p>

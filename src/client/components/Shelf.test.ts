@@ -88,7 +88,38 @@ vi.mock("./BookCover", () => ({
 }));
 
 vi.mock("./DiscoverRail", () => ({
-  default: () => null,
+  // El riel recibe `query` en vivo: el atributo deja comprobar que
+  // filtra mientras se escribe, antes de enviar la búsqueda.
+  default: (props: { query?: string }) =>
+    h("div", {
+      "data-testid": "discover-rail",
+      "data-query": props.query ?? "",
+    }),
+}));
+
+vi.mock("./GutenbergSearch", () => ({
+  // `query` es el texto ya enviado; `pendingQuery` el escrito sin
+  // enviar. El botón simula el envío de la fila «Buscar en todos».
+  default: (props: {
+    query?: string;
+    pendingQuery?: string;
+    onSubmitPending?: () => void;
+  }) =>
+    h("div", {
+      "data-testid": "gutenberg-search",
+      "data-query": props.query ?? "",
+      "data-pending": props.pendingQuery ?? "",
+    },
+      h(
+        "button",
+        {
+          type: "button",
+          "data-testid": "gs-submit-pending",
+          onClick: props.onSubmitPending,
+        },
+        "submit-pending",
+      ),
+    ),
 }));
 
 vi.mock("./CompanionStage", () => ({
@@ -110,6 +141,17 @@ const mockLibrary: ShelfItem[] = [
 
 let host: HTMLDivElement;
 let root: Root;
+
+// React escucha «input» para onChange: hay que fijar el valor por el
+// setter nativo o el evento no actualiza el estado controlado.
+const typeInto = (input: HTMLInputElement, value: string) => {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )!.set!;
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+};
 
 beforeEach(() => {
   host = document.createElement("div");
@@ -622,5 +664,65 @@ describe("Shelf - Libros gratuitos", () => {
     // Un solo campo: el panel de Gutenberg no repite el suyo cuando la
     // búsqueda viene controlada desde la pestaña.
     expect(host.querySelector("#gutenberg-search-field")).toBeNull();
+  });
+
+  it("escribir filtra el riel en vivo; solo enviar busca en Gutenberg", async () => {
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: mockLibrary,
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+          onGetCatalogBook: vi.fn(),
+          onDownloadBook: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    const tab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (b) => b.textContent === "Libros gratuitos",
+    )!;
+    await act(async () => tab.click());
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
+    const input = host.querySelector<HTMLInputElement>("#free-books-search")!;
+    const rail = () =>
+      host.querySelector("[data-testid='discover-rail']");
+    const gutenberg = () =>
+      host.querySelector("[data-testid='gutenberg-search']");
+
+    // Escribir filtra el riel curado en vivo y deja el texto como
+    // pendiente en Gutenberg: la búsqueda completa no se dispara.
+    await act(async () => typeInto(input, "dickens"));
+    expect(rail()?.getAttribute("data-query")).toBe("dickens");
+    expect(gutenberg()?.getAttribute("data-query")).toBe("");
+    expect(gutenberg()?.getAttribute("data-pending")).toBe("dickens");
+
+    // Enter en el formulario envía la búsqueda una sola vez.
+    const form = host.querySelector("form[role='search']")!;
+    await act(async () => {
+      form.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(gutenberg()?.getAttribute("data-query")).toBe("dickens");
+    expect(gutenberg()?.getAttribute("data-pending")).toBe("");
+
+    // La fila «Buscar en todos los clásicos» también envía.
+    await act(async () => typeInto(input, "austen"));
+    const submitPending = host.querySelector<HTMLButtonElement>(
+      "[data-testid='gs-submit-pending']",
+    )!;
+    await act(async () => submitPending.click());
+    expect(gutenberg()?.getAttribute("data-query")).toBe("austen");
+    expect(gutenberg()?.getAttribute("data-pending")).toBe("");
+
+    // Borrar el campo devuelve Gutenberg a los más descargados.
+    await act(async () => typeInto(input, ""));
+    expect(gutenberg()?.getAttribute("data-query")).toBe("");
   });
 });
