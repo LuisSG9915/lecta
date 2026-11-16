@@ -219,7 +219,6 @@ export function formatBookLength(wordCount?: number): string | null {
 
 export const CURATED_MOOD_TAGS: Record<string, string[]> = {
   quijote: ["Vocabulario Elevado", "Clásico Universal"],
-  celestina: ["Teatro y Drama", "Vocabulario Elevado"],
   lazarillo: ["Ideal para sesiones de 10 min", "Picaresca"],
   regenta: ["Narrativa Profunda", "Vocabulario Elevado"],
   "fortunata-jacinta": ["Novela de Época", "Vocabulario Elevado"],
