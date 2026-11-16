@@ -135,10 +135,14 @@ export default function LegalNotice({
                 <strong>Frecuencias zipf (CC BY-SA 4.0):</strong> Derivadas de <em>wordfreq</em> de Robyn Speer (CC BY-SA 4.0; incluye corpus Google Books Ngrams, Wikipedia, ParaCrawl, OpenSubtitles y listas SUBTLEX de Marc Brysbaert et al.). Las tablas derivadas <a href="/lexicon/lemmas-freq-es.tsv.gz" download>lemmas-freq-es.tsv.gz</a> y <a href="/lexicon/lemmas-freq-en.tsv.gz" download>lemmas-freq-en.tsv.gz</a> se publican bajo CC BY-SA 4.0.
               </li>
               <li>
-                <strong>Acepciones y definiciones (CC BY-SA 4.0 + GFDL):</strong> Las definiciones estructuradas provienen del Wikcionario en español vía <a href="https://kaikki.org" target="_blank" rel="noopener noreferrer">kaikki.org</a> bajo licencias libres CC BY-SA 4.0 y GFDL — incluidas las palabras en inglés con glosas en español que usa el diccionario local descargable. La tabla derivada <a href="/lexicon/senses-es.csv.gz" download>senses-es.csv.gz</a> (184 915 acepciones) y los paquetes de lectura <a href="/dict/dict-es-v1.bin" download>dict-es-v1.bin</a> (español) y <a href="/dict/dict-en-v1.bin" download>dict-en-v1.bin</a> (inglés→español) se publican bajo CC BY-SA 4.0 + GFDL.
+                <strong>Acepciones y definiciones (CC BY-SA 4.0 + GFDL):</strong> Las definiciones estructuradas provienen del Wikcionario en español vía <a href="https://kaikki.org" target="_blank" rel="noopener noreferrer">kaikki.org</a> bajo licencias libres CC BY-SA 4.0 y GFDL — incluidas las palabras en inglés con glosas en español que usa el diccionario local descargable. La tabla derivada <a href="/lexicon/senses-es.csv.gz" download>senses-es.csv.gz</a> (184 915 acepciones) y los paquetes de lectura <a href="/dict/dict-es-v1.bin" download>dict-es-v1.bin</a> (español) y <a href="/dict/dict-en-v5.bin" download>dict-en-v5.bin</a> (inglés→español) se publican bajo CC BY-SA 4.0 + GFDL.
               </li>
               <li>
                 <strong>Componentes adicionales:</strong> Simplemma (MIT, © Adrien Barbaresi), FreeLing (LGPLLR), spaCy lookups-data (MIT), UniMorph (CC BY-SA 3.0) y Wikinflection (CC BY 4.0).
+              </li>
+              <li>
+                <strong>Voz neuronal descargable:</strong> modelo Kitten TTS nano 0.8 de KittenML, bajo licencia{" "}
+                <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0</a>, sin modificaciones.
               </li>
             </ul>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Disponibilidad del servicio</h4>
