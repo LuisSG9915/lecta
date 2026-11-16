@@ -1487,7 +1487,9 @@ const KINDLE_BOOK_HASH = /^[a-f0-9]{64}$/;
  * ese caché es compartido por hash y los hashes de Comunidad son públicos
  * (GET /api/books/community), así que sin esta guardia otra cuenta leería
  * capítulos e imágenes de un libro ajeno. Primero R2 (head, sin cuerpo) y
- * luego user_books, en el mismo orden de candidatos que el cargador. */
+ * luego user_books, en el mismo orden de candidatos que el cargador. Las
+ * filas paper_only (guías adjuntadas desde Comunidad con el hash del
+ * donante) no cuentan: hace falta paper_only = false y el objeto EPUB. */
 export async function kindleUserOwnsBook(
   env: WorkerEnv,
   userId: string,
@@ -1505,13 +1507,15 @@ export async function kindleUserOwnsBook(
   }
   if (!getConnectionString(env)) return false;
   const row = await withClient(env, async (client) => {
-    const res = await client.query(
-      `SELECT 1 AS owned FROM user_books WHERE user_id = $1 AND book_id = $2 LIMIT 1`,
+    const res = await client.query<{ r2_key: string | null }>(
+      `SELECT r2_key FROM user_books
+       WHERE user_id = $1 AND book_id = $2 AND paper_only = false LIMIT 1`,
       [userId, bookId],
     );
     return res.rows[0];
   }).catch(() => null);
-  return Boolean(row);
+  if (!row?.r2_key || !bucket) return false;
+  return Boolean(await bucket.head(row.r2_key).catch(() => null));
 }
 
 /** Devuelve el objeto R2 del EPUB del usuario sin consumir el body:
@@ -1529,7 +1533,7 @@ export async function loadEpubObjectForKindle(
   if (getConnectionString(env)) {
     const userBook = await withClient(env, async (client) => {
       const res = await client.query<{ r2_key: string }>(
-        `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`,
+        `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2 AND paper_only = false`,
         [userId, bookId],
       );
       return res.rows[0];
@@ -1572,7 +1576,7 @@ async function firstKindleBookHash(
   if (getConnectionString(env)) {
     const row = await withClient(env, async (client) => {
       const res = await client.query<{ book_id: string }>(
-        `SELECT book_id FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT book_id FROM user_books WHERE user_id = $1 AND paper_only = false ORDER BY updated_at DESC LIMIT 1`,
         [userId],
       );
       return res.rows[0];

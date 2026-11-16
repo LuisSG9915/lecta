@@ -2103,6 +2103,45 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(await ownPreview.text()).toContain("epub-content");
     });
 
+    it("B adjuntó el hash de A desde Comunidad (fila paper_only): read, resource y preview no sirven el libro de A", async () => {
+      asUser("user-a");
+      expect(
+        (await app.request(`/k/read/${HASH_A}?section=0&page=0`, {}, leakEnv)).status,
+      ).toBe(200);
+
+      // POST /api/books/community/:hash/attach deja a B una fila paper_only
+      // con book_id = hash de A y r2_key = la guía.
+      store.set(`guides/${HASH_A}.json`, {
+        data: new TextEncoder().encode("{}").buffer as ArrayBuffer,
+      });
+      dbQueryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (
+          typeof sql === "string" &&
+          sql.includes("FROM user_books") &&
+          params?.[0] === "user-b" &&
+          !sql.includes("paper_only = false")
+        ) {
+          return {
+            rows: [{ book_id: HASH_A, r2_key: `guides/${HASH_A}.json`, owned: 1 }],
+          };
+        }
+        return { rows: [] };
+      });
+
+      asUser("user-b");
+      const read = await app.request(`/k/read/${HASH_A}?section=0&page=0`, {}, leakEnv);
+      expect(read.status).toBe(404);
+      const res = await app.request(
+        `/k/read/${HASH_A}/resource?path=OEBPS/img.png`,
+        {},
+        leakEnv,
+      );
+      expect(res.status).toBe(404);
+      const preview = await app.request("/k/preview/page", {}, leakEnv);
+      expect(preview.status).toBe(200);
+      expect(await preview.text()).toContain("Texto de muestra");
+    });
+
     it("/k/read solo acepta un sha256: un slug de catálogo no sirve el EPUB", async () => {
       store.set("catalog/quijote.epub", { data: toBuffer(minimalBytes) });
       asUser("user-b");
