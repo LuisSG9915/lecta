@@ -82,12 +82,23 @@ async function traktList(
       },
       signal: AbortSignal.timeout(TRAKT_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Solo la ruta y el status: la llave jamás se registra.
+      console.error("Trakt respondió error", { path, status: res.status });
+      return null;
+    }
     data = await res.json();
-  } catch {
+  } catch (error) {
+    console.error("Trakt sin respuesta", {
+      path,
+      error: error instanceof Error ? error.message : "desconocido",
+    });
     return null;
   }
-  if (!Array.isArray(data)) return null;
+  if (!Array.isArray(data)) {
+    console.error("Trakt respondió algo que no es una lista", { path });
+    return null;
+  }
   const seen = new Set<string>();
   const items: DiscoverItem[] = [];
   for (const row of data) {

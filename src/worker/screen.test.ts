@@ -735,6 +735,71 @@ describe("POST /api/screen/guide — flujo", () => {
     expect(fake.puts[0].key).toBe(GUIDE_KEY_TV);
   });
 
+  it("si solo hay pack de temporada se descarga y se extrae el episodio", async () => {
+    const app = await freshScreen();
+    const wanted = makeSrt().replaceAll(fakeWord(0), "wantedword");
+    fetchHandler = async (url) => {
+      if (url.startsWith("https://api.subdl.com/")) {
+        return jsonRes({
+          status: true,
+          subtitles: [
+            {
+              release_name: "pack completo",
+              lang: "en",
+              url: "/sub/pack",
+              hi: "false",
+              full_season: "true",
+            },
+          ],
+          results: [],
+        });
+      }
+      if (url.startsWith("https://dl.subdl.com/")) {
+        return zipResponse({
+          "Show.S01E01.1080p.srt": makeSrt(),
+          "Show.S01E02.1080p.srt": wanted,
+        });
+      }
+      throw new Error(`fetch inesperado: ${url}`);
+    };
+    const res = await post(env().env, TV_REF, app);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { guide: { forms: string[] } };
+    expect(body.guide.forms).toContain("wantedword");
+  });
+
+  it("pack sin el .srt del episodio → 502, nunca otro episodio", async () => {
+    const app = await freshScreen();
+    fetchHandler = async (url) => {
+      if (url.startsWith("https://api.subdl.com/")) return subdlFound();
+      if (url.startsWith("https://dl.subdl.com/")) {
+        return zipResponse({
+          "Show.S01E05.1080p.srt": makeSrt(),
+          "Show.S01E06.1080p.srt": makeSrt(),
+        });
+      }
+      throw new Error(`fetch inesperado: ${url}`);
+    };
+    const res = await post(env().env, TV_REF, app);
+    expect(res.status).toBe(502);
+  });
+
+  it("un .srt único sin marca de episodio sí se acepta", async () => {
+    const app = await freshScreen();
+    const wanted = makeSrt().replaceAll(fakeWord(0), "wantedword");
+    fetchHandler = async (url) => {
+      if (url.startsWith("https://api.subdl.com/")) return subdlFound();
+      if (url.startsWith("https://dl.subdl.com/")) {
+        return zipResponse({ "Show.1080p.BluRay.x264.srt": wanted });
+      }
+      throw new Error(`fetch inesperado: ${url}`);
+    };
+    const res = await post(env().env, TV_REF, app);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { guide: { forms: string[] } };
+    expect(body.guide.forms).toContain("wantedword");
+  });
+
   it("movie no manda season/episode a SubDL", async () => {
     const app = await freshScreen();
     const seen: string[] = [];

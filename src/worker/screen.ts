@@ -409,7 +409,10 @@ const subdlTruthy = (value: unknown) => value === true || value === "true";
 
 // Preferencia del plan: primero un subtítulo suelto (hi y
 // full_season falsos); si no hay, el primero que no sea pack de
-// temporada completa.
+// temporada completa. Último recurso: un pack de temporada — el
+// extractor del zip ya elige el .srt que casa SxxEyy del episodio,
+// así que rechazarlo siempre dejaba episodios sin guía aunque el
+// subtítulo existiera dentro del pack.
 function pickSubdlSubtitle(
   subtitles: SubdlSubtitle[],
 ): string | null {
@@ -419,7 +422,8 @@ function pickSubdlSubtitle(
   );
   const pick =
     usable.find((s) => !subdlTruthy(s.hi) && !subdlTruthy(s.full_season)) ??
-    usable.find((s) => !subdlTruthy(s.full_season));
+    usable.find((s) => !subdlTruthy(s.full_season)) ??
+    usable[0];
   return pick?.url ?? null;
 }
 
@@ -448,12 +452,25 @@ async function subdlFindSubtitle(
     res = await fetch(`${SUBDL_LIST}?${params.toString()}`, {
       signal: AbortSignal.timeout(SUBDL_TIMEOUT_MS),
     });
-  } catch {
+  } catch (error) {
+    // Sin llave ni URL (lleva api_key en la query): solo qué falló.
+    console.error("SubDL sin respuesta", {
+      imdbId: ref.imdbId,
+      type: ref.type,
+      error: error instanceof Error ? error.message : "desconocido",
+    });
     return { kind: "error" };
   }
   if (res.status === 429) return { kind: "limited" };
   if (res.status === 403) return { kind: "forbidden" };
-  if (!res.ok) return { kind: "error" };
+  if (!res.ok) {
+    console.error("SubDL respondió error", {
+      imdbId: ref.imdbId,
+      type: ref.type,
+      status: res.status,
+    });
+    return { kind: "error" };
+  }
   let data: {
     subtitles?: SubdlSubtitle[];
     results?: Array<{ subtitles?: SubdlSubtitle[] }>;
@@ -468,6 +485,14 @@ async function subdlFindSubtitle(
       ? data.subtitles
       : (data?.results ?? []).flatMap((r) => r?.subtitles ?? []);
   const url = pickSubdlSubtitle(subtitles);
+  if (!url) {
+    // Solo conteos, jamás nombres de release ni URLs (llevan api_key).
+    console.error("SubDL sin subtítulo usable", {
+      imdbId: ref.imdbId,
+      type: ref.type,
+      subtitleCount: subtitles.length,
+    });
+  }
   return url ? { kind: "found", url } : { kind: "empty" };
 }
 
@@ -513,11 +538,14 @@ async function subdlDownloadSubtitle(
       const matching = files.filter((entry) =>
         episodeRe.test(entry.filename),
       );
-      // Si algún nombre casa con el episodio solo se consideran esos:
-      // caer al «primero» de un pack sería servir otro episodio.
+      // Si algún nombre casa con el episodio solo se consideran esos.
+      // El «primero» solo es seguro con un único .srt: en un pack sin
+      // casar sería servir otro episodio sin avisar.
       chosen =
         matching.find(fits) ??
-        (matching.length === 0 ? files.find(fits) : undefined);
+        (matching.length === 0 && files.length === 1
+          ? files.find(fits)
+          : undefined);
     } else {
       chosen = files.find(fits);
     }
@@ -638,6 +666,10 @@ screen.post("/api/screen/guide", async (context) => {
 
   const subtitleText = await subdlDownloadSubtitle(found.url, work);
   if (subtitleText == null) {
+    console.error("SubDL: la descarga del subtítulo falló", {
+      imdbId: work.imdbId,
+      type: work.type,
+    });
     return context.json(
       { error: "No pudimos preparar este título. Intenta más tarde." },
       502,
@@ -658,6 +690,12 @@ screen.post("/api/screen/guide", async (context) => {
   // Menos de 50 formas = archivo roto o audio-description vacía:
   // mismo 404 que «sin subtítulos» y misma negativa cacheada.
   if (forms.length < GUIDE_MIN_FORMS) {
+    // Sin contenido del subtítulo: solo cuántas formas salieron.
+    console.error("Subtítulo con pocas formas", {
+      imdbId: work.imdbId,
+      type: work.type,
+      forms: forms.length,
+    });
     guideMissCache.set(key, true);
     return noVocabulary(context);
   }
