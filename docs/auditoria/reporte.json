@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T17:58:23.845Z",
+  "generatedAt": "2026-11-17T18:20:39.041Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "281ee2d1847d46fa3e2e05acb66f3a81b4b12bc6",
+  "commit": "d2c2c7a19c64d6c9ba612f568dc557c3979f12fa",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 0,
+    "unverified": 13,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 14,
+    "codeFail": 0,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -519,10 +519,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:3879 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "detail": "src/client/components/Reader.tsx:3885 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 3879,
+            "line": 3885,
             "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
@@ -538,44 +538,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/WordPanel.tsx:643-673 no contiene /award: false/",
+          "status": "PASS",
+          "detail": "src/client/components/WordPanel.tsx:688 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "asked": 658,
-            "excerpt": [
-              "643:         setTimeout(() => setQuickNotice(null), 2500);",
-              "644:         return saved;",
-              "645:       } catch {",
-              "646:         savedRef.current = false;",
-              "647:         setIsSaved(false);",
-              "648:         setSprouted(false);",
-              "649:         return null;",
-              "650:       } finally {",
-              "651:         saveInFlightRef.current = null;",
-              "652:         setSaving(false);",
-              "653:       }",
-              "654:     })();",
-              "655: ",
-              "656:     saveInFlightRef.current = work;",
-              "657:     await work;",
-              "658:   };",
-              "659: ",
-              "660:   const handleQuickKnown = async () => {",
-              "661:     // Una palabra del Cuaderno no se declara «conocida» encima de su",
-              "662:     // tarjeta: eso lo decide el repaso.",
-              "663:     if (saving || savedRef.current) return;",
-              "664:     setSaving(true);",
-              "665:     triggerHaptic(10);",
-              "666:     try {",
-              "667:       const scope = captureDbScope();",
-              "668:       const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();",
-              "669:       const row = await saveKnowledge(",
-              "670:         {",
-              "671:           language: effectiveLang,",
-              "672:           lemma,",
-              "673:           known: true,"
-            ]
+            "line": 688,
+            "text": "{ award: false },"
           }
         },
         {
@@ -1751,5 +1719,5 @@
       }
     }
   ],
-  "verdict": "FAIL"
+  "verdict": "PASS_WITH_UNVERIFIED"
 }
