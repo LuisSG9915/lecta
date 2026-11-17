@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import {
   isMissingTableError,
+  isMissingColumnError,
   withClient,
   type WorkerEnv,
 } from "./db";
@@ -162,7 +163,13 @@ catalog.get("/api/catalog/search", async (context) => {
   }
 
   const q = normalizeTerms(rawQ);
-  const words = q ? q.split(" ").filter(Boolean).slice(0, SEARCH_WORDS) : [];
+  const words = q
+    ? q
+        .split(" ")
+        .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
+        .filter(Boolean)
+        .slice(0, SEARCH_WORDS)
+    : [];
   const topic = normalizeTerms(rawTopic);
 
   const cacheKey = [q, lang ?? "", topic, page].join("|");
@@ -176,45 +183,75 @@ catalog.get("/api/catalog/search", async (context) => {
     });
   }
 
-  const params: unknown[] = [];
-  const filters: string[] = [];
-  if (lang) {
-    params.push(lang);
-    filters.push(`language = $${params.length}`);
-  }
-  for (const word of words) {
-    params.push(likeEscape(word));
-    filters.push(`search_text LIKE '%' || $${params.length} || '%'`);
-  }
-  if (topic) {
-    params.push(likeEscape(topic));
-    filters.push(
-      `EXISTS (SELECT 1 FROM unnest(subjects) s WHERE lower(s) LIKE '%' || $${params.length} || '%')`,
-    );
-  }
-  // Se piden PAGE_SIZE+1: la fila extra solo sirve para hasMore.
-  params.push(SEARCH_PAGE_SIZE + 1, page * SEARCH_PAGE_SIZE);
-  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const sql = `
-    SELECT gutenberg_id, language, title, author, subjects
-    FROM ${CATALOG}gutenberg_books
-    ${where}
-    ORDER BY downloads DESC, gutenberg_id
-    LIMIT $${params.length - 1} OFFSET $${params.length}
-  `;
+  // Construye la consulta. En modo 'tokens' la búsqueda por palabras usa
+  // `search_tokens @> $terms` (índice invertido, sin full scan). En modo
+  // 'like' cae al LIKE con comodín inicial, que funciona aunque la columna
+  // search_tokens no exista todavía (entornos sin la migración 030).
+  const buildSql = (mode: "tokens" | "like") => {
+    const params: unknown[] = [];
+    const filters: string[] = [];
+    if (lang) {
+      params.push(lang);
+      filters.push(`language = $${params.length}`);
+    }
+    if (words.length) {
+      if (mode === "tokens") {
+        params.push(words);
+        filters.push(`search_tokens @> $${params.length}::text[]`);
+      } else {
+        for (const word of words) {
+          params.push(likeEscape(word));
+          filters.push(`search_text LIKE '%' || $${params.length} || '%'`);
+        }
+      }
+    }
+    if (topic) {
+      params.push(likeEscape(topic));
+      filters.push(
+        `EXISTS (SELECT 1 FROM unnest(subjects) s WHERE lower(s) LIKE '%' || $${params.length} || '%')`,
+      );
+    }
+    // Se piden PAGE_SIZE+1: la fila extra solo sirve para hasMore.
+    params.push(SEARCH_PAGE_SIZE + 1, page * SEARCH_PAGE_SIZE);
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const sql = `
+      SELECT gutenberg_id, language, title, author, subjects
+      FROM ${CATALOG}gutenberg_books
+      ${where}
+      ORDER BY downloads DESC, gutenberg_id
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `;
+    return { sql, params };
+  };
 
   let rows: GutenbergRow[] | undefined;
-  try {
-    const result = await withClient(
-      context.env,
-      (client) => client.query<GutenbergRow>(sql, params),
-      true,
-    );
-    rows = result?.rows;
-  } catch (err) {
-    // 42P01: la migración 029 aún no corre en este entorno — el índice
-    // «no existe» y la búsqueda devuelve vacío, no un 500.
-    if (!isMissingTableError(err)) throw err;
+  // Intento primario: tokens (usa el índice invertido). Si la columna o la
+  // tabla no existen en este entorno, degradar a LIKE.
+  let fallbackToLike = false;
+  for (const mode of ["tokens", "like"] as const) {
+    if (mode === "like" && !fallbackToLike) break;
+    const { sql, params } = buildSql(mode);
+    try {
+      const result = await withClient(
+        context.env,
+        (client) => client.query<GutenbergRow>(sql, params),
+        true,
+      );
+      rows = result?.rows;
+      break;
+    } catch (err) {
+      const missingCol = isMissingColumnError(err);
+      const missingTbl = isMissingTableError(err);
+      if (missingTbl) {
+        rows = undefined;
+        break;
+      }
+      if (missingCol && mode === "tokens") {
+        fallbackToLike = true;
+        continue;
+      }
+      throw err;
+    }
   }
 
   const hasMore = (rows?.length ?? 0) > SEARCH_PAGE_SIZE;

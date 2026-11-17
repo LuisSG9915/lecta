@@ -288,16 +288,15 @@ describe("GET /api/catalog/search", () => {
     await get({}, "/api/catalog/search?q=Bécquer%20poesía&lang=es", app);
     const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("language = $1");
-    expect(sql).toContain("search_text LIKE '%' || $2 || '%'");
-    expect(sql).toContain("search_text LIKE '%' || $3 || '%'");
+    expect(sql).toContain("search_tokens @> $2::text[]");
     expect(sql).toContain("AND");
-    expect(params.slice(0, 3)).toEqual(["es", "becquer", "poesia"]);
+    expect(params.slice(0, 2)).toEqual(["es", ["becquer", "poesia"]]);
   });
 
-  it("escapa los comodines de LIKE en los términos", async () => {
+  it("escapa los comodines de LIKE en los temas", async () => {
     const app = await freshCatalog();
     installCatalogDb({ rows: [] });
-    await get({}, "/api/catalog/search?q=100%25_", app);
+    await get({}, "/api/catalog/search?topic=100%25_", app);
     const [, params] = queryMock.mock.calls[0] as [string, unknown[]];
     expect(params[0]).toBe("100\\%\\_");
   });

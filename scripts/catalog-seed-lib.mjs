@@ -130,7 +130,9 @@ export function parseRdf(xml) {
 
 // Texto de búsqueda del índice Gutenberg: título + autor en
 // minúsculas y sin acentos (misma normalización que aplica el worker
-// sobre `q` antes del LIKE — las dos puntas deben coincidir).
+// sobre `q` antes de la búsqueda — las dos puntas deben coincidir).
+// La puntuación se convierte en espacio para que la tokenización
+// posterior produzca palabras limpias («becquer,» → «becquer»).
 export function searchTextOf(...parts) {
   return parts
     .filter((part) => typeof part === "string" && part.trim())
@@ -138,8 +140,31 @@ export function searchTextOf(...parts) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Tokens de búsqueda del índice Gutenberg: palabras normalizadas del
+// texto de búsqueda (título + autor), sin duplicados ni vacíos.
+export function searchTokensOf(text) {
+  const normalized = String(text ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return [];
+  const seen = new Set();
+  const out = [];
+  for (const token of normalized.split(" ")) {
+    if (token && !seen.has(token)) {
+      seen.add(token);
+      out.push(token);
+    }
+  }
+  return out;
 }
 
 function parseYear(v) {

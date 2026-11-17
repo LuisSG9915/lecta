@@ -35,7 +35,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseRdf, rightsCheck, searchTextOf } from "./catalog-seed-lib.mjs";
+import { parseRdf, rightsCheck, searchTextOf, searchTokensOf } from "./catalog-seed-lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -82,6 +82,7 @@ export function indexRowFromRdf(gutenbergId, xml, { deathYearMax = 1924 } = {}) 
     if (clean && !subjects.includes(clean)) subjects.push(clean);
     if (subjects.length >= MAX_SUBJECTS) break;
   }
+  const searchText = searchTextOf(meta.title, author);
   return {
     ok: true,
     row: {
@@ -92,7 +93,8 @@ export function indexRowFromRdf(gutenbergId, xml, { deathYearMax = 1924 } = {}) 
       subjects,
       downloads: meta.downloads,
       issued: meta.issued ?? null,
-      search_text: searchTextOf(meta.title, author),
+      search_text: searchText,
+      search_tokens: searchTokensOf(searchText),
     },
   };
 }
@@ -206,8 +208,8 @@ async function build() {
 
 const upsertSql = (table) => `
   INSERT INTO ${table}
-    (gutenberg_id, language, title, author, subjects, downloads, issued, search_text)
-  SELECT gutenberg_id, language, title, author, subjects, downloads, issued, search_text
+    (gutenberg_id, language, title, author, subjects, downloads, issued, search_text, search_tokens)
+  SELECT gutenberg_id, language, title, author, subjects, downloads, issued, search_text, search_tokens
   FROM jsonb_to_recordset($1::jsonb) AS x(
     gutenberg_id INT4,
     language STRING,
@@ -216,7 +218,8 @@ const upsertSql = (table) => `
     subjects STRING[],
     downloads INT4,
     issued STRING,
-    search_text STRING
+    search_text STRING,
+    search_tokens STRING[]
   )
   ON CONFLICT (gutenberg_id) DO UPDATE SET
     language = EXCLUDED.language,
@@ -225,7 +228,8 @@ const upsertSql = (table) => `
     subjects = EXCLUDED.subjects,
     downloads = EXCLUDED.downloads,
     issued = EXCLUDED.issued,
-    search_text = EXCLUDED.search_text
+    search_text = EXCLUDED.search_text,
+    search_tokens = EXCLUDED.search_tokens
 `;
 
 // Compuerta de carga (docs/designs/2026-11-15-explora-derechos.md, §4):
