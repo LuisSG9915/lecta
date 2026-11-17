@@ -263,7 +263,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 3885,
+          "line": 3879,
           "window": 2,
           "expect": "applyPreviewKnownSignal\\(currentLang, beta\\)",
           "why": "onMarkKnown de la hoja usa la misma señal explicit_known que la ficha"
