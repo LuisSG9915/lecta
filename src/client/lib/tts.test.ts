@@ -31,6 +31,7 @@ import {
 } from "./ttsController";
 import {
   KITTEN_VOICES,
+  TTS_PLAYER_RATES,
   type TtsSnapshot,
   type TtsTargetContext,
 } from "./ttsTypes";
@@ -685,6 +686,7 @@ describe("ttsController", () => {
 
   it("al terminar la sección avanza dentro del target y termina en chapter_end", async () => {
     consent();
+    saveTtsSettings({ autoAdvanceChapter: false });
     const roots = [
       section("<p>Solo una.</p>"),
       section("<p>Siguiente sección.</p>"),
@@ -714,6 +716,176 @@ describe("ttsController", () => {
     expect(end?.endReason).toBe("chapter_end");
     expect(end?.sectionAdvances).toBe(2);
     expect(ctl.snapshot().status).toBe("idle");
+  });
+
+  describe("continuar al siguiente capítulo", () => {
+    const CH2: TtsTargetContext = {
+      bookHash: "h",
+      targetId: "t2",
+      startSection: 1,
+      endSection: 3,
+      sectionIndex: 1,
+      chapterLabel: "Capítulo 2",
+    };
+    const ctx1: TtsTargetContext = { ...CTX, endSection: 1, chapterLabel: "Capítulo 1" };
+    const setup = (roots: HTMLElement[], next: TtsTargetContext | null) => {
+      const navigated: number[] = [];
+      const made = makeDeps(roots);
+      const nav = made.deps.navigateSection;
+      made.deps.navigateSection = (i) => {
+        navigated.push(i);
+        nav(i);
+      };
+      const resolve = vi.fn(() => next);
+      made.deps.resolveNextChapter = resolve;
+      return { ...made, navigated, resolve };
+    };
+
+    it("al llegar a endSection salta al capítulo siguiente sin cerrar la sesión", async () => {
+      consent();
+      const { deps, events, speakers, navigated, resolve } = setup(
+        [section("<p>Uno.</p>"), section("<p>Dos.</p>"), section("")],
+        CH2,
+      );
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0);
+      await flush();
+      speakers[0].ended();
+      expect(resolve).toHaveBeenCalledWith(1);
+      expect(navigated).toEqual([1]);
+      expect(ctl.snapshot().chapterLabel).toBe("Capítulo 2");
+      expect(events.find((e) => e.kind === "tts_session_end")).toBeUndefined();
+      const adv = events.find((e) => e.kind === "tts_section_advance");
+      expect(adv?.targetId).toBe("t2");
+      ctl.onSectionRendered();
+      expect(speakers[0].spoken.at(-1)).toBe("Dos.");
+    });
+
+    it("sin siguiente capítulo termina con book_end", async () => {
+      consent();
+      const { deps, events, speakers } = setup([section("<p>Uno.</p>")], null);
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0);
+      await flush();
+      speakers[0].ended();
+      expect(events.find((e) => e.kind === "tts_session_end")?.endReason).toBe("book_end");
+    });
+
+    it("con autoAdvanceChapter apagado termina con chapter_end y no consulta", async () => {
+      consent();
+      const { deps, events, speakers, resolve } = setup([section("<p>Uno.</p>")], CH2);
+      const ctl = createTtsController(deps);
+      ctl.setAutoAdvanceChapter?.(false);
+      ctl.start(ctx1, 0);
+      await flush();
+      speakers[0].ended();
+      expect(resolve).not.toHaveBeenCalled();
+      expect(events.find((e) => e.kind === "tts_session_end")?.endReason).toBe("chapter_end");
+    });
+
+    it("«Fin de capítulo» corta con sleep_timer sin navegar", async () => {
+      consent();
+      const { deps, events, speakers, navigated } = setup(
+        [section("<p>Uno.</p>"), section("<p>Dos.</p>")],
+        CH2,
+      );
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0);
+      await flush();
+      ctl.setSleepTimer?.({ chapterEnd: true });
+      expect(ctl.snapshot().sleepAtChapterEnd).toBe(true);
+      speakers[0].ended();
+      expect(navigated).toEqual([]);
+      expect(events.find((e) => e.kind === "tts_session_end")?.endReason).toBe("sleep_timer");
+    });
+
+    it("el sleep timer sobrevive al cruce de capítulo", async () => {
+      consent();
+      const { deps, speakers } = setup(
+        [section("<p>Uno.</p>"), section("<p>Dos.</p>"), section("")],
+        CH2,
+      );
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0, { sleepTimerMs: 5 * 60_000 });
+      await flush();
+      const endsAt = ctl.snapshot().sleepTimerEndsAt;
+      expect(endsAt).not.toBeNull();
+      speakers[0].ended();
+      ctl.onSectionRendered();
+      expect(ctl.snapshot().sleepTimerEndsAt).toBe(endsAt);
+      expect(ctl.getSleepTimerRemainingMs?.()).toBeGreaterThan(0);
+    });
+
+    it("«Fin de capítulo» sobrevive al cruce y corta en el siguiente fin", async () => {
+      consent();
+      const { deps, events, speakers } = setup(
+        [section("<p>Uno.</p>"), section("<p>Dos.</p>")],
+        { ...CH2, endSection: 2 },
+      );
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0);
+      await flush();
+      speakers[0].ended(); // cruza (flag aún apagado)
+      ctl.setSleepTimer?.({ chapterEnd: true });
+      ctl.onSectionRendered();
+      speakers[0].ended();
+      expect(events.find((e) => e.kind === "tts_session_end")?.endReason).toBe("sleep_timer");
+    });
+
+    it("no hay await entre resolveNextChapter y navigateSection", async () => {
+      consent();
+      const order: string[] = [];
+      const { deps, speakers } = setup([section("<p>Uno.</p>"), section("<p>Dos.</p>")], CH2);
+      const resolve = deps.resolveNextChapter!;
+      deps.resolveNextChapter = (n) => {
+        order.push("resolve");
+        return resolve(n);
+      };
+      const nav = deps.navigateSection;
+      deps.navigateSection = (i) => {
+        order.push("nav");
+        nav(i);
+      };
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0);
+      await flush();
+      speakers[0].ended();
+      // Síncrono: sin ceder al event loop ya navegó.
+      expect(order).toEqual(["resolve", "nav"]);
+    });
+
+    it("un capítulo sin texto se salta y llega a book_end sin colgarse", async () => {
+      consent();
+      const { deps, events, speakers } = setup([section("<p>Uno.</p>"), section("")], CH2);
+      deps.resolveNextChapter = vi
+        .fn()
+        .mockReturnValueOnce({ ...CH2, endSection: 2 })
+        .mockReturnValueOnce(null);
+      const ctl = createTtsController(deps);
+      ctl.start(ctx1, 0);
+      await flush();
+      speakers[0].ended();
+      ctl.onSectionRendered(); // sección 1 vacía → intenta avanzar → null
+      expect(events.find((e) => e.kind === "tts_session_end")?.endReason).toBe("book_end");
+    });
+  });
+
+  it("cicla velocidades del reproductor hasta 2× y vuelve", async () => {
+    consent();
+    const { deps } = makeDeps([section("<p>Frase.</p>")]);
+    const ctl = createTtsController(deps);
+    const seen: number[] = [];
+    for (let i = 0; i < TTS_PLAYER_RATES.length; i += 1) seen.push(ctl.cycleRate(TTS_PLAYER_RATES));
+    expect(seen).toContain(2);
+    expect(ctl.cycleRate(TTS_PLAYER_RATES)).toBe(seen[0]);
+  });
+
+  it("parse de ajustes conserva 2× y autoAdvanceChapter", () => {
+    saveTtsSettings({ rate: 2, autoAdvanceChapter: false });
+    expect(loadTtsSettings().rate).toBe(2);
+    expect(loadTtsSettings().autoAdvanceChapter).toBe(false);
+    localStorage.clear();
+    expect(loadTtsSettings().autoAdvanceChapter).toBe(true);
   });
 
   it("pausa y reanuda emitiendo eventos; el heartbeat alimenta actividad", async () => {

@@ -23,6 +23,8 @@ export type TtsSettings = {
   engine: TtsEngineMode;
   kittenVoice: KittenVoiceId;
   voiceURI?: string | null;
+  // Al terminar un capítulo, seguir leyendo el siguiente.
+  autoAdvanceChapter: boolean;
 };
 
 export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
@@ -33,6 +35,7 @@ export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
   engine: "auto",
   kittenVoice: "expr-voice-2-f",
   voiceURI: null,
+  autoAdvanceChapter: true,
 };
 
 const VALID_ENGINES: readonly TtsEngineMode[] = ["auto", "kitten-neural", "browser"];
@@ -57,6 +60,7 @@ const parse = (raw: string | null): TtsSettings => {
       engine,
       kittenVoice,
       voiceURI: typeof v.voiceURI === "string" ? v.voiceURI : null,
+      autoAdvanceChapter: v.autoAdvanceChapter !== false,
     };
   } catch {
     return TTS_SETTINGS_DEFAULTS;

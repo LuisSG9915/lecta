@@ -177,6 +177,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     reducedMotion: companion?.reducedMotion ?? false,
     language,
     closeSheet,
+    bookHash,
   });
 
   useEffect(() => {
@@ -188,6 +189,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
       reducedMotion: companion?.reducedMotion ?? false,
       language,
       closeSheet,
+      bookHash,
     };
   });
 
@@ -203,6 +205,21 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
         withTtsProgrammaticNav(() => {
           void ttsFns.current.navigate("resume", { index });
         });
+      },
+      // Síncrono a propósito: ningún await entre aquí y navigateSection.
+      resolveNextChapter: (after) => {
+        const r = (catalogRef?.current?.ranges ?? []).find(
+          (x) => x.startSection <= after && after < x.endSection,
+        );
+        if (!r) return null;
+        return {
+          bookHash: ttsFns.current.bookHash,
+          targetId: r.target.id,
+          startSection: r.startSection,
+          endSection: r.endSection,
+          sectionIndex: r.startSection,
+          chapterLabel: r.target.label,
+        };
       },
       reveal: (el) => {
         noteTtsProgrammaticScroll();
@@ -304,12 +321,14 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     const ctl = ttsRef.current;
     if (!ctl) return;
     if (ttsSnap.status !== "speaking" && ttsSnap.status !== "preparing") return;
-    if (docHidden && !sleepTimerActive) ctl.pause("visibility");
+    if (docHidden && !sleepTimerActive && ttsSnap.sleepTimerEndsAt == null && !ttsSnap.sleepAtChapterEnd) ctl.pause("visibility");
     else if (selection) ctl.pause("word_lookup");
     else if (sheet || panelsOpen || prep || companion?.open || companion?.modalOpen) ctl.pause("panel_opened");
     else if (fatigueNotice) ctl.pause("fatigue");
   }, [
     ttsSnap.status,
+    ttsSnap.sleepTimerEndsAt,
+    ttsSnap.sleepAtChapterEnd,
     docHidden,
     sleepTimerActive,
     selection,
@@ -349,6 +368,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
         startSection: range?.startSection ?? index,
         endSection: range?.endSection ?? index + 1,
         sectionIndex: index,
+        chapterLabel: range?.target.label,
       },
       0,
     );
@@ -395,6 +415,19 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
 
   const nextSentence = useCallback(() => {
     ttsRef.current?.nextSentence();
+  }, []);
+
+  const setSleepTimer = useCallback((opt: number | { chapterEnd: true } | null) => {
+    ttsRef.current?.setSleepTimer?.(opt);
+  }, []);
+
+  const [autoAdvanceChapter, setAutoAdvanceChapterState] = useState<boolean>(
+    () => loadTtsSettings().autoAdvanceChapter,
+  );
+  const setAutoAdvanceChapter = useCallback((value: boolean) => {
+    setAutoAdvanceChapterState(value);
+    ttsRef.current?.setAutoAdvanceChapter?.(value);
+    if (!ttsRef.current) saveTtsSettings({ autoAdvanceChapter: value });
   }, []);
 
   const cycleSpeed = useCallback(() => {
@@ -560,6 +593,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
         startSection: range?.startSection ?? index,
         endSection: range?.endSection ?? index + 1,
         sectionIndex: index,
+        chapterLabel: range?.target.label,
       },
       0,
       { sleepTimerMs: 5 * 60_000 },
@@ -596,6 +630,9 @@ return {
     start5MinuteListening,
     handleStartAudio5Min,
     sleepTimerActive,
+    setSleepTimer,
+    autoAdvanceChapter,
+    setAutoAdvanceChapter,
 
     // Standalone hooks.test.ts integration
     ttsStatus: audioStatus,

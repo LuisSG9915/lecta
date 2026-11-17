@@ -63,6 +63,10 @@ export type TtsControllerDeps = {
   // Salto programático entre secciones del target — el Reader lo
   // envuelve en withTtsProgrammaticNav para no auto-detenerse.
   navigateSection(index: number): void;
+  // Capítulo que empieza en `afterSection` (primera sección tras el actual) o
+  // null si el libro se acabó. Síncrono: el cruce no puede tener un await
+  // entre aquí y navigateSection (withTtsProgrammaticNav es síncrono).
+  resolveNextChapter?(afterSection: number): TtsTargetContext | null;
   // Lleva el envoltorio <mark> de la oración a la vista (scroll en
   // continuo, página en paginado) siempre vía withTtsProgrammaticScroll.
   reveal(el: HTMLElement): void;
@@ -94,7 +98,8 @@ export type TtsController = {
   // actual; `startIndex` es la oración de arranque ya resuelta por el
   // Reader (posición guardada → primera visible → 0).
   start(ctx: TtsTargetContext, startIndex: number, options?: { sleepTimerMs?: number }): void;
-  setSleepTimer?(durationMs: number | null): void;
+  setSleepTimer?(opt: number | { chapterEnd: true } | null): void;
+  setAutoAdvanceChapter?(value: boolean): void;
   getSleepTimerRemainingMs?(): number | null;
   pause(reason: TtsPauseReason): void;
   resume(): void;
@@ -130,6 +135,8 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   let destroyed = false;
   let speakGen = 0;
   let sleepTimerDeadline = 0;
+  // «Fin de capítulo»: vive aquí (no en finish) y sobrevive al cruce de capítulo.
+  let sleepAtChapterEnd = false;
 
   // Contadores de la sesión para tts_session_end.
   let startedAt = 0;
@@ -418,20 +425,36 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const advanceOrEnd = () => {
     if (!ctx) return;
     const next = deps.sectionIndex() + 1;
+    let target = next;
     if (next >= ctx.endSection) {
-      finish("chapter_end");
-      return;
+      if (sleepAtChapterEnd) {
+        finish("sleep_timer");
+        return;
+      }
+      if (!settings.autoAdvanceChapter || !deps.resolveNextChapter) {
+        finish("chapter_end");
+        return;
+      }
+      const nextCtx = deps.resolveNextChapter(next);
+      if (!nextCtx) {
+        finish("book_end");
+        return;
+      }
+      // Cruce en sitio: sin finish (resetearía el sleep timer) ni start.
+      ctx = { ...nextCtx, sectionIndex: nextCtx.startSection };
+      target = nextCtx.startSection;
+      publish({ chapterLabel: nextCtx.chapterLabel ?? null });
     }
     sectionAdvances += 1;
-    awaitingSection = next;
+    awaitingSection = target;
     deps.emit({
       kind: "tts_section_advance",
       sessionId: snap.sessionId,
       targetId: ctx.targetId,
-      sectionIndex: next,
+      sectionIndex: target,
       ms: sessionMs(),
     });
-    deps.navigateSection(next);
+    deps.navigateSection(target);
     awaitingTimer = window.setTimeout(() => {
       awaitingTimer = 0;
       if (awaitingSection !== null) finish("error");
@@ -510,6 +533,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   // publica el snapshot. Idempotente — stop durante stopping no repite.
   const finish = (reason: TtsEndReason) => {
     sleepTimerDeadline = 0;
+    sleepAtChapterEnd = false;
     if (snap.status === "idle" || snap.status === "stopping") return;
     speakGen += 1;
     publish({ status: "stopping" });
@@ -567,7 +591,11 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       resumedCount = 0;
       sectionAdvances = 0;
       stallRetries = 0;
+      sleepAtChapterEnd = false;
       publish({
+        chapterLabel: nextCtx.chapterLabel ?? null,
+        sleepTimerEndsAt: sleepTimerDeadline || null,
+        sleepAtChapterEnd: false,
         status: "preparing",
         sessionId: crypto.randomUUID(),
         rate: settings.rate,
@@ -791,8 +819,23 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       finish(reason);
     },
 
-    setSleepTimer(durationMs: number | null) {
-      sleepTimerDeadline = durationMs && durationMs > 0 ? Date.now() + durationMs : 0;
+    setSleepTimer(opt: number | { chapterEnd: true } | null) {
+      if (opt !== null && typeof opt === "object") {
+        sleepTimerDeadline = 0;
+        sleepAtChapterEnd = true;
+      } else {
+        sleepTimerDeadline = opt && opt > 0 ? Date.now() + opt : 0;
+        sleepAtChapterEnd = false;
+      }
+      publish({
+        sleepTimerEndsAt: sleepTimerDeadline || null,
+        sleepAtChapterEnd,
+      });
+    },
+
+    setAutoAdvanceChapter(value: boolean) {
+      settings = { ...settings, autoAdvanceChapter: value };
+      saveTtsSettings(settings);
     },
 
     getSleepTimerRemainingMs() {

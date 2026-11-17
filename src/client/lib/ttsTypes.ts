@@ -3,10 +3,10 @@
 // plan-tts-readalong + docs/concentracion-y-lectura.md. Sin IA, sin
 // texto hacia servidores — los eventos solo llevan identificadores.
 
-export type TtsRate = 0.8 | 0.9 | 1 | 1.15 | 1.2 | 1.3;
+export type TtsRate = 0.8 | 0.9 | 1 | 1.15 | 1.2 | 1.3 | 1.5 | 1.75 | 2;
 export const TTS_RATES: TtsRate[] = [0.8, 1, 1.2];
-export const TTS_PLAYER_RATES: TtsRate[] = [0.9, 1, 1.15, 1.3];
-export const TTS_ALL_RATES: TtsRate[] = [0.8, 0.9, 1, 1.15, 1.2, 1.3];
+export const TTS_PLAYER_RATES: TtsRate[] = [0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
+export const TTS_ALL_RATES: TtsRate[] = [0.8, 0.9, 1, 1.15, 1.2, 1.3, 1.5, 1.75, 2];
 
 // Resaltado del MVP: oración. `line_focus` queda como fase opcional
 // posterior (gated por foco + regla activos).
@@ -31,7 +31,8 @@ export type TtsEndReason =
   | "visibility"
   | "render_change"
   | "error"
-  | "sleep_timer";
+  | "sleep_timer"
+  | "book_end";
 
 // Territorio de la sesión: el target (capítulo) que la contiene.
 // El TTS avanza entre secciones físicas dentro de [startSection,
@@ -42,6 +43,7 @@ export type TtsTargetContext = {
   startSection: number;
   endSection: number; // exclusivo
   sectionIndex: number;
+  chapterLabel?: string;
 };
 
 // Índices de childNodes desde la raíz de la sección.
@@ -118,6 +120,10 @@ export type TtsSnapshot = {
   engine?: TtsEngineMode;
   kittenVoice?: KittenVoiceId;
   activeEngine?: "kitten-neural" | "piper-neural" | "browser";
+  chapterLabel?: string | null;
+  // Fin del sleep timer por tiempo (epoch ms) o corte en el próximo fin de capítulo.
+  sleepTimerEndsAt?: number | null;
+  sleepAtChapterEnd?: boolean;
 };
 
 export const TTS_IDLE: TtsSnapshot = {
@@ -129,6 +135,9 @@ export const TTS_IDLE: TtsSnapshot = {
   engine: "auto",
   kittenVoice: "expr-voice-2-f",
   activeEngine: "browser",
+  chapterLabel: null,
+  sleepTimerEndsAt: null,
+  sleepAtChapterEnd: false,
 };
 
 export interface TtsVoiceOption {
