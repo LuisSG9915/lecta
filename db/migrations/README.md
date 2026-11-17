@@ -43,6 +43,7 @@ Tablas tocadas por cada archivo (DDL exacto).
 | `027_user_plan.sql` | `CREATE TABLE lecta_user_plan` (PK `user_id`, `CHECK plan`) + índice `idx_user_plan_stripe_customer`; `CREATE TABLE lecta_stripe_events` (PK `event_id`); `ALTER TABLE user_books` (+`has_file`); `INSERT … SELECT` de fundadores (`"createdAt" < to_timestamp(1794528000)`, 2026-11-13T00:00Z) |
 | `028_landing_daily.sql` | `CREATE TABLE lecta_landing_daily` (PK `bucket_day, event, source`) |
 | `029_gutenberg_books.sql` | `CREATE TABLE gutenberg_books` (PK `gutenberg_id`) + índice `idx_gutenberg_books_lang_downloads` |
+| `032_lexicon_ipa.sql` | `ALTER TABLE lexicon_entries` (+`ipa`) |
 
 ## Invariants
 

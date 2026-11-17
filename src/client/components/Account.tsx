@@ -1403,7 +1403,7 @@ export default function Account({
             <h3 className="eyebrow">Acerca de y Diagnóstico</h3>
             <p className="meta">
               Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
-              wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones del Wikcionario
+              wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones y pronunciación IPA del Wikcionario
               en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Contiene información de
               «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
               <a

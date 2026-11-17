@@ -4676,11 +4676,21 @@ b.lecta-anchor {
   border: none;
   font-size: 1.1rem;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--r-1);
+  min-width: 44px;
+  min-height: 44px;
+  min-block-size: 44px !important;
+}
+
+.word-panel__ipa {
+  font-size: 0.8rem;
+  color: var(--text-secondary, var(--ink-soft));
+  font-style: italic;
+  margin-inline-start: 2px;
 }
 
 .word-panel__audio-btn:hover {

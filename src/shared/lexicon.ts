@@ -10,6 +10,7 @@ export type LexiconEntry = {
   pos: string | null;
   freqRank: number | null;
   zipf: number | null;
+  ipa?: string | null;
   senses: { definition: string; example: string | null; senseOrder: number | null }[];
 };
 

@@ -33,20 +33,20 @@ export interface DictionaryPackInfo {
 // subir la versión (la URL lleva v1) y pegar el nuevo hash aquí.
 export const DICTIONARY_PACKS: Record<DictLanguage, DictionaryPackInfo> = {
   es: {
-    url: "/dict/dict-es-v1.bin",
-    sha256: "6e98cc32a256e2679f977742c7c9766fe3957bee9765558f4e2597abc7e4435d",
-    bytes: 4_822_965,
-    version: 1,
+    url: "/dict/dict-es-v6.bin",
+    sha256: "8b2167d67ffd23634feafdf508dc165b6534d50f89349a924b336d1bbc35d464",
+    bytes: 4_918_724,
+    version: 6,
     lemmas: 126_905,
-    forms: 336_248,
+    forms: 336_257,
   },
   en: {
-    url: "/dict/dict-en-v5.bin",
-    sha256: "0e0e77e8d0c7d6a66d11a8894af36fa741fe90b17183fb197fea8aa7219d29f0",
-    bytes: 704_371,
-    version: 5,
+    url: "/dict/dict-en-v6.bin",
+    sha256: "17016d3f1ef3410f8c9c15ee084e6d0da2f5ed90ed97cd99dc3c05462a905681",
+    bytes: 752_641,
+    version: 6,
     lemmas: 20_344,
-    forms: 57_247,
+    forms: 57_675,
   },
 };
 
@@ -55,7 +55,7 @@ const FLUSH_ROWS = 5_000;
 const dbName = (lang: DictLanguage) => `lecta-dict-${lang}`;
 
 interface DictDB extends DBSchema {
-  entries: { key: string; value: { key: string; pos: string | null; defs: string[] } };
+  entries: { key: string; value: { key: string; pos: string | null; defs: string[]; ipa?: string } };
   forms: { key: string; value: { key: string; lemma: string } };
   meta: {
     key: string;
@@ -246,13 +246,14 @@ async function installPack(
         continue;
       }
       const cols = line.split("\t");
-      if (cols[0] === "E" && cols.length === 4) {
+      if (cols[0] === "E" && cols.length >= 4) {
         const defs = cols[3].split("\x1F").filter(Boolean);
         if (!defs.length) continue;
         batch.entries.push({
           key: `${lang}:${cols[1]}`,
           pos: cols[2] || null,
           defs,
+          ipa: cols[4] || undefined,
         });
         stats.entries += 1;
       } else if (cols[0] === "F" && cols.length === 3) {
@@ -314,7 +315,7 @@ export async function lookupDictionaryPack(
 
 function toLexiconEntry(
   lemma: string,
-  row: { pos: string | null; defs: string[] },
+  row: { pos: string | null; defs: string[]; ipa?: string },
 ): LexiconEntry {
   return {
     entryId: null,
@@ -322,6 +323,7 @@ function toLexiconEntry(
     pos: row.pos,
     freqRank: null,
     zipf: null,
+    ipa: row.ipa || null,
     senses: row.defs.map((definition, index) => ({
       definition,
       example: null,

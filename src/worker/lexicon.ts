@@ -26,6 +26,7 @@ export type LookupRow = {
   pos: string | null;
   freq_rank: number | null;
   zipf: number | null;
+  ipa: string | null;
   definition: string | null;
   example: string | null;
   sense_order: number | null;
@@ -39,11 +40,12 @@ export type LexiconEntryView = {
   // Frecuencia medida (wordfreq), escala ~0–8; puede ser null si la
   // entrada nunca pasó por la medición (p. ej. enriquecimientos IA).
   zipf: number | null;
+  ipa?: string | null;
   senses: { definition: string; example: string | null; senseOrder: number | null }[];
 };
 
 const LOOKUP_SQL = `
-  SELECT e.id AS entry_id, e.lemma, e.pos, e.freq_rank, e.zipf, s.definition, s.example, s.sense_order
+  SELECT e.id AS entry_id, e.lemma, e.pos, e.freq_rank, e.zipf, e.ipa, s.definition, s.example, s.sense_order
   FROM ${CATALOG}lexicon_forms f
   JOIN ${CATALOG}lexicon_entries e ON e.id = f.entry_id
   LEFT JOIN ${CATALOG}lexicon_senses s ON s.entry_id = e.id
@@ -62,6 +64,7 @@ export function groupEntries(rows: LookupRow[]) {
       pos: row.pos,
       freqRank: row.freq_rank,
       zipf: row.zipf != null ? Number(row.zipf) : null,
+      ipa: row.ipa ?? null,
       senses: [],
     };
     if (row.definition)
@@ -104,7 +107,7 @@ export async function findEntries(client: pg.Client, language: string, form: str
 // filas del join: una forma con varias acepciones genera varias filas y
 // un LIMIT aquí recortaba fichas sin aviso.
 const BATCH_SQL = `
-  SELECT f.form AS queried_form, e.id AS entry_id, e.lemma, e.pos, e.freq_rank, e.zipf, s.definition, s.example, s.sense_order
+  SELECT f.form AS queried_form, e.id AS entry_id, e.lemma, e.pos, e.freq_rank, e.zipf, e.ipa, s.definition, s.example, s.sense_order
   FROM ${CATALOG}lexicon_forms f
   JOIN ${CATALOG}lexicon_entries e ON e.id = f.entry_id
   LEFT JOIN ${CATALOG}lexicon_senses s ON s.entry_id = e.id

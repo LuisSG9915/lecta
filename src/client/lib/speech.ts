@@ -42,6 +42,7 @@ export function stopSpeaking(): void {
 export async function speakWord(
   word: string,
   language = "es",
+  rate = 0.9,
 ): Promise<void> {
   const trimmed = word.trim();
   if (!trimmed || !isSpeechAvailable()) return;
@@ -58,10 +59,10 @@ export async function speakWord(
         window.speechSynthesis.cancel();
       }
       const settings = loadTtsSettings();
-      const buffer = await kittenTtsEngine.synthesize(trimmed, settings.kittenVoice, 0.9);
+      const buffer = await kittenTtsEngine.synthesize(trimmed, settings.kittenVoice, rate);
       if (stopped()) return;
       return await new Promise<void>((resolve) => {
-        kittenTtsEngine.play(buffer, 0.9, () => resolve());
+        kittenTtsEngine.play(buffer, rate, () => resolve());
       });
     } catch {
       // Degradar limpiamente al fallback de speechSynthesis
@@ -94,7 +95,7 @@ export async function speakWord(
       }
     }
     // Tasa ligeramente reducida para dicción clara en aprendizaje de idiomas
-    utterance.rate = 0.9;
+    utterance.rate = rate;
     utterance.volume = 1;
 
     let settled = false;

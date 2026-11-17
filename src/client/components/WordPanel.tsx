@@ -56,6 +56,7 @@ export interface LocalLexiconEntry {
   partOfSpeech?: string;
   shortDefinition: string;
   synonyms: string[];
+  ipa?: string;
 }
 
 export interface ContextualMeaningResult {
@@ -205,6 +206,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         partOfSpeech: primary.pos ?? undefined,
         shortDefinition: sense?.definition ?? "",
         synonyms: family.slice(0, 4),
+        ipa: primary.ipa ?? undefined,
       };
     }
     return null;
@@ -231,6 +233,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   const passageAbortRef = useRef<AbortController | null>(null);
   const saveInFlightRef = useRef<Promise<SavedWord | null> | null>(null);
   const savedRef = useRef<boolean>(isSavedInitial);
+  const pressConsumedRef = useRef<boolean>(false);
+  const longPressTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -462,6 +466,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 partOfSpeech: primary.pos ?? undefined,
                 shortDefinition: sense?.definition ?? "",
                 synonyms: validFamily.slice(0, 4),
+                ipa: primary.ipa ?? undefined,
               };
             }
             return {
@@ -575,11 +580,35 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   };
 
   const handleSpeak = () => {
+    if (pressConsumedRef.current) {
+      pressConsumedRef.current = false;
+      return;
+    }
     triggerHaptic(6);
     if (onSpeakWord) {
       onSpeakWord(cleanWord, effectiveLang);
     } else {
       speakWord(cleanWord, effectiveLang);
+    }
+  };
+
+  const handleAudioPointerDown = () => {
+    pressConsumedRef.current = false;
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+    }
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      pressConsumedRef.current = true;
+      triggerHaptic(12);
+      speakWord(cleanWord, effectiveLang, 0.6);
+    }, 450);
+  };
+
+  const handleAudioPointerUp = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
   };
 
@@ -830,12 +859,19 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
             {localEntry?.partOfSpeech && (
               <span className="word-panel__pos-badge word-card-pos">{localEntry.partOfSpeech}</span>
             )}
+            {localEntry?.ipa && (
+              <span className="word-panel__ipa">/{localEntry.ipa}/</span>
+            )}
             <button
               type="button"
               className="word-panel__audio-btn word-card-audio-btn btn--pronounce"
               onClick={handleSpeak}
-              aria-label="Pronunciar palabra"
-              title="Escuchar pronunciación"
+              onPointerDown={handleAudioPointerDown}
+              onPointerUp={handleAudioPointerUp}
+              onPointerLeave={handleAudioPointerUp}
+              onPointerCancel={handleAudioPointerUp}
+              aria-label="Pronunciar palabra (mantener pulsado para lento)"
+              title="Escuchar pronunciación (mantener pulsado para lento)"
             >
               <Icon name="speaker" size={16} />
             </button>
