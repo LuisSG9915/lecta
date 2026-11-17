@@ -52,3 +52,6 @@ skills-lock.json
 
 # Config temporal para depurar desde el teléfono por túnel
 vite.tunnel.config.ts
+
+# ZCode session data
+.zcode/
