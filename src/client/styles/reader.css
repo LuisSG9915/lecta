@@ -7064,3 +7064,57 @@ b.lecta-anchor {
   position: absolute;
   inset: -12px;
 }
+
+/* Temporizador de sueño: popover sobre el dock de audio (sin segundo dock). */
+.dock-sleep-btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.dock-sleep-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dock-sleep-option {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.dock-sleep-option[aria-pressed="true"] {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+.dock-sleep-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  color: var(--ink);
+}
+
+.dock-sleep-toggle input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--ink);
+}
+
+.dock-chapter-notice {
+  align-self: center;
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}

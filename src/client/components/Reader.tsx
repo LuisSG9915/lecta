@@ -1967,6 +1967,9 @@ export default function Reader({
     prevSentence,
     nextSentence,
     cycleSpeed,
+    setSleepTimer,
+    autoAdvanceChapter,
+    setAutoAdvanceChapter,
     stopTts,
     handleStartAudio5Min,
   } = useReaderTts({
@@ -3633,6 +3636,9 @@ export default function Reader({
           prevSentence={prevSentence}
           nextSentence={nextSentence}
           cycleSpeed={cycleSpeed}
+          setSleepTimer={setSleepTimer}
+          autoAdvanceChapter={autoAdvanceChapter}
+          setAutoAdvanceChapter={setAutoAdvanceChapter}
           stopTts={stopTts}
           handleTtsCaptureWord={handleTtsCaptureWord}
           handleRecapClick={handleRecapClick}

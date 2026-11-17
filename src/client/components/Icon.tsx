@@ -15,6 +15,7 @@ export type IconName =
   | "retreat"
   | "cloud"
   | "clock"
+  | "moon"
   | "speaker"
   | "back"
   | "close"
@@ -191,6 +192,8 @@ function renderIconPath(name: IconName) {
       return (
         <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
       );
+    case "moon":
+      return <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />;
     case "clock":
       return (
         <>

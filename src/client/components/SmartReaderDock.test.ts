@@ -123,6 +123,54 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(onOpenAdvancedSettings).toHaveBeenCalledTimes(1);
   });
 
+  it("la luna abre el sheet de sueño, elige tiempo y fin de capítulo, y alterna continuar", () => {
+    const onSetSleepTimer = vi.fn();
+    const onToggleAutoAdvance = vi.fn();
+    render({
+      ttsSnap: speakingSnap,
+      onSetSleepTimer,
+      onToggleAutoAdvance,
+      autoAdvanceChapter: true,
+    });
+    const moon = container.querySelector(".dock-sleep-btn") as HTMLButtonElement;
+    expect(moon).not.toBeNull();
+    act(() => moon.click());
+    const sheet = container.querySelector(".dock-sleep-popover");
+    expect(sheet).not.toBeNull();
+    const opts = Array.from(sheet!.querySelectorAll<HTMLButtonElement>(".dock-sleep-option"));
+    expect(opts.map((o) => o.textContent)).toEqual(["5 min", "15 min", "30 min", "45 min", "Fin de capítulo"]);
+    act(() => opts[1].click());
+    expect(onSetSleepTimer).toHaveBeenLastCalledWith(15 * 60_000);
+    expect(container.querySelector(".dock-sleep-popover")).toBeNull();
+
+    act(() => moon.click());
+    const chapterEnd = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".dock-sleep-option"),
+    ).find((b) => b.textContent === "Fin de capítulo")!;
+    act(() => chapterEnd.click());
+    expect(onSetSleepTimer).toHaveBeenLastCalledWith({ chapterEnd: true });
+
+    act(() => moon.click());
+    const toggle = container.querySelector(".dock-sleep-toggle input") as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    act(() => toggle.click());
+    expect(onToggleAutoAdvance).toHaveBeenCalledWith(false);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(container.querySelector(".dock-sleep-popover")).toBeNull();
+  });
+
+  it("muestra la cuenta atrás del sleep timer en la luna", () => {
+    render({
+      ttsSnap: { ...speakingSnap, sleepTimerEndsAt: Date.now() + 14 * 60_000 + 5_000 },
+      onSetSleepTimer: vi.fn(),
+    });
+    const moon = container.querySelector(".dock-sleep-btn") as HTMLButtonElement;
+    expect(moon.textContent).toContain("15 min");
+  });
+
   it("muta al Modo Audio en el mismo dock cuando ttsSnap está activo", () => {
     const onTogglePlayPause = vi.fn();
     const onPrevSentence = vi.fn();

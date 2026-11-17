@@ -94,6 +94,9 @@ export interface SmartReaderDockProps {
   onPrevSentence?: () => void;
   onNextSentence?: () => void;
   onCycleSpeed: () => void;
+  onSetSleepTimer?: (opt: number | { chapterEnd: true } | null) => void;
+  autoAdvanceChapter?: boolean;
+  onToggleAutoAdvance?: (value: boolean) => void;
   onOpenVoiceSelector?: () => void;
   onCaptureWord?: () => void;
   onStopAudio: () => void;
@@ -136,6 +139,9 @@ export default function SmartReaderDock({
   onPrevSentence,
   onNextSentence,
   onCycleSpeed,
+  onSetSleepTimer,
+  autoAdvanceChapter = true,
+  onToggleAutoAdvance,
   onOpenVoiceSelector,
   onCaptureWord,
   onStopAudio,
@@ -148,6 +154,9 @@ export default function SmartReaderDock({
   onStartAudio5Min,
 }: SmartReaderDockProps) {
   const [isModeSheetOpen, setIsModeSheetOpen] = useState(false);
+  const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [chapterNotice, setChapterNotice] = useState<string | null>(null);
   const [wordCapturedToast, setWordCapturedToast] = useState(false);
   const [isDismissedLocally, setIsDismissedLocally] = useState(false);
   const [isMuteOptionsOpen, setIsMuteOptionsOpen] = useState(false);
@@ -224,15 +233,52 @@ export default function SmartReaderDock({
 
   // Cierra el popover si se presiona la tecla Escape
   useEffect(() => {
-    if (!isModeSheetOpen) return;
+    if (!isModeSheetOpen && !isSleepMenuOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsModeSheetOpen(false);
+        setIsSleepMenuOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isModeSheetOpen]);
+  }, [isModeSheetOpen, isSleepMenuOpen]);
+
+  // El popover del sueño solo existe en modo audio.
+  const [prevAudioMode, setPrevAudioMode] = useState(isAudioMode);
+  if (prevAudioMode !== isAudioMode) {
+    setPrevAudioMode(isAudioMode);
+    if (!isAudioMode) setIsSleepMenuOpen(false);
+  }
+
+  // Cuenta atrás visible solo mientras hay un plazo por tiempo.
+  const sleepEndsAt = ttsSnap.sleepTimerEndsAt ?? null;
+  useEffect(() => {
+    if (sleepEndsAt == null) return;
+    const tick = () => setNowMs(Date.now());
+    const first = window.setTimeout(tick, 0);
+    const id = window.setInterval(tick, 1000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
+  }, [sleepEndsAt]);
+  const sleepRemainingMin =
+    sleepEndsAt != null ? Math.max(1, Math.ceil((sleepEndsAt - nowMs) / 60_000)) : null;
+  const sleepAtChapterEnd = ttsSnap.sleepAtChapterEnd === true;
+  const sleepActive = sleepEndsAt != null || sleepAtChapterEnd;
+
+  // Aviso sutil «Capítulo N» cuando el audio cruza a otro capítulo.
+  const chapterLabel = ttsSnap.chapterLabel ?? null;
+  const lastChapterLabel = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = lastChapterLabel.current;
+    lastChapterLabel.current = isAudioMode ? chapterLabel : null;
+    if (!isAudioMode || !chapterLabel || prev === null || prev === chapterLabel) return;
+    setChapterNotice(chapterLabel);
+    const id = window.setTimeout(() => setChapterNotice(null), 3500);
+    return () => window.clearTimeout(id);
+  }, [chapterLabel, isAudioMode]);
 
   const handleCapture = () => {
     if (!onCaptureWord) return;
@@ -313,6 +359,84 @@ export default function SmartReaderDock({
               setIsModeSheetOpen(false);
             }}
           />
+        )}
+
+        {isSleepMenuOpen && isAudioMode && (
+          <div
+            className="dock-mode-popover-backdrop"
+            data-testid="dock-sleep-backdrop"
+            aria-hidden="true"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setIsSleepMenuOpen(false);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              setIsSleepMenuOpen(false);
+            }}
+          />
+        )}
+
+        {isSleepMenuOpen && isAudioMode && (
+          <div
+            className="dock-mode-popover dock-sleep-popover"
+            role="dialog"
+            aria-label="Temporizador de sueño"
+          >
+            <div className="dock-sleep-options">
+              {[5, 15, 30, 45].map((min) => (
+                <button
+                  key={min}
+                  type="button"
+                  className="dock-sleep-option"
+                  onClick={() => {
+                    onSetSleepTimer?.(min * 60_000);
+                    setIsSleepMenuOpen(false);
+                  }}
+                >
+                  {min} min
+                </button>
+              ))}
+              <button
+                type="button"
+                className="dock-sleep-option"
+                aria-pressed={sleepAtChapterEnd}
+                onClick={() => {
+                  onSetSleepTimer?.({ chapterEnd: true });
+                  setIsSleepMenuOpen(false);
+                }}
+              >
+                Fin de capítulo
+              </button>
+              {sleepActive && (
+                <button
+                  type="button"
+                  className="dock-sleep-option"
+                  onClick={() => {
+                    onSetSleepTimer?.(null);
+                    setIsSleepMenuOpen(false);
+                  }}
+                >
+                  Quitar temporizador
+                </button>
+              )}
+            </div>
+            <label className="dock-sleep-toggle">
+              <input
+                type="checkbox"
+                checked={autoAdvanceChapter}
+                onChange={(e) => onToggleAutoAdvance?.(e.target.checked)}
+              />
+              <span>Continuar al siguiente capítulo</span>
+            </label>
+          </div>
+        )}
+
+        {chapterNotice && (
+          <div className="dock-chapter-notice" role="status">
+            {chapterNotice}
+          </div>
         )}
 
         {/* Popover de 1 toque para los 3 Modos Humanos */}
@@ -608,6 +732,25 @@ export default function SmartReaderDock({
               >
                 {`${ttsSnap.rate}×`}
               </button>
+
+              {/* Temporizador de sueño */}
+              {onSetSleepTimer ? (
+                <button
+                  type="button"
+                  className="dock-audio-pill-btn dock-pill-btn dock-sleep-btn"
+                  onClick={() => setIsSleepMenuOpen((v) => !v)}
+                  aria-label="Temporizador de sueño"
+                  aria-expanded={isSleepMenuOpen}
+                  title="Temporizador de sueño"
+                >
+                  <Icon name="moon" size={16} />
+                  {sleepRemainingMin != null ? (
+                    <span>{sleepRemainingMin} min</span>
+                  ) : sleepAtChapterEnd ? (
+                    <span>Fin cap.</span>
+                  ) : null}
+                </button>
+              ) : null}
 
               {/* Selector de Voz */}
               {onOpenVoiceSelector ? (
