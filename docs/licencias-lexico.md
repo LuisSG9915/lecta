@@ -18,7 +18,7 @@ Esto es análisis de cumplimiento, no asesoría legal.
 | UniMorph `spa` | listas dentro de simplemma | CC BY-SA 3.0 |
 | Wikinflection (Metheniti) | listas dentro de simplemma | CC BY 4.0 |
 | wordfreq (datos) | frecuencias zipf por lema | **CC BY-SA 4.0** |
-| Kaikki eswiktionary | acepciones (definiciones y ejemplos) `es` | **CC BY-SA 4.0 + GFDL** |
+| Kaikki eswiktionary | acepciones (definiciones y ejemplos) e IPA `es`/`en` | **CC BY-SA 4.0 + GFDL** |
 
 La lista `es` de simplemma combina todas las fuentes anteriores; las
 licencias exactas que empaqueta están en `licenses/` de su repo.
@@ -30,8 +30,10 @@ Wikinflection): simplemma publica una sola procedencia para todos sus
 diccionarios. Se aplica la misma interpretación conservadora que para
 `es`: la tabla derivada forma→lema se trata como *Derivative Database*
 bajo **ODbL 1.0** y las frecuencias zipf siguen siendo **CC BY-SA 4.0**
-(wordfreq). No hay acepciones `en` cargadas: la tabla `senses` sigue
-siendo solo `es` hasta que se decida una fuente de definiciones.
+(wordfreq). Las acepciones `en` se cargaron el 2026-11-03 (sección «Inglés»
+de kaikki eswiktionary, ~35 000 acepciones con glosas en español). La IPA
+del diccionario local descargable se deriva del mismo dump (sounds[].ipa),
+normalizada (sin barras ni corchetes) y solo para lemas con zipf ≥ 3.
 
 ## Qué nos obligan
 
@@ -78,7 +80,7 @@ siendo solo `es` hasta que se decida una fuente de definiciones.
    > de Robyn Speer (CC BY-SA 4.0; incluye Google Books Ngrams,
    > Wikipedia, ParaCrawl, OpenSubtitles y las listas SUBTLEX de
    > Marc Brysbaert et al.). Contiene información de «Lemmatization
-   > lists» disponible bajo ODbL 1.0. Las definiciones provienen del
+   > lists» disponible bajo ODbL 1.0. Las definiciones y la pronunciación IPA provienen del
    > Wikcionario en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Las
    > tablas derivadas se publican en [URL del repo].
 

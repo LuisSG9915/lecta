@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T18:49:29.464Z",
+  "generatedAt": "2026-11-17T22:33:35.035Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "f1a83779ea19789881dab3c4e53d4d16f947bda3",
+  "commit": "01ea5bb500f7ef8e5c07dcc66214c5338a31e446",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 0,
+    "unverified": 13,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 14,
+    "codeFail": 0,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 488,
+                "line": 494,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -518,18 +518,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/Reader.tsx:3883-3887 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "PASS",
+          "detail": "src/client/components/Reader.tsx:3899 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "asked": 3885,
-            "excerpt": [
-              "3883:         }}",
-              "3884:         onDiscardPrep={discardPrep}",
-              "3885:         initialStrategy={settings.strategyPreset}",
-              "3886:         onSelectStrategy={(preset) => selectStrategyPreset(preset)}",
-              "3887:         onMarkKnown={(lemma, beta) => {"
-            ]
+            "line": 3899,
+            "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
         {
@@ -545,10 +539,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:688 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:717 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 688,
+            "line": 717,
             "text": "{ award: false },"
           }
         },
@@ -1725,5 +1719,5 @@
       }
     }
   ],
-  "verdict": "FAIL"
+  "verdict": "PASS_WITH_UNVERIFIED"
 }
