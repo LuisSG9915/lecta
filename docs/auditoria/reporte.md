@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-16T14:53:12.206Z
+Generado: 2026-11-17T14:17:11.942Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `7d08204559b1722cd831c9595ac49a805c0efd6a`
+Commit: `aed6f53028570cb604d96cfea264449a82e4130c`
 Red: no (solo forma de las referencias)
 
-**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -53,8 +53,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/coverage.ts","line":257,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:214 coincide con /reencuentrosCount: reencounterLemmas\.size/
   - observado: `{"file":"src/client/lib/coverage.ts","line":214,"text":"reencuentrosCount: reencounterLemmas.size,"}`
-- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:365 coincide con /COVERAGE_FLUID_MIN/
-  - observado: `{"file":"src/client/lib/catalog.ts","line":365,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
+- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:364 coincide con /COVERAGE_FLUID_MIN/
+  - observado: `{"file":"src/client/lib/catalog.ts","line":364,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
 - ⚠️ **UNVERIFIED** · referencia schmitt2011: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ928357"}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -131,19 +131,19 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4563 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4563,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
+- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4561-4240 no contiene /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","asked":4563,"excerpt":[]}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:671 coincide con /award: false/

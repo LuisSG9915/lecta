@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-15T20:04:45.975Z. Commit: `f600cfb81481`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-17T03:12:29.402Z. Commit: `aed6f5302857`.
 
 ## La queja, en palabras del usuario
 
@@ -8,8 +8,8 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-15T20:04:45.975Z. Commit
 
 ## Veredicto
 
-- Afirmaciones confirmadas: **7/27** · parciales: **1** · movidas: **0** · correcciones en pie: **19** · regresiones: **0**
-- Código de salida esperado: `1` (el código se movió, el defecto ya no está o una corrección desapareció: revisar, no silenciar)
+- Afirmaciones confirmadas: **7/27** · parciales: **0** · movidas: **0** · correcciones en pie: **20** · regresiones: **0**
+- Código de salida esperado: `0` (defecto donde decimos y correcciones en su sitio)
 
 ## Afirmaciones
 
@@ -29,7 +29,7 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-15T20:04:45.975Z. Commit
 | `X2-los-modos-ya-estan-gateados-por-datos` | ✔ CONFIRMADO | contexto | Los modos declaran qué datos necesitan (isEligible) y la sesión lo respeta |
 | `X3-el-primer-paso-del-lector-ya-es-una-ficha` | ✔ CONFIRMADO | contexto | La ficha de primera exposición ya tiene UI y voz (learnKeep/learnKnown/learnEnrich) y puente a repaso |
 | `C11-cualquier-respuesta-cancela-la-ficha` | ✔ CORREGIDO | corregido | Una palabra con reps 0 solo sale de «Por aprender» con una decisión explícita: la cola la excluye |
-| `C12-modos-libres-tampoco-examinan` | ◐ PARCIAL | corregido | Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada |
+| `C12-modos-libres-tampoco-examinan` | ✔ CORREGIDO | corregido | Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada |
 | `C16-pista-respeta-ia-y-se-registra` | ✔ CORREGIDO | corregido | La pista del gato respeta «Usar IA», se descarta si la tarjeta cambió y el repaso registra cuántas se pidieron |
 | `C17-rescate-exige-datos-del-modo` | ✔ CORREGIDO | corregido | El rescate tras fallar solo baja a «elegir palabra» si hay oración; si no, al significado |
 | `C18-calificar-sobre-la-version-vigente` | ✔ CORREGIDO | corregido | Calificar guarda sobre la palabra vigente del estado, no sobre la copia de la cola, y el relleno de significados no pisa filas más nuevas |
@@ -113,7 +113,7 @@ _Por qué:_ Se quitó la sección «Por aprender · N» que vivía debajo del h�
 
 _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como prueba. El filtro real está en la carga y al borrar se quita la fila del estado.
 
-- ✔ src/client/lib/idb.ts:1755 ~ /return all\.filter\(\(word\) => !word\.deleted\);/
+- ✔ src/client/lib/idb.ts:1763 ~ /return all\.filter\(\(word\) => !word\.deleted\);/
   - `return all.filter((word) => !word.deleted);`
 - ✔ src/client/hooks/useNotebookData.ts:69 ~ /listSavedWords\(/
   - `void listSavedWords(undefined, scope)`
@@ -210,7 +210,7 @@ _Por qué:_ isLearnPending sigue excluyendo reps > 0, pero ahora reviewQueue exi
 - ✔ src/client/lib/learn.ts:105 ~ /if \(\(word\.card\?\.reps \?\? 0\) > 0\) return false;/
   - `if ((word.card?.reps ?? 0) > 0) return false;`
 
-### ◐ `C12-modos-libres-tampoco-examinan`
+### ✔ `C12-modos-libres-tampoco-examinan`
 
 **Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada**
 
@@ -218,7 +218,8 @@ _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca p
 
 - ✔ src/client/components/Vocabulary.tsx:266 ~ /reviewWords/
   - `const reviewWords = useMemo(`
-- ✘ ningún archivo del Cuaderno contiene /disabled=\{eligibleCount\.cloze === 0\}/
+- ✔ src/client/components/notebook/FreeModes.tsx:45 ~ /disabled=.*eligibleCount\.cloze === 0/
+  - `disabled={locked || eligibleCount.cloze === 0}`
 - ✔ src/client/components/notebook/FreeModes.tsx:137 ~ /Los modos libres usan palabras que ya viste/
   - `? "Los modos libres usan palabras que ya viste. Aprende primero las nuevas."`
 

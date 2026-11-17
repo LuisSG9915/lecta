@@ -398,7 +398,7 @@ export const CLAIMS = [
       {
         tipo: "presente",
         file: "@notebook",
-        expect: "disabled=\\{eligibleCount\\.cloze === 0\\}",
+        expect: "disabled=.*eligibleCount\\.cloze === 0",
       },
       {
         tipo: "presente",

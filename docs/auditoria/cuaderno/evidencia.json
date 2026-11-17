@@ -1,15 +1,15 @@
 {
   "tool": "audit-cuaderno",
   "version": 1,
-  "generado": "2026-11-15T20:04:45.975Z",
-  "commit": "f600cfb81481",
+  "generado": "2026-11-17T03:12:29.402Z",
+  "commit": "aed6f5302857",
   "queja": "no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar",
   "resumen": {
     "total": 27,
     "confirmadas": 7,
-    "parciales": 1,
+    "parciales": 0,
     "movidas": 0,
-    "corregidas": 19,
+    "corregidas": 20,
     "regresiones": 0
   },
   "claims": [
@@ -220,10 +220,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/lib/idb.ts:1755 ~ /return all\\.filter\\(\\(word\\) => !word\\.deleted\\);/",
+          "detalle": "src/client/lib/idb.ts:1763 ~ /return all\\.filter\\(\\(word\\) => !word\\.deleted\\);/",
           "evidencia": {
             "file": "src/client/lib/idb.ts",
-            "line": 1755,
+            "line": 1763,
             "text": "return all.filter((word) => !word.deleted);"
           }
         },
@@ -521,9 +521,13 @@
         },
         {
           "tipo": "presente",
-          "estado": "NO_COINCIDE",
-          "detalle": "ningún archivo del Cuaderno contiene /disabled=\\{eligibleCount\\.cloze === 0\\}/",
-          "evidencia": {}
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/notebook/FreeModes.tsx:45 ~ /disabled=.*eligibleCount\\.cloze === 0/",
+          "evidencia": {
+            "file": "src/client/components/notebook/FreeModes.tsx",
+            "line": 45,
+            "text": "disabled={locked || eligibleCount.cloze === 0}"
+          }
         },
         {
           "tipo": "presente",
@@ -536,8 +540,8 @@
           }
         }
       ],
-      "estado": "PARCIAL",
-      "coincidencias": "2/3"
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
     },
     {
       "id": "C16-pista-respeta-ia-y-se-registra",

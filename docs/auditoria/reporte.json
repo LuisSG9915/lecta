@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-16T14:53:12.206Z",
+  "generatedAt": "2026-11-17T14:17:11.942Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "7d08204559b1722cd831c9595ac49a805c0efd6a",
+  "commit": "aed6f53028570cb604d96cfea264449a82e4130c",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -187,10 +187,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:365 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:364 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 365,
+            "line": 364,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -518,12 +518,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4563 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "FAIL",
+          "detail": "src/client/components/Reader.tsx:4561-4240 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4563,
-            "text": "applyPreviewKnownSignal(currentLang, beta);"
+            "asked": 4563,
+            "excerpt": []
           }
         },
         {
@@ -1719,5 +1719,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }
