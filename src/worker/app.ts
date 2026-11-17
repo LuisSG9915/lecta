@@ -17,6 +17,7 @@ import {
 import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
 import { requireLectaPlus, type PlanVariables } from "./plan-middleware";
 import { billing } from "./billing";
+import { weeklyDigest } from "./weekly-digest";
 import { isStarterCoat } from "../shared/plan";
 import {
   CATALOG,
@@ -231,6 +232,7 @@ app.route("/", screen);
 app.route("/", screenDiscover);
 app.route("/", admin);
 app.route("/", billing);
+app.route("/", weeklyDigest);
 app.route("/k", kindleRoutes);
 app.get("/kindle", handleKindleLinkPage);
 app.get("/kindle/verify", handleKindleStatus);
