@@ -979,6 +979,74 @@ describe("ttsController", () => {
     expect(loadTtsSettings().autoAdvanceChapter).toBe(true);
   });
 
+  it("backgroundAudio: default apagado y se conserva al guardar", () => {
+    expect(loadTtsSettings().backgroundAudio).toBe(false);
+    saveTtsSettings({ backgroundAudio: true });
+    expect(loadTtsSettings().backgroundAudio).toBe(true);
+  });
+
+  describe("backgroundAudio y keepAlive del motor neural", () => {
+    const setup = async (background: boolean) => {
+      consent();
+      saveTtsSettings({ ...loadTtsSettings(), engine: "kitten-neural", backgroundAudio: background });
+      const fakeKitten = {
+        isSupported: () => true,
+        isReady: () => true,
+        synthesize: vi.fn(async () => ({ sampleRate: 24000, length: 100, duration: 0.2 }) as AudioBuffer),
+        play: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        setKeepAlive: vi.fn(),
+        isPlaying: () => true,
+        getModelProgress: () => ({ status: "ready" as const, percent: 100 }),
+      };
+      const { deps } = makeDeps([section("<p>Sentence zero. Sentence one.</p>")]);
+      deps.language = () => "en";
+      deps.kittenEngine = fakeKitten as unknown as KittenTtsEngine;
+      const ctl = createTtsController(deps);
+      ctl.start(CTX, 0);
+      await flush();
+      return { ctl, fakeKitten };
+    };
+
+    it("con el ajuste activo activa keepAlive al hablar y lo apaga al pausar y al terminar", async () => {
+      const { ctl, fakeKitten } = await setup(true);
+      expect(ctl.canPlayInBackground?.()).toBe(true);
+      expect(fakeKitten.setKeepAlive).toHaveBeenCalledWith(true);
+      ctl.pause("user");
+      expect(fakeKitten.setKeepAlive).toHaveBeenLastCalledWith(false);
+      ctl.resume();
+      await flush();
+      expect(fakeKitten.setKeepAlive).toHaveBeenLastCalledWith(true);
+      ctl.stop("user");
+      expect(fakeKitten.setKeepAlive).toHaveBeenLastCalledWith(false);
+    });
+
+    it("con el ajuste apagado nunca activa keepAlive", async () => {
+      const { ctl, fakeKitten } = await setup(false);
+      expect(ctl.canPlayInBackground?.()).toBe(false);
+      expect(fakeKitten.setKeepAlive).not.toHaveBeenCalledWith(true);
+    });
+
+    it("motor: con keepAlive no libera el worker al ocultar ni por inactividad", () => {
+      const engine = new KittenTtsEngine();
+      const releaseSpy = vi.spyOn(engine, "releaseWorkerMemory");
+      engine.setKeepAlive(true);
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      (engine as unknown as { scheduleIdleRelease: () => void }).scheduleIdleRelease();
+      vi.advanceTimersByTime(KITTEN_IDLE_TIMEOUT_MS + 100);
+      expect(releaseSpy).not.toHaveBeenCalled();
+      // Apagarlo reprograma la liberación por inactividad.
+      engine.setKeepAlive(false);
+      vi.advanceTimersByTime(KITTEN_IDLE_TIMEOUT_MS + 100);
+      expect(releaseSpy).toHaveBeenCalled();
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      engine.dispose();
+    });
+  });
+
   it("pausa y reanuda emitiendo eventos; el heartbeat alimenta actividad", async () => {
     consent();
     const { deps, events, speakers, activities } = makeDeps([

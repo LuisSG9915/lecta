@@ -25,6 +25,8 @@ export type TtsSettings = {
   voiceURI?: string | null;
   // Al terminar un capítulo, seguir leyendo el siguiente.
   autoAdvanceChapter: boolean;
+  // Seguir sonando con la pantalla apagada (solo voz neural; opt-in).
+  backgroundAudio: boolean;
 };
 
 export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
@@ -36,6 +38,7 @@ export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
   kittenVoice: "expr-voice-2-f",
   voiceURI: null,
   autoAdvanceChapter: true,
+  backgroundAudio: false,
 };
 
 const VALID_ENGINES: readonly TtsEngineMode[] = ["auto", "kitten-neural", "browser"];
@@ -61,6 +64,7 @@ const parse = (raw: string | null): TtsSettings => {
       kittenVoice,
       voiceURI: typeof v.voiceURI === "string" ? v.voiceURI : null,
       autoAdvanceChapter: v.autoAdvanceChapter !== false,
+      backgroundAudio: v.backgroundAudio === true,
     };
   } catch {
     return TTS_SETTINGS_DEFAULTS;

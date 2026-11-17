@@ -186,6 +186,8 @@ export class KittenTtsEngine {
 
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private activeRequests = 0;
+  // Sesión neural sonando en segundo plano: no liberar el worker al ocultar ni por inactividad.
+  private keepAlive = false;
   private unbindVisibility: (() => void) | null = null;
 
   constructor() {
@@ -205,13 +207,26 @@ export class KittenTtsEngine {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
-    if (this.activeRequests > 0) return;
+    if (this.activeRequests > 0 || this.keepAlive) return;
 
     this.idleTimer = setTimeout(() => {
-      if (this.activeRequests === 0) {
+      if (this.activeRequests === 0 && !this.keepAlive) {
         this.releaseWorkerMemory();
       }
     }, KITTEN_IDLE_TIMEOUT_MS);
+  }
+
+  public setKeepAlive(on: boolean): void {
+    if (this.keepAlive === on) return;
+    this.keepAlive = on;
+    if (on) {
+      if (this.idleTimer) {
+        clearTimeout(this.idleTimer);
+        this.idleTimer = null;
+      }
+    } else {
+      this.scheduleIdleRelease();
+    }
   }
 
   private attachVisibilityGuard(): void {
@@ -219,7 +234,7 @@ export class KittenTtsEngine {
 
     const handleVisibility = () => {
       // En iOS Safari / Android Chrome, liberar el heap WASM/ONNX si la app pasa a background en pausa
-      if (document.visibilityState === 'hidden' && this.activeRequests === 0) {
+      if (document.visibilityState === 'hidden' && this.activeRequests === 0 && !this.keepAlive) {
         this.releaseWorkerMemory();
       }
     };

@@ -137,6 +137,9 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   const [ttsDownloadProgress, setTtsDownloadProgress] = useState<number | null>(null);
   const [isKittenModelDownloaded, setIsKittenModelDownloaded] = useState(false);
   const [sleepTimerActive, setSleepTimerActive] = useState(false);
+  const [backgroundAudio, setBackgroundAudioState] = useState<boolean>(
+    () => loadTtsSettings().backgroundAudio,
+  );
 
   // Controlador simplificado de audio
   const audioControllerRef = useRef<TtsAudioController | null>(null);
@@ -321,7 +324,8 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     const ctl = ttsRef.current;
     if (!ctl) return;
     if (ttsSnap.status !== "speaking" && ttsSnap.status !== "preparing") return;
-    if (docHidden && !sleepTimerActive && ttsSnap.sleepTimerEndsAt == null && !ttsSnap.sleepAtChapterEnd) ctl.pause("visibility");
+    const keepsPlayingHidden = ctl.canPlayInBackground?.() ?? false;
+    if (docHidden && !sleepTimerActive && ttsSnap.sleepTimerEndsAt == null && !ttsSnap.sleepAtChapterEnd && !keepsPlayingHidden) ctl.pause("visibility");
     else if (selection) ctl.pause("word_lookup");
     else if (sheet || panelsOpen || prep || companion?.open || companion?.modalOpen) ctl.pause("panel_opened");
     else if (fatigueNotice) ctl.pause("fatigue");
@@ -331,6 +335,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     ttsSnap.sleepAtChapterEnd,
     docHidden,
     sleepTimerActive,
+    backgroundAudio,
     selection,
     sheet,
     panelsOpen,
@@ -428,6 +433,11 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     setAutoAdvanceChapterState(value);
     ttsRef.current?.setAutoAdvanceChapter?.(value);
     if (!ttsRef.current) saveTtsSettings({ autoAdvanceChapter: value });
+  }, []);
+  const setBackgroundAudio = useCallback((value: boolean) => {
+    setBackgroundAudioState(value);
+    ttsRef.current?.setBackgroundAudio?.(value);
+    if (!ttsRef.current) saveTtsSettings({ backgroundAudio: value });
   }, []);
 
   const cycleSpeed = useCallback(() => {
@@ -633,6 +643,8 @@ return {
     setSleepTimer,
     autoAdvanceChapter,
     setAutoAdvanceChapter,
+    backgroundAudio,
+    setBackgroundAudio,
 
     // Standalone hooks.test.ts integration
     ttsStatus: audioStatus,

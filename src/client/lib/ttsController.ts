@@ -100,6 +100,9 @@ export type TtsController = {
   start(ctx: TtsTargetContext, startIndex: number, options?: { sleepTimerMs?: number }): void;
   setSleepTimer?(opt: number | { chapterEnd: true } | null): void;
   setAutoAdvanceChapter?(value: boolean): void;
+  setBackgroundAudio?(value: boolean): void;
+  // true si, con el ajuste activo, la sesión puede seguir sonando oculta (solo voz neural).
+  canPlayInBackground?(): boolean;
   getSleepTimerRemainingMs?(): number | null;
   pause(reason: TtsPauseReason): void;
   resume(): void;
@@ -187,6 +190,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   };
 
   const shouldUseKitten = (): boolean => neuralEngineKind() !== null;
+
+  const syncKeepAlive = (on: boolean) => {
+    (deps.kittenEngine ?? kittenTtsEngine).setKeepAlive?.(on);
+  };
 
   /** Voz neural del motor activo (Piper tiene una sola voz es_MX). */
   const neuralVoiceId = (kind: TtsEngineKind): string =>
@@ -369,6 +376,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     if (neuralKind) {
       const engine = deps.kittenEngine ?? kittenTtsEngine;
       const neuralVoice = neuralVoiceId(neuralKind);
+      syncKeepAlive(settings.backgroundAudio);
 
       const preSynthesized = lookaheadBuffers.get(cursor);
       if (preSynthesized) {
@@ -534,6 +542,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const finish = (reason: TtsEndReason) => {
     sleepTimerDeadline = 0;
     sleepAtChapterEnd = false;
+    syncKeepAlive(false);
     if (snap.status === "idle" || snap.status === "stopping") return;
     speakGen += 1;
     publish({ status: "stopping" });
@@ -641,6 +650,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       if (snap.status !== "speaking") return;
       speakGen += 1;
       if (reason === "word_lookup") lookupCount += 1;
+      syncKeepAlive(false);
       if (shouldUseKitten()) {
         (deps.kittenEngine ?? kittenTtsEngine).pause();
       } else {
@@ -680,6 +690,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       if (shouldUseKitten()) {
         const engine = deps.kittenEngine ?? kittenTtsEngine;
         if (engine.isPlaying()) {
+          syncKeepAlive(settings.backgroundAudio);
           engine.resume();
         } else {
           speakCurrent();
@@ -836,6 +847,16 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     setAutoAdvanceChapter(value: boolean) {
       settings = { ...settings, autoAdvanceChapter: value };
       saveTtsSettings(settings);
+    },
+
+    setBackgroundAudio(value: boolean) {
+      settings = { ...settings, backgroundAudio: value };
+      saveTtsSettings(settings);
+      if (snap.status === "speaking") syncKeepAlive(value && shouldUseKitten());
+    },
+
+    canPlayInBackground() {
+      return settings.backgroundAudio && shouldUseKitten();
     },
 
     getSleepTimerRemainingMs() {
