@@ -273,7 +273,16 @@ export function createSpeaker(
     const selection = resolveVoice(synth().getVoices(), targetLanguage, options?.voiceURI);
     if (!voice) voice = selection.voice;
     utterance.lang = voice?.lang ?? selection.defaultLangTag;
-    if (voice) utterance.voice = voice;
+    // Algunos motores (y el arnés e2e, que simula la voz con un objeto plano)
+    // rechazan una voz que no es una SpeechSynthesisVoice genuina: sin voz
+    // explícita basta el lang ya asignado.
+    if (voice) {
+      try {
+        utterance.voice = voice;
+      } catch {
+        /* voz no asignable: se habla con utterance.lang */
+      }
+    }
     utterance.rate = rate;
     utterance.volume = 1;
     utterance.pitch = 1;

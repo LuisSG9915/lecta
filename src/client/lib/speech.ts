@@ -85,7 +85,14 @@ export async function speakWord(
   return new Promise<void>((resolve) => {
     const utterance = new SpeechSynthesisUtterance(trimmed);
     utterance.lang = voice?.lang ?? (isEn ? "en-US" : defaultLangTag);
-    if (voice) utterance.voice = voice;
+    // Voz no asignable en algunos motores (o el arnés e2e): basta el lang.
+    if (voice) {
+      try {
+        utterance.voice = voice;
+      } catch {
+        /* se habla con utterance.lang */
+      }
+    }
     // Tasa ligeramente reducida para dicción clara en aprendizaje de idiomas
     utterance.rate = 0.9;
     utterance.volume = 1;
