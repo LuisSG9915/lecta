@@ -218,6 +218,7 @@ import { useReaderScrollRestoration } from "../hooks/useReaderScrollRestoration"
 import { useReaderCapturePositionRef } from "../hooks/useReaderCapturePositionRef";
 import { useReaderApplyCachedPredictionRef } from "../hooks/useReaderApplyCachedPredictionRef";
 import { useReaderZipfForLemmaRef } from "../hooks/useReaderZipfForLemmaRef";
+import { useReaderAnchoring } from "../hooks/useReaderAnchoring";
 import { useReaderCheckpoint } from "../hooks/useReaderCheckpoint";
 import { useReaderLongPressHint } from "../hooks/useReaderLongPressHint";
 import { useReaderRecap } from "../hooks/useReaderRecap";
@@ -535,16 +536,8 @@ export default function Reader({
   // Espejo del estado de montaje para el controlador TTS (la sección
   // «terminó de pintar» se consulta al llegar el render, no al decidir).
   const stateRef = useRef<ReaderState>("idle");
-  const pageAnchorRef = useRef<string | null>(null);
-  // Destino pendiente de una carga de sección: lo resuelve el recuento
-  // de páginas, que corre cuando los estilos de columna ya aplicaron.
-  const pendingPageRef = useRef<{
-    ratio?: number;
-    anchor?: string;
-    snippet?: string;
-    fragment?: string;
-    at?: "end";
-  } | null>(null);
+  // Refs de anclaje centralizados en useReaderAnchoring (R1 PR-A).
+  const { pageAnchorRef, pendingPageRef } = useReaderAnchoring();
   // Intención del último salto — la preparación (T19) la consulta al
   // decidir qué interponer.
   const navIntentRef = useRef<NavIntent>("initial");
@@ -1608,6 +1601,7 @@ export default function Reader({
     const container = containerRef.current;
     if (updateAnchor && metrics && container)
       pageAnchorRef.current = anchorAtPage(container, metrics, clamped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cierra la medición de velocidad de la sección anterior: solo cuenta
