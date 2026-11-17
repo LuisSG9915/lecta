@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 type Ref<T> = { current: T };
 
-type Deps<S> = {
+type Deps<S, T> = {
   layout: string;
   layoutRef: Ref<string>;
   page: number;
@@ -12,10 +12,12 @@ type Deps<S> = {
   pageEnteredAtRef: Ref<number>;
   settings: S;
   settingsRef: Ref<S | null>;
+  currentSectionTargets: T[];
+  currentSectionTargetsRef: Ref<T[]>;
 };
 
-export function useReaderRefMirrors<S>(deps: Deps<S>): void {
-  const { layout, layoutRef, page, sectionIndex, pageEnteredAtRef, settings, settingsRef } = deps;
+export function useReaderRefMirrors<S, T>(deps: Deps<S, T>): void {
+  const { layout, layoutRef, page, sectionIndex, pageEnteredAtRef, settings, settingsRef, currentSectionTargets, currentSectionTargetsRef } = deps;
 
   useEffect(() => {
     layoutRef.current = layout;
@@ -28,4 +30,8 @@ export function useReaderRefMirrors<S>(deps: Deps<S>): void {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings, settingsRef]);
+
+  useEffect(() => {
+    currentSectionTargetsRef.current = currentSectionTargets;
+  }, [currentSectionTargets, currentSectionTargetsRef]);
 }

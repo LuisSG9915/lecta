@@ -1,4 +1,3 @@
-import { updateAppBadge, scheduleHabitReminder } from "../lib/localNotificationScheduler";
 import "../styles/reader.css";
 import {
   useCallback,
@@ -210,6 +209,15 @@ import { useReaderPhrases } from "../hooks/useReaderPhrases";
 import { useReaderOverlayWiring } from "../hooks/useReaderOverlayWiring";
 import { useReaderToast } from "../hooks/useReaderToast";
 import { useReaderTtsStopOnNav } from "../hooks/useReaderTtsStopOnNav";
+import { useReaderQuoteOverlay } from "../hooks/useReaderQuoteOverlay";
+import { useReaderVisibility } from "../hooks/useReaderVisibility";
+import { useReaderAppBadge } from "../hooks/useReaderAppBadge";
+import { useReaderInitialWord } from "../hooks/useReaderInitialWord";
+import { useReaderReducedMotion } from "../hooks/useReaderReducedMotion";
+import { useReaderScrollRestoration } from "../hooks/useReaderScrollRestoration";
+import { useReaderCapturePositionRef } from "../hooks/useReaderCapturePositionRef";
+import { useReaderApplyCachedPredictionRef } from "../hooks/useReaderApplyCachedPredictionRef";
+import { useReaderZipfForLemmaRef } from "../hooks/useReaderZipfForLemmaRef";
 import { useReaderCheckpoint } from "../hooks/useReaderCheckpoint";
 import { useReaderLongPressHint } from "../hooks/useReaderLongPressHint";
 import { useReaderRecap } from "../hooks/useReaderRecap";
@@ -729,13 +737,8 @@ export default function Reader({
     },
   });
 
-  useEffect(() => {
-    if (readerInitialWord && state === "ready") {
-      queueMicrotask(() => {
-        setSelection({ word: readerInitialWord });
-      });
-    }
-  }, [readerInitialWord, state]);
+  // Palabra inicial (deep link) — extraída a useReaderInitialWord (B7).
+  useReaderInitialWord({ readerInitialWord, state, setSelection });
 
   // La palabra consultada queda resaltada mientras su ficha está
   // abierta: el range del toque se registra con la Custom Highlight
@@ -762,12 +765,8 @@ export default function Reader({
     }
   }, [selection]);
 
-  useEffect(() => {
-    void updateAppBadge(false);
-    return () => {
-      void scheduleHabitReminder();
-    };
-  }, []);
+  // Limpieza del badge de la app — extraído a useReaderAppBadge (B7).
+  useReaderAppBadge();
   // Índice de locuciones (asset estático): se pide al montar el
   // lector para que el PRIMER toque ya lo tenga en memoria — sin
   // red ni IA en el camino de la consulta.
@@ -974,9 +973,6 @@ export default function Reader({
     return catalog.targets.filter((t: ChapterTarget) => t.sectionIndex === sectionIndex);
   }, [catalog, sectionIndex]);
   const currentSectionTargetsRef = useRef<ChapterTarget[]>([]);
-  useEffect(() => {
-    currentSectionTargetsRef.current = currentSectionTargets;
-  }, [currentSectionTargets]);
 
   const [fragmentPageMap, setFragmentPageMap] = useState<Map<string, number> | null>(null);
 
@@ -1118,19 +1114,8 @@ export default function Reader({
     [passages],
   );
 
-  useEffect(() => {
-    if (quoteCard) {
-      if (!quoteReleaseRef.current) {
-        quoteReleaseRef.current = pushOverlay(() => setQuoteCard(null));
-      }
-    } else {
-      if (quoteReleaseRef.current) {
-        const handle = quoteReleaseRef.current;
-        quoteReleaseRef.current = null;
-        handle.release();
-      }
-    }
-  }, [quoteCard, setQuoteCard]);
+  // Cableado del overlay de cita (quoteCard) — extraído a useReaderQuoteOverlay (B7).
+  useReaderQuoteOverlay({ quoteCard, setQuoteCard, quoteReleaseRef });
   // Gato acompañante en el lector: el aspecto (etapa, accesorios,
   // nombre, presencia) viene del CompanionProvider único — aquí solo
   // queda el estado visible de la máquina local de lectura.
@@ -1163,23 +1148,13 @@ export default function Reader({
       return false;
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   });
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
-      return;
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const onChange = () => setSystemReducedMotion(query.matches);
-    query.addEventListener?.("change", onChange);
-    return () => query.removeEventListener?.("change", onChange);
-  }, []);
+  // Escucha de prefers-reduced-motion — extraído a useReaderReducedMotion (B7).
+  useReaderReducedMotion({ setSystemReducedMotion });
   const thermalSaver = settings.thermalSaver || systemReducedMotion;
 
   const [docHidden, setDocHidden] = useState(() => document.hidden);
-  useEffect(() => {
-    const onVisibility = () => setDocHidden(document.hidden);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
+  // Espejo de document.hidden — extraído a useReaderVisibility (B7).
+  useReaderVisibility({ setDocHidden });
 
   // Precarga del índice de locuciones: asset estático, una vez por
   // montaje del lector; si no estaba listo para el primer toque el
@@ -1338,16 +1313,8 @@ export default function Reader({
   // estantería, en 0) *antes* de despachar popstate: el cierre medía el tope
   // del capítulo y lo guardaba encima del punto leído. Con la restauración
   // manual el navegador no toca el scroll y el cierre guarda lo que había.
-  useEffect(() => {
-    if (typeof history === "undefined" || !("scrollRestoration" in history)) {
-      return;
-    }
-    const previous = history.scrollRestoration;
-    history.scrollRestoration = "manual";
-    return () => {
-      history.scrollRestoration = previous;
-    };
-  }, []);
+  // Restauración manual del scroll — extraída a useReaderScrollRestoration (B7).
+  useReaderScrollRestoration();
 
   // Quien cierra el libro (App) puede pedir el guardado antes de
   // desmontar. Se guarda la última posición conocida y no una medición
@@ -1600,9 +1567,9 @@ export default function Reader({
     }
     return pos;
   }, [bookHash, currentRatioNow, latestPositionRef]);
-  useEffect(() => {
-    capturePositionRef.current = capturePosition;
-  }, [capturePosition]);
+  // Espejo de capturePosition en ref estable — extraído a
+  // useReaderCapturePositionRef (B7).
+  useReaderCapturePositionRef({ capturePosition, capturePositionRef });
 
   // Mide la caja útil y reparte las columnas. La medida (ch) se toma
   // de una sonda real para respetar la fuente elegida. El recuento de
@@ -1721,9 +1688,9 @@ export default function Reader({
     },
     [classifyCached, setPrediction, bookHash],
   );
-  useEffect(() => {
-    applyCachedPredictionRef.current = applyCachedPrediction;
-  }, [applyCachedPrediction]);
+  // Espejo de applyCachedPrediction en ref estable — extraído a
+  // useReaderApplyCachedPredictionRef (B7).
+  useReaderApplyCachedPredictionRef({ applyCachedPrediction, applyCachedPredictionRef });
 
   // Tras una predicción con huecos (formas sin ficha o predichas sin
   // acepciones), la IA define lo que falta sola: una vez por destino,
@@ -1810,9 +1777,9 @@ export default function Reader({
     },
     [analysisFor, language],
   );
-  useEffect(() => {
-    zipfForLemmaRef.current = zipfForLemma;
-  }, [zipfForLemma]);
+  // Espejo de zipfForLemma en ref estable — extraído a
+  // useReaderZipfForLemmaRef (B7).
+  useReaderZipfForLemmaRef({ zipfForLemma, zipfForLemmaRef });
   // Zipf de una forma tal como aparece en el texto: la ficha la usa como
   // dificultad de la señal de consulta (sin ella, β salía del banco CAT,
   // que casi nunca tiene la palabra).
@@ -2728,6 +2695,8 @@ export default function Reader({
     pageEnteredAtRef,
     settings,
     settingsRef,
+    currentSectionTargets,
+    currentSectionTargetsRef,
   });
 
 
