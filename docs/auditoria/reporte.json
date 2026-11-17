@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T16:58:12.763Z",
+  "generatedAt": "2026-11-17T17:58:23.845Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "5da5727695302a48bf5411d471b879da0b8d18ac",
+  "commit": "281ee2d1847d46fa3e2e05acb66f3a81b4b12bc6",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -538,12 +538,44 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:671 coincide con /award: false/",
+          "status": "FAIL",
+          "detail": "src/client/components/WordPanel.tsx:643-673 no contiene /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 671,
-            "text": "{ award: false },"
+            "asked": 658,
+            "excerpt": [
+              "643:         setTimeout(() => setQuickNotice(null), 2500);",
+              "644:         return saved;",
+              "645:       } catch {",
+              "646:         savedRef.current = false;",
+              "647:         setIsSaved(false);",
+              "648:         setSprouted(false);",
+              "649:         return null;",
+              "650:       } finally {",
+              "651:         saveInFlightRef.current = null;",
+              "652:         setSaving(false);",
+              "653:       }",
+              "654:     })();",
+              "655: ",
+              "656:     saveInFlightRef.current = work;",
+              "657:     await work;",
+              "658:   };",
+              "659: ",
+              "660:   const handleQuickKnown = async () => {",
+              "661:     // Una palabra del Cuaderno no se declara «conocida» encima de su",
+              "662:     // tarjeta: eso lo decide el repaso.",
+              "663:     if (saving || savedRef.current) return;",
+              "664:     setSaving(true);",
+              "665:     triggerHaptic(10);",
+              "666:     try {",
+              "667:       const scope = captureDbScope();",
+              "668:       const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();",
+              "669:       const row = await saveKnowledge(",
+              "670:         {",
+              "671:           language: effectiveLang,",
+              "672:           lemma,",
+              "673:           known: true,"
+            ]
           }
         },
         {
@@ -1719,5 +1751,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

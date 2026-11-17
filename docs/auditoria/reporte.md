@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-17T16:58:12.763Z
+Generado: 2026-11-17T17:58:23.845Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `5da5727695302a48bf5411d471b879da0b8d18ac`
+Commit: `281ee2d1847d46fa3e2e05acb66f3a81b4b12bc6`
 Red: no (solo forma de las referencias)
 
-**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -131,11 +131,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
@@ -146,8 +146,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/components/Reader.tsx","line":3879,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:671 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":671,"text":"{ award: false },"}`
+- ❌ **FAIL** · code-anchor: src/client/components/WordPanel.tsx:643-673 no contiene /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","asked":658,"excerpt":["643:         setTimeout(() => setQuickNotice(null), 2500);","644:         return saved;","645:       } catch {","646:         savedRef.current = false;","647:         setIsSaved(false);","648:         setSprouted(false);","649:         return null;","650:       } finally {","651:         saveInFlightRef.current = null;","652:         setSaving(false);","653:       }","654:     })();","655: ","656:     saveI…`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:53 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":53,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
