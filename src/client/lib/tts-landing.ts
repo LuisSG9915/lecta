@@ -6,6 +6,8 @@ export interface TtsLandingPosition {
   sentenceIndex: number;
   paragraphText: string;
   anchor: string;
+  /** Título del capítulo que se escuchaba (entradas viejas no lo traen). */
+  chapterLabel?: string | null;
   updatedAt: number;
 }
 

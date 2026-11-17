@@ -34,7 +34,8 @@ import {
   noteTtsProgrammaticScroll,
   withTtsProgrammaticNav,
 } from '../lib/ttsGuards';
-import { sentenceIndexForAnchor } from '../lib/ttsSentences';
+import { sentenceIndexForAnchor, sentenceIndexForLanding } from '../lib/ttsSentences';
+import { loadTtsLandingPosition, type TtsLandingPosition } from '../lib/tts-landing';
 import { anchorAtViewTop } from '../lib/reading-location';
 import { pageOfElement, type PageLayout } from '../lib/pagination';
 import type { ChapterCatalog } from '../lib/chapters';
@@ -78,6 +79,8 @@ export interface UseReaderTtsParams {
   catalogRef?: MutableRefObject<ChapterCatalog | null>;
   metricsRef?: MutableRefObject<PageLayout | null>;
   layoutRef?: MutableRefObject<"scroll" | "pages">;
+  /** «Continuar escuchando»: arranca el audio en el landing guardado. */
+  pendingAudioResume?: { key: number; sectionIndex: number } | null;
   latestPositionRef?: MutableRefObject<SavedBookPosition | null>;
   companion?: {
     open: boolean;
@@ -118,6 +121,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     metricsRef,
     layoutRef,
     latestPositionRef,
+    pendingAudioResume = null,
     companion,
     docHidden = false,
     selection = null,
@@ -140,6 +144,9 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   const ttsRef = useRef<TtsController | null>(null);
   const [ttsSnap, setTtsSnap] = useState<TtsSnapshot>(TTS_IDLE);
   const [ttsConsentOpen, setTtsConsentOpen] = useState(false);
+  // Landing de «Continuar escuchando»: lo consume una sola vez resolveStartIndex.
+  const landingStartRef = useRef<TtsLandingPosition | null>(null);
+  const appliedAudioResumeKeyRef = useRef(0);
   const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
   const [ttsDownloadProgress, setTtsDownloadProgress] = useState<number | null>(null);
   const [isKittenModelDownloaded, setIsKittenModelDownloaded] = useState(false);
@@ -256,8 +263,14 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
         if (reason === "error") ttsFns.current.onStatus("No se pudo leer en voz alta.");
       },
       resolveStartIndex: (items) => {
-        const saved = latestPositionRef?.current;
+        const landing = landingStartRef.current;
+        landingStartRef.current = null;
         const currentIdx = sectionIndexRef?.current ?? 0;
+        if (landing && landing.sectionIndex === currentIdx) {
+          const at = sentenceIndexForLanding(items, landing);
+          if (at >= 0) return at;
+        }
+        const saved = latestPositionRef?.current;
         const anchor =
           saved?.sectionIndex === currentIdx && saved.anchor
             ? saved.anchor
@@ -385,6 +398,16 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
       0,
     );
   }, [state, closeSheet, sectionIndexRef, catalogRef, bookHash]);
+
+  useEffect(() => {
+    if (!pendingAudioResume || pendingAudioResume.key === appliedAudioResumeKeyRef.current) return;
+    if (state !== "ready" || sectionIndex !== pendingAudioResume.sectionIndex) return;
+    if (!ttsRef.current || ttsSnap.status !== "idle") return;
+    appliedAudioResumeKeyRef.current = pendingAudioResume.key;
+    landingStartRef.current = loadTtsLandingPosition(bookHash);
+    // El botón de la estantería exige consentimiento previo.
+    startTts();
+  }, [pendingAudioResume, state, sectionIndex, ttsSnap.status, bookHash, startTts]);
 
   const onTtsRequest = useCallback(() => {
     const ctl = ttsRef.current;

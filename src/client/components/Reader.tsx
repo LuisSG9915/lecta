@@ -321,6 +321,7 @@ type ReaderProps = {
     ratio?: number;
     anchor?: string;
     anchorOffset?: number;
+    resumeAudio?: boolean;
   } | null;
   // El cierre del libro lo decide quien monta el lector (App), y «atrás»
   // del navegador cierra sin pasar por `onBack`. Este hueco deja que el
@@ -1988,6 +1989,9 @@ export default function Reader({
     sectionIndexRef,
     stateRef,
     containerRef,
+    pendingAudioResume: resumeRequest?.resumeAudio
+      ? { key: resumeRequest.key, sectionIndex: resumeRequest.sectionIndex }
+      : null,
     catalogRef,
     metricsRef,
     layoutRef,

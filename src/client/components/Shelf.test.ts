@@ -3,6 +3,8 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Shelf, { type ShelfItem } from "./Shelf";
+import { clearTtsLandingPosition, saveTtsLandingPosition } from "../lib/tts-landing";
+import { consentTts } from "../lib/ttsSettings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -730,5 +732,64 @@ describe("Shelf - Libros gratuitos", () => {
     // Borrar el campo devuelve Gutenberg a los más descargados.
     await act(async () => typeInto(input, ""));
     expect(gutenberg()?.getAttribute("data-query")).toBe("");
+  });
+});
+
+describe("Shelf - Continuar escuchando", () => {
+  const mount = async (onResumeAudio?: (b: ShelfItem) => void) => {
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: mockLibrary,
+          checking: false,
+          onOpen: vi.fn(),
+          onResumeAudio,
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+          onGetCatalogBook: vi.fn(),
+          onDownloadBook: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+  };
+  const landing = (chapterLabel?: string) =>
+    saveTtsLandingPosition({
+      bookHash: "h-test-1",
+      sectionIndex: 4,
+      sentenceIndex: 2,
+      paragraphText: "Una frase.",
+      anchor: "Una frase.",
+      chapterLabel,
+      updatedAt: 1,
+    });
+
+  afterEach(() => {
+    clearTtsLandingPosition("h-test-1");
+    localStorage.clear();
+  });
+
+  it("sale con landing y consentimiento, con el capítulo", async () => {
+    consentTts();
+    landing("Cap. 3");
+    const onResumeAudio = vi.fn();
+    await mount(onResumeAudio);
+    const btn = host.querySelector(".btn--resume-audio") as HTMLButtonElement;
+    expect(btn.textContent).toBe("Continuar escuchando · Cap. 3");
+    await act(async () => btn.click());
+    expect(onResumeAudio).toHaveBeenCalledWith(expect.objectContaining({ hash: "h-test-1" }));
+  });
+
+  it("no sale sin consentimiento ni sin landing", async () => {
+    landing("Cap. 3");
+    await mount(vi.fn());
+    expect(host.querySelector(".btn--resume-audio")).toBeNull();
+    act(() => root.unmount());
+    root = createRoot(host);
+    clearTtsLandingPosition("h-test-1");
+    consentTts();
+    await mount(vi.fn());
+    expect(host.querySelector(".btn--resume-audio")).toBeNull();
   });
 });

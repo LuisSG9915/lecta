@@ -77,6 +77,9 @@ import { useCompanion } from "./CompanionProvider";
 import CoatChoice, { needsCoatChoice } from "./CoatChoice";
 import { useUserPlan } from "../lib/account-plan";
 import Sheet from "./Sheet";
+import { loadTtsLandingPosition } from "../lib/tts-landing";
+import { loadTtsSettings } from "../lib/ttsSettings";
+import { startSilentKeepAlive } from "../lib/ttsMediaSession";
 import { SUBTITLE_ZONE_ENABLED } from "../lib/screen-zone";
 
 // Ítem de la estantería: lo que hace falta para dibujar la tarjeta,
@@ -135,6 +138,8 @@ export type ShelfProps = {
   library?: ShelfItem[];
   checking?: boolean;
   onOpen?: (book: ShelfItem) => void;
+  /** «Continuar escuchando»: abre el libro y retoma el audio donde se dejó. */
+  onResumeAudio?: (book: ShelfItem) => void;
   onRemove?: (hash: string) => void;
   onAdd?: (file: File) => void;
   onLibraryChange?: () => void;
@@ -222,6 +227,7 @@ export default function Shelf({
   onStartCalibration,
   onBooksChange,
   onOpen = () => {},
+  onResumeAudio,
   onRemove = () => {},
   onAdd = () => {},
   onLibraryChange = () => {},
@@ -598,6 +604,14 @@ export default function Shelf({
     const [freshest] = [...positions].sort((a, b) => b.updatedAt - a.updatedAt);
     return freshest ? library.find((book) => book.hash === freshest.bookHash) : undefined;
   }, [latestHash, library, positions]);
+
+  // Solo con consentimiento de voz y un punto de escucha guardado.
+  const listenLanding = useMemo(() => {
+    if (!current || !onResumeAudio || current.paperOnly || current.remoteOnly) return null;
+    const settings = loadTtsSettings();
+    if (settings.consentedAt === null) return null;
+    return loadTtsLandingPosition(current.hash);
+  }, [current, onResumeAudio]);
 
   const [habitReminder, setHabitReminder] = useState<NotificationPayload | null>(null);
 
@@ -1238,6 +1252,22 @@ export default function Shelf({
                     >
                       Continuar leyendo · {activeModeLabel}
                     </button>
+                    {listenLanding && onResumeAudio ? (
+                      <button
+                        type="button"
+                        className="btn btn--quiet btn--resume-audio"
+                        onClick={() => {
+                          triggerHaptic(10);
+                          // Dentro del gesto: el autoplay no deja hacerlo después.
+                          if (loadTtsSettings().backgroundAudio) startSilentKeepAlive();
+                          onResumeAudio(current);
+                        }}
+                      >
+                        {listenLanding.chapterLabel
+                          ? `Continuar escuchando · ${listenLanding.chapterLabel}`
+                          : "Continuar escuchando"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="btn btn--quiet btn--pre-train"

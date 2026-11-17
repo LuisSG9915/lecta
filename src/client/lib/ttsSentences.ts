@@ -110,6 +110,27 @@ export function collectTextPieces(root: HTMLElement): {
 // el puntero sin sonar; se quedan fuera del mapa.
 const hasSpeakable = (text: string): boolean => /[\p{L}\p{N}]/u.test(text);
 
+// Oración donde se dejó de escuchar (landing guardado). Prueba el índice
+// guardado, luego el texto dentro del bloque ancla y al final el texto en
+// toda la sección. -1 si el mapa ya no la contiene.
+export function sentenceIndexForLanding(
+  items: SentenceLayoutItem[],
+  landing: { sentenceIndex: number; paragraphText: string; anchor: string },
+): number {
+  const text = normalizeForMatch(landing.paragraphText);
+  if (!text) return -1;
+  const same = (i: number) => normalizeForMatch(items[i]?.text ?? "") === text;
+  if (same(landing.sentenceIndex)) return landing.sentenceIndex;
+  const target = normalizeForMatch(landing.anchor);
+  if (target) {
+    const inBlock = items.findIndex(
+      (item, i) => same(i) && target.includes(normalizeForMatch(item.text).slice(0, 24)),
+    );
+    if (inBlock >= 0) return inBlock;
+  }
+  return items.findIndex((_, i) => same(i));
+}
+
 // Construye el mapa de oraciones de la sección. Devuelve también el
 // texto concatenado — el controlador lo usa para verificar huellas y
 // para medir el arranque por posición.

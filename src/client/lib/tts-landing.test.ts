@@ -86,3 +86,20 @@ describe("TTS Landing Position & Marker (Fase 3 Anti-Abandono)", () => {
     container.remove();
   });
 });
+
+describe("TTS Landing: capítulo", () => {
+  it("conserva chapterLabel al guardar y cargar", () => {
+    const h = "book-landing-label";
+    saveTtsLandingPosition({
+      bookHash: h,
+      sectionIndex: 1,
+      sentenceIndex: 0,
+      paragraphText: "Hola.",
+      anchor: "Hola.",
+      chapterLabel: "Cap. 2",
+      updatedAt: 1,
+    });
+    expect(loadTtsLandingPosition(h)?.chapterLabel).toBe("Cap. 2");
+    clearTtsLandingPosition(h);
+  });
+});

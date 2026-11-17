@@ -15,6 +15,7 @@ type Deps = {
     ratio?: number;
     anchor?: string;
     anchorOffset?: number;
+    resumeAudio?: boolean;
   } | null;
   positionSyncVersion: number | undefined;
   state: string;
@@ -54,7 +55,11 @@ export function useReaderPositionSync(deps: Deps): void {
         anchorOffset: resumeRequest.anchorOffset,
       },
     });
-    onStatus("Continuando desde tu otro dispositivo…");
+    onStatus(
+      resumeRequest.resumeAudio
+        ? "Retomando donde dejaste de escuchar…"
+        : "Continuando desde tu otro dispositivo…",
+    );
   }, [resumeRequest, state, navigate, onStatus]);
 
   useEffect(() => {

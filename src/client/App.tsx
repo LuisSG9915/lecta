@@ -43,6 +43,7 @@ import {
 import { decidePendingDelete, PENDING_DELETE_KEY, clearSyncCursors } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
+import { loadTtsLandingPosition } from "./lib/tts-landing";
 import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
 import { parseTrialBook, type TrialBook } from "./lib/trial";
 import { isReviewDueWord } from "./lib/fsrs";
@@ -215,6 +216,8 @@ export default function App() {
   // El sync corre por detrás de la apertura. Si trae una posición remota
   // más nueva, el lector la aplica sin desmontar el libro.
   const [positionSync, setPositionSync] = useState<{ hash: string; version: number } | null>(null);
+  // Clave propia (contador) de los reintentos de «Continuar escuchando».
+  const resumeAudioKeyRef = useRef(0);
   const [resumeRequest, setResumeRequest] = useState<{
     hash: string;
     key: number;
@@ -222,6 +225,7 @@ export default function App() {
     ratio?: number;
     anchor?: string;
     anchorOffset?: number;
+    resumeAudio?: boolean;
   } | null>(null);
   // Hash del libro que está delante, para no aplicar un sync que llega
   // después de que la persona volvió a la estantería.
@@ -1640,6 +1644,23 @@ export default function App() {
     else void openStoredBook(item);
   };
 
+  // «Continuar escuchando»: abre el libro y pide al lector arrancar el audio
+  // en la oración donde se dejó (landing guardado).
+  const resumeAudioFromShelf = (item: ShelfItem) => {
+    resumeAudioKeyRef.current += 1;
+    const landing = loadTtsLandingPosition(item.hash);
+    if (landing) {
+      setResumeRequest({
+        hash: item.hash,
+        key: resumeAudioKeyRef.current,
+        sectionIndex: landing.sectionIndex,
+        anchor: landing.anchor,
+        resumeAudio: true,
+      });
+    }
+    openShelfItem(item);
+  };
+
   const handleSelectBook = (
     b: BookLike,
     initialWord?: string,
@@ -2253,6 +2274,7 @@ export default function App() {
                     dueReviewsCount={dueReviewsCount}
                     hasCalibrated={calibrationDone || Boolean(calibrationWords)}
                     onOpen={openShelfItem}
+                    onResumeAudio={resumeAudioFromShelf}
                     onSelect={handleSelectBook}
                     onPaperBook={handlePaperBook}
                     onShareBook={handleShareBook}

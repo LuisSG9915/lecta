@@ -370,6 +370,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         sentenceIndex: cursor,
         paragraphText: item.text,
         anchor,
+        chapterLabel: ctx.chapterLabel ?? null,
         updatedAt: Date.now(),
       });
     }
