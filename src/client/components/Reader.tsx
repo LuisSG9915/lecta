@@ -161,17 +161,14 @@ import {
   checkPassiveExposure as checkPassiveExposureEvidence,
   refreshProfile,
 } from "../lib/reader-evidence";
-import {
-  registerBookSections,
-  unregisterBookSections,
-} from "../lib/book-search";
+import { useReaderBookSections } from "../hooks/useReaderBookSections";
 import { translateParagraph } from "../lib/translate";
 import {
   type EpisodicWordItem,
   type ConsolidationModality,
   isConsolidationActive,
 } from "../lib/practice";
-import { isForwardStepIntoSection, midChapterRecallKey, pickMidChapterRecall } from "../lib/mid-chapter-recall";
+import { midChapterRecallKey, pickMidChapterRecall } from "../lib/mid-chapter-recall";
 import { removeSavedWord, upsertSavedWord } from "../lib/episodic-cloze";
 import { BilingueParagraph } from "./BilingueParagraph";
 import type { FocusSuggestion } from "./SmartReaderDock";
@@ -208,6 +205,11 @@ import { useReaderParagraphFocus } from "../hooks/useReaderParagraphFocus";
 import { useReaderSyntacticLines } from "../hooks/useReaderSyntacticLines";
 import { useReaderScrollBars } from "../hooks/useReaderScrollBars";
 import { useReaderRefMirrors } from "../hooks/useReaderRefMirrors";
+import { useReaderRecallStep } from "../hooks/useReaderRecallStep";
+import { useReaderPhrases } from "../hooks/useReaderPhrases";
+import { useReaderOverlayWiring } from "../hooks/useReaderOverlayWiring";
+import { useReaderToast } from "../hooks/useReaderToast";
+import { useReaderTtsStopOnNav } from "../hooks/useReaderTtsStopOnNav";
 import { useReaderCheckpoint } from "../hooks/useReaderCheckpoint";
 import { useReaderLongPressHint } from "../hooks/useReaderLongPressHint";
 import { useReaderRecap } from "../hooks/useReaderRecap";
@@ -258,7 +260,6 @@ import {
   type ChapterAnalysis,
 } from "../lib/chapter-analysis";
 import {
-  loadPhrases,
   setBilingualMode,
   type PhraseIndex,
 } from "../lib/phrases";
@@ -936,61 +937,26 @@ export default function Reader({
     deepIndicatorRef,
   } = deepCycle;
   // Nodo de la franja flotante para la cápsula de palabra (portal).
-  useEffect(() => {
-    // Un estado vacío significa «ya terminó»: retirar el aviso en el
-    // acto evita que «Abriendo libro…» siga visible con el libro listo.
-    // El setState va en un timer (aunque sea 0) para no encadenar
-    // renders síncronos desde el efecto.
-    if (!statusText) {
-      const clearTimer = setTimeout(() => setToastMessage(""), 0);
-      return () => clearTimeout(clearTimer);
-    }
-    const showTimer = setTimeout(() => {
-      setToastMessage(statusText);
-    }, 0);
-    const hideTimer = setTimeout(() => {
-      setToastMessage("");
-    }, 3000);
-    return () => {
-      clearTimeout(showTimer);
-      clearTimeout(hideTimer);
-    };
-  }, [statusText, setToastMessage]);
+  // Aviso de estado (toast) — extraído a useReaderToast (B7).
+  useReaderToast({ statusText, setToastMessage });
 
   const glossaryReleaseRef = useRef<OverlayHandle | null>(null);
   const quoteReleaseRef = useRef<OverlayHandle | null>(null);
   const summaryReleaseRef = useRef<OverlayHandle | null>(null);
 
-  useEffect(() => {
-    if (glossaryOpen) {
-      if (!glossaryReleaseRef.current) {
-        glossaryReleaseRef.current = pushOverlay(() => setGlossaryOpen(false));
-      }
-    } else {
-      if (glossaryReleaseRef.current) {
-        const handle = glossaryReleaseRef.current;
-        glossaryReleaseRef.current = null;
-        handle.release();
-      }
-    }
-  }, [glossaryOpen, setGlossaryOpen]);
-
-  useEffect(() => {
-    if (deepSummary) {
-      if (!summaryReleaseRef.current) {
-        summaryReleaseRef.current = pushOverlay(() => setDeepSummary(null));
-      }
-    } else {
-      if (summaryReleaseRef.current) {
-        const handle = summaryReleaseRef.current;
-        summaryReleaseRef.current = null;
-        handle.release();
-      }
-    }
-  }, [deepSummary, setDeepSummary]);
+  // Cableado de overlays (glosario, resumen) — extraído a useReaderOverlayWiring (B7).
+  useReaderOverlayWiring({
+    glossaryOpen,
+    setGlossaryOpen,
+    deepSummary,
+    setDeepSummary,
+    glossaryReleaseRef,
+    summaryReleaseRef,
+  });
 
   useEffect(() => {
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       glossaryReleaseRef.current?.release();
       quoteReleaseRef.current?.release();
       summaryReleaseRef.current?.release();
@@ -1056,11 +1022,8 @@ export default function Reader({
   const [midChapterRecall, setMidChapterRecall] = useState<{ section: number; item: EpisodicWordItem } | null>(null);
   const previousRecallSectionRef = useRef(-1);
   const pendingRecallSectionRef = useRef<number | null>(null);
-  useEffect(() => {
-    const previous = previousRecallSectionRef.current;
-    previousRecallSectionRef.current = sectionIndex;
-    pendingRecallSectionRef.current = isForwardStepIntoSection(previous, sectionIndex) ? sectionIndex : null;
-  }, [sectionIndex]);
+  // Espejo del paso de sección para recall — extraído a useReaderRecallStep (B7).
+  useReaderRecallStep({ sectionIndex, previousRecallSectionRef, pendingRecallSectionRef });
   useEffect(() => {
     if (state !== "ready" || pendingRecallSectionRef.current !== sectionIndex) return;
     pendingRecallSectionRef.current = null;
@@ -1221,15 +1184,8 @@ export default function Reader({
   // Precarga del índice de locuciones: asset estático, una vez por
   // montaje del lector; si no estaba listo para el primer toque el
   // match se omite sin bloquear la ficha.
-  useEffect(() => {
-    let cancelled = false;
-    void loadPhrases().then((index) => {
-      if (!cancelled) phrasesRef.current = index;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Precarga del índice de locuciones — extraído a useReaderPhrases (B7).
+  useReaderPhrases({ phrasesRef });
 
   // Marcador de retomar: contexto visible al reabrir el libro tras
   // días sin leerlo (diseño: plan-marcador-retomar). Máxima prioridad
@@ -1481,15 +1437,8 @@ export default function Reader({
     }
   };
 
-  // Track 5: Registrar secciones en book-search para búsquedas sin spoilers
-  useEffect(() => {
-    if (bookHash && bookRef.current?.sections) {
-      registerBookSections(bookHash, bookRef.current.sections, tocRowsRef.current);
-    }
-    return () => {
-      if (bookHash) unregisterBookSections(bookHash);
-    };
-  }, [bookHash, state]);
+  // Registrar secciones en book-search — extraído a useReaderBookSections (B7).
+  useReaderBookSections({ bookHash, state, bookRef, tocRowsRef });
 
   // Track 5: Contexto de lectura para el gato (personajes sin spoilers en la
   // página visible) — extraído a useReaderContext (B7).
@@ -2090,9 +2039,8 @@ export default function Reader({
     setFatigueSuggestion,
   });
 
-  useEffect(() => {
-    ttsStopOnNavRef.current = () => ttsRef.current?.stop("navigation");
-  }, [ttsRef]);
+  // Espejo del stop de TTS al navegar — extraído a useReaderTtsStopOnNav (B7).
+  useReaderTtsStopOnNav({ ttsRef, ttsStopOnNavRef });
 
   useEffect(() => {
     let disposed = false;
