@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-17T14:17:11.942Z
+Generado: 2026-11-17T15:35:46.722Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `aed6f53028570cb604d96cfea264449a82e4130c`
+Commit: `cca1d6ee1411ed34ff9a810132ddb0b93e46f4fb`
 Red: no (solo forma de las referencias)
 
 **Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
@@ -142,8 +142,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4561-4240 no contiene /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","asked":4563,"excerpt":[]}`
+- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4109-4014 no contiene /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","asked":4111,"excerpt":[]}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:671 coincide con /award: false/

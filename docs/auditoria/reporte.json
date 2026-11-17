@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T14:17:11.942Z",
+  "generatedAt": "2026-11-17T15:35:46.722Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "aed6f53028570cb604d96cfea264449a82e4130c",
+  "commit": "cca1d6ee1411ed34ff9a810132ddb0b93e46f4fb",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -519,10 +519,10 @@
         {
           "kind": "code-anchor",
           "status": "FAIL",
-          "detail": "src/client/components/Reader.tsx:4561-4240 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "detail": "src/client/components/Reader.tsx:4109-4014 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "asked": 4563,
+            "asked": 4111,
             "excerpt": []
           }
         },
