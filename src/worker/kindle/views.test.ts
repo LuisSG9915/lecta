@@ -274,6 +274,16 @@ describe("Kindle Views - Seguridad y Escapado Anti-XSS", () => {
       totalPages: 5,
     };
 
+    it("las tarjetas dict-card van ocultas por defecto (display:none)", () => {
+      const html = renderReaderView({
+        ...baseProps,
+        dictCardsHtml: '<div class="dict-card" id="dict-perenne">glosa</div>',
+      });
+      expect(html).toContain('class="dict-card"');
+      expect(html).toContain(".dict-card {");
+      expect(html).toContain("display: none;");
+    });
+
     it("no inyecta bloques de vocabulario ni notas por página para asegurar 100% Zero-Scroll", () => {
       const html = renderReaderView(baseProps);
       expect(html).not.toContain("cat-notes-box");

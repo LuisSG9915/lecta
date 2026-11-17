@@ -21,6 +21,7 @@ const KINDLE_REQUEST_RETENTION = 0.9;
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
+  extractPageWords,
   extractCompactContextSentence,
   formatChapterHtmlForMode,
   getEpubChapter,
@@ -1051,7 +1052,7 @@ kindleRoutes.get("/preview/page", async (c) => {
   const totalSections = chapter?.totalSections ?? 1;
   const bookLang = normalizeKindleLanguage(chapter?.language);
   const displayHash = bookHash || "muestra";
-  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}`;
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}&font=${encodeURIComponent(vp.fontFamily)}`;
 
   // Reescribe los enlaces internos del HTML renderizado para que la
   // navegación siga dentro de la vista previa (con los mismos overrides), y
@@ -1633,12 +1634,37 @@ async function loadKindleChapterForRead(
   const data = new Uint8Array(await epubObj.arrayBuffer());
   const chapter = await getEpubChapter(data, sectionIndex, hash);
   if (chapter) {
-    const cacheWrite = putCachedChapter(bucket, hash, chapter);
+    // Glosario del capítulo: formas candidatas → findEntriesForForms (una
+    // sola llamada batch). Dato de catálogo compartido, cacheable. Se
+    // construye DESPUÉS del ownership (ya verificado arriba).
+    const bookLang = chapter.language || "es";
+    const candidates = extractChapterPrepCandidates(chapter.contentHtml, bookLang);
+    const glossary: Record<string, import("./cache").KindleGlossaryEntry> = {};
+    if (candidates.length > 0 && getConnectionString(c.env)) {
+      const entriesMap = (await withClient(c.env, (client) =>
+        findEntriesForForms(client, bookLang, candidates),
+      ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
+      for (const [form, entries] of Object.entries(entriesMap)) {
+        if (!Array.isArray(entries) || entries.length === 0) continue;
+        const entry = entries[0];
+        const gloss = entry.senses?.[0]?.definition?.trim();
+        if (!gloss) continue;
+        glossary[form.toLowerCase()] = {
+          lemma: (entry.lemma || form).toLowerCase(),
+          pos: entry.pos ?? null,
+          gloss,
+          ipa: entry.ipa ?? null,
+        };
+      }
+    }
+    const cachedChapter = { ...chapter, glossary };
+    const cacheWrite = putCachedChapter(bucket, hash, cachedChapter);
     try {
       c.executionCtx.waitUntil(cacheWrite);
     } catch {
       await cacheWrite;
     }
+    return { chapter: cachedChapter };
   }
   return { chapter };
 }
@@ -1733,8 +1759,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const layout: "paged" | "scroll" = rawLayout === "scroll" || rawLayout === "paged"
     ? rawLayout
     : (prefsPersisted ? prefs.layout : cookieLayout);
-  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}&margin=${margin}`;
-  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}`;
+  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}&margin=${margin}${rawFont ? `&font=${encodeURIComponent(rawFont)}` : ""}`;
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}&font=${encodeURIComponent(fontFamily)}`;
 
   if (requestedSection === undefined) {
     const targetSection = lastPos ? Number(lastPos.sectionIndex) || 0 : 0;
@@ -2009,6 +2035,51 @@ kindleRoutes.get("/read/:hash", async (c) => {
     { anchors: mode === "anchors" },
   );
 
+  // Tarjetas de diccionario embebidas (sin recarga): una por palabra de la
+  // página actual que tenga entrada en el glosario del capítulo. Ocultas por
+  // defecto; se muestran con :target vía JS (location.hash) o fallback ?lookup=.
+  const chapterGlossary =
+    ((loaded.chapter as { glossary?: Record<string, { lemma: string; pos: string | null; gloss: string; ipa?: string | null }> })?.glossary) || {};
+  const cleanPageUrlForDict = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}${renderQuerySuffix}`;
+  let dictCardsHtml = "";
+  const seenDictWords = new Set<string>();
+  for (const w of extractPageWords(rawPageHtml, bookLang)) {
+    const key = w.toLowerCase();
+    if (seenDictWords.has(key)) continue;
+    const g = chapterGlossary[key];
+    if (!g) continue;
+    seenDictWords.add(key);
+    const saveForm =
+      user && g.gloss
+        ? `
+      <form method="POST" action="/k/vocab/add" style="margin-top:6px;" data-dict-save="1">
+        <input type="hidden" name="form" value="${escapeHtml(key)}" />
+        <input type="hidden" name="lemma" value="${escapeHtml(g.lemma || key)}" />
+        <input type="hidden" name="pos" value="${escapeHtml(g.pos || "")}" />
+        <input type="hidden" name="meaning" value="${escapeHtml(g.gloss)}" />
+        <input type="hidden" name="context" value="" />
+        <input type="hidden" name="bookHash" value="${escapeHtml(hash)}" />
+        <input type="hidden" name="language" value="${escapeHtml(bookLang)}" />
+        <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrlForDict)}" />
+        <button type="submit" class="btn btn-sm btn-primary" style="padding:6px 12px; font-size:0.85rem; min-height:44px;">+ Guardar en mi Cuaderno</button>
+      </form>`
+        : "";
+    dictCardsHtml += `
+      <a href="${escapeHtml(cleanPageUrlForDict)}" class="dict-backdrop" aria-label="Cerrar definición"></a>
+      <div class="dict-card" id="dict-${escapeHtml(key)}" role="dialog" aria-label="Definición de ${escapeHtml(key)}">
+        <div class="inline-lookup-header">
+          <div>
+            <span class="inline-lookup-word">${escapeHtml(key)}</span>
+            ${g.pos ? `<span class="inline-lookup-pos">(${escapeHtml(g.pos)})</span>` : ""}
+            ${g.ipa ? `<span class="inline-lookup-pos">${escapeHtml(g.ipa)}</span>` : ""}
+          </div>
+          <a href="${escapeHtml(cleanPageUrlForDict)}" class="inline-lookup-close">Cerrar</a>
+        </div>
+        <div class="inline-lookup-def">${escapeHtml(g.gloss)}</div>
+        ${saveForm}
+      </div>`;
+  }
+
   // Consulta de definición en línea si se pulsó una palabra
   let lookupResult: InlineLookupResult | null = null;
   if (lookupWord) {
@@ -2083,26 +2154,6 @@ kindleRoutes.get("/read/:hash", async (c) => {
     savedNotice = `Palabra «${markedKnown}» marcada como conocida.`;
   }
 
-  // Bitácora de lectura: un evento puntual por paso de página (veraz, 0 min).
-  try {
-    const now = Date.now();
-    const activityPromise = withClient(c.env, (client) =>
-      client.query(
-        `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at)
-         VALUES ($1, $2, $3, $4, $4)
-         ON CONFLICT (user_id, id) DO NOTHING`,
-        [user.id, crypto.randomUUID(), hash, now],
-      ),
-    );
-    if (c.executionCtx && typeof c.executionCtx.waitUntil === "function") {
-      c.executionCtx.waitUntil(activityPromise.catch(() => {}));
-    } else {
-      await activityPromise.catch(() => {});
-    }
-  } catch {
-    /* best-effort */
-  }
-
   return html(
     renderReaderView({
       user,
@@ -2118,6 +2169,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       language: bookLang,
       savedNotice,
       lookupResult,
+      dictCardsHtml,
       mode,
       size,
       margin,
@@ -2413,7 +2465,7 @@ kindleRoutes.get("/practice", async (c) => {
     client
       .query(
         `SELECT form, lemma, pos, meaning, context, card FROM lecta_user_words
-         WHERE user_id = $1 AND meaning IS NOT NULL
+         WHERE user_id = $1 AND meaning IS NOT NULL AND ${KINDLE_DUE_SQL}
          ORDER BY (${KINDLE_DUE_SQL}) DESC, saved_at DESC, form ASC LIMIT 15`,
         [user.id, new Date().toISOString()],
       )
@@ -2421,14 +2473,20 @@ kindleRoutes.get("/practice", async (c) => {
       .catch(() => []),
   );
 
-  const FALLBACK_WORDS = [
-    { form: "perenne", lemma: "perenne", pos: "adjetivo", meaning: "Que dura indefinidamente o no se extingue." },
-    { form: "inefable", lemma: "inefable", pos: "adjetivo", meaning: "Que no se puede explicar con palabras." },
-    { form: "prístino", lemma: "prístino", pos: "adjetivo", meaning: "Antiguo, primero, primitivo o inalterado." },
-    { form: "efímero", lemma: "efímero", pos: "adjetivo", meaning: "Que dura un solo día o que es pasajero y breve." },
-  ];
-
-  const pool = Array.isArray(wordsRows) && wordsRows.length >= 3 ? wordsRows : FALLBACK_WORDS;
+  const pool = Array.isArray(wordsRows) ? wordsRows : [];
+  if (pool.length === 0) {
+    return c.html(
+      renderPracticeView({
+        user,
+        question: null,
+        isFinished: false,
+        correctCount,
+        totalQuestions: 3,
+        returnTo,
+        bookHash,
+      }),
+    );
+  }
   const targetWord = pool[qIndex % pool.length];
 
   const otherMeanings = pool

@@ -19,7 +19,7 @@
 
 import type { R2Bucket } from "@cloudflare/workers-types";
 
-export const KINDLE_CHAPTER_CACHE_V = 2;
+export const KINDLE_CHAPTER_CACHE_V = 3;
 export const KINDLE_RESOURCE_CACHE_PREFIX = "kcache/res/";
 
 
@@ -77,6 +77,13 @@ async function gunzipBytes(data: Uint8Array): Promise<Uint8Array> {
 const CHAPTER_MEM_TTL_MS = 30 * 60 * 1000;
 const CHAPTER_MEM_MAX = 24;
 
+export interface KindleGlossaryEntry {
+  lemma: string;
+  pos: string | null;
+  gloss: string;
+  ipa?: string | null;
+}
+
 export interface CachedChapter {
   v: number;
   bookTitle: string;
@@ -87,6 +94,9 @@ export interface CachedChapter {
   totalSections: number;
   language?: string;
   toc?: { title: string; sectionIndex: number }[];
+  /** Mapa forma (minúsculas) → entrada del catálogo léxico del capítulo.
+   *  Dato de catálogo compartido (no de usuario): cacheable. */
+  glossary?: Record<string, KindleGlossaryEntry>;
 }
 
 const chapterMem = new Map<string, { at: number; chapter: CachedChapter }>();

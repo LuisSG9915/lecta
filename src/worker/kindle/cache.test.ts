@@ -70,6 +70,14 @@ describe("caché de capítulos Kindle", () => {
     expect(await getCachedChapter(bucket, "h1", 3)).toEqual({ v: KINDLE_CHAPTER_CACHE_V, ...CHAPTER });
   });
 
+  it("guarda y recupera el campo glossary del capítulo", async () => {
+    const { bucket } = fakeBucket();
+    const withGlossary = { ...CHAPTER, glossary: { perenne: { lemma: "perenne", pos: "adj.", gloss: "Que dura indefinidamente.", ipa: null } } };
+    await putCachedChapter(bucket, "h1", withGlossary);
+    resetKindleCacheMemory();
+    expect(await getCachedChapter(bucket, "h1", 3)).toEqual({ v: KINDLE_CHAPTER_CACHE_V, ...withGlossary });
+  });
+
   it("una entrada de otra versión de algoritmo lee miss", async () => {
     const { bucket } = fakeBucket();
     const old = JSON.stringify({ ...CHAPTER, v: KINDLE_CHAPTER_CACHE_V - 1 });

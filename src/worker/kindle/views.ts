@@ -732,6 +732,36 @@ export const KINDLE_CSS = `
     max-width: 636px;
     margin: 0 auto;
   }
+  /* Tarjetas de diccionario embebidas (sin recarga): ocultas por defecto,
+     se muestran al coincidir el hash (#dict-<palabra>) con su id. */
+  .dict-card {
+    display: none;
+  }
+  .dict-card:target {
+    display: block;
+    border: 2px solid #000000;
+    border-left: 5px solid #000000;
+    background: #ffffff;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 95;
+  }
+  body.layout-paged .dict-card:target {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 52px;
+    max-width: 636px;
+    margin: 0 auto;
+  }
+  .dict-backdrop {
+    display: none;
+  }
+  .dict-card:target ~ .dict-backdrop,
+  .dict-backdrop:target {
+    display: none;
+  }
   .inline-lookup-header {
     display: flex;
     justify-content: space-between;
@@ -1047,6 +1077,13 @@ export const KINDLE_CSS = `
     text-decoration: underline;
     margin-left: 8px;
     font-weight: normal;
+  }
+  body.inverted {
+    background: #000000;
+    color: #ffffff;
+  }
+  body.inverted .epub-content img {
+    filter: invert(1) grayscale(1);
   }
 `;
 
@@ -1388,6 +1425,8 @@ export function renderReaderView(options: {
   totalPages: number;
   savedNotice?: string | null;
   lookupResult?: InlineLookupResult | null;
+  /** Tarjetas de diccionario embebidas (sin recarga), ocultas por defecto. */
+  dictCardsHtml?: string;
   mode?: "clean" | "paragraphs" | "lexicon" | "anchors";
   size?: "sm" | "md" | "lg" | "xl" | "xxl";
   margin?: KindleMargin;
@@ -1414,6 +1453,7 @@ export function renderReaderView(options: {
     totalPages,
     savedNotice,
     lookupResult,
+    dictCardsHtml = "",
     mode = "clean",
     size = "md",
     margin = "md",
@@ -1505,7 +1545,6 @@ export function renderReaderView(options: {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(bookTitle)} (${sectionIndex + 1}/${totalSections} — ${pageIndex + 1}/${totalPages}) — Lecta</title>
-  ${nextUrl ? `<link rel="prefetch" href="${escapeHtml(nextUrl)}" />` : ""}
   <style>${KINDLE_CSS}</style>
 </head>
 <body class="reader-body layout-${escapeHtml(layout)}${inverted ? " inverted" : ""}">
@@ -1598,6 +1637,8 @@ export function renderReaderView(options: {
 
     ${lookupHtml}
 
+    ${dictCardsHtml}
+
     ${pageIndex === 0 && chapterTitle ? `<h2 class="chapter-heading">${escapeHtml(chapterTitle)}</h2>` : ""}
 
     <div class="epub-content mode-${escapeHtml(mode)} size-${escapeHtml(size)} font-${escapeHtml(fontFamily)} lh-${escapeHtml(lineHeight)} align-${escapeHtml(align)}">
@@ -1654,9 +1695,60 @@ export function renderReaderView(options: {
       if (!rawWord) return;
       var w = rawWord.trim().toLowerCase();
       if (!w || w.length < 2 || w.length > 40) return;
+      // Si hay tarjeta embebida para esta palabra, mostrarla sin recarga.
+      var card = document.getElementById('dict-' + w);
+      if (card) {
+        if (location.hash !== '#dict-' + w) {
+          location.hash = 'dict-' + w;
+        }
+        return;
+      }
+      // Fallback (mejora progresiva): navegación completa con ?lookup=.
       var sep = lookupBase.indexOf('?') >= 0 ? '&' : '?';
       window.location.href = lookupBase + sep + 'lookup=' + encodeURIComponent(w);
     }
+
+    function closeDictCard() {
+      try { history.replaceState(null, '', lookupBase); } catch (e) { location.hash = ''; }
+    }
+
+    // Cierre de tarjetas embebidas sin recarga.
+    document.addEventListener('click', function(e) {
+      var t = e.target;
+      while (t && t !== document.body && (!t.getAttribute || !t.getAttribute('data-dict-close'))) {
+        // buscar enlace de cierre dentro de .dict-card
+        if (t.classList && t.classList.contains('inline-lookup-close')) {
+          var parent = t;
+          while (parent && parent !== document.body && !(parent.classList && parent.classList.contains('dict-card'))) {
+            parent = parent.parentElement;
+          }
+          if (parent && parent.classList && parent.classList.contains('dict-card')) {
+            e.preventDefault();
+            closeDictCard();
+            return;
+          }
+        }
+        t = t.parentElement;
+      }
+    }, false);
+
+    // Guardar en Cuaderno sin recarga (fire-and-forget).
+    document.addEventListener('submit', function(e) {
+      var form = e.target;
+      if (!form || !form.getAttribute || form.getAttribute('data-dict-save') !== '1') return;
+      if (typeof fetch !== 'function') return; // fallback submit normal
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      var action = form.getAttribute('action') || '/k/vocab/add';
+      try {
+        var fd = new FormData(form);
+        fetch(action, { method: 'POST', body: fd }).then(function() {
+          if (btn) btn.textContent = 'Guardada';
+        }).catch(function() { form.submit(); });
+      } catch (err) {
+        form.submit();
+      }
+    }, false);
 
     var content = document.querySelector('.epub-content');
     var toggleBtn = document.getElementById('lookupToggle');
