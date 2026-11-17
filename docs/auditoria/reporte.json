@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T15:35:46.722Z",
+  "generatedAt": "2026-11-17T16:58:12.763Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "cca1d6ee1411ed34ff9a810132ddb0b93e46f4fb",
+  "commit": "5da5727695302a48bf5411d471b879da0b8d18ac",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 0,
+    "unverified": 13,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 14,
+    "codeFail": 0,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -518,12 +518,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/Reader.tsx:4109-4014 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "PASS",
+          "detail": "src/client/components/Reader.tsx:3879 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "asked": 4111,
-            "excerpt": []
+            "line": 3879,
+            "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
         {
@@ -549,10 +549,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/reviews.ts:48 coincide con /options\\.award !== false/",
+          "detail": "src/client/lib/reviews.ts:53 coincide con /options\\.award !== false/",
           "observed": {
             "file": "src/client/lib/reviews.ts",
-            "line": 48,
+            "line": 53,
             "text": "if (options.award !== false) {"
           }
         },
@@ -652,10 +652,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/reader-evidence.ts:260 coincide con /uniqueLemmas\\.size >= 8/",
+          "detail": "src/client/lib/reader-evidence.ts:279 coincide con /uniqueLemmas\\.size >= 8/",
           "observed": {
             "file": "src/client/lib/reader-evidence.ts",
-            "line": 260,
+            "line": 279,
             "text": "if (uniqueLemmas.size >= 8) break;"
           }
         },
@@ -761,10 +761,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/reviews.ts:123 coincide con /export async function consolidateEpisodicWord/",
+          "detail": "src/client/lib/reviews.ts:128 coincide con /export async function consolidateEpisodicWord/",
           "observed": {
             "file": "src/client/lib/reviews.ts",
-            "line": 123,
+            "line": 128,
             "text": "export async function consolidateEpisodicWord("
           }
         },
@@ -1719,5 +1719,5 @@
       }
     }
   ],
-  "verdict": "FAIL"
+  "verdict": "PASS_WITH_UNVERIFIED"
 }

@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-17T15:35:46.722Z
+Generado: 2026-11-17T16:58:12.763Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `cca1d6ee1411ed34ff9a810132ddb0b93e46f4fb`
+Commit: `5da5727695302a48bf5411d471b879da0b8d18ac`
 Red: no (solo forma de las referencias)
 
-**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -131,25 +131,25 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4109-4014 no contiene /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","asked":4111,"excerpt":[]}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3879 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":3879,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:671 coincide con /award: false/
   - observado: `{"file":"src/client/components/WordPanel.tsx","line":671,"text":"{ award: false },"}`
-- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:48 coincide con /options\.award !== false/
-  - observado: `{"file":"src/client/lib/reviews.ts","line":48,"text":"if (options.award !== false) {"}`
+- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:53 coincide con /options\.award !== false/
+  - observado: `{"file":"src/client/lib/reviews.ts","line":53,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/0278-7393.31.2.187","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -174,8 +174,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · doc-mention: el documento contiene «La exposición pasiva se acota»
 - ✅ **PASS** · code-absent: /updatePassiveExposureState/ no aparece en src/client/lib/knowledge.ts
 - ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
-- ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:260 coincide con /uniqueLemmas\.size >= 8/
-  - observado: `{"file":"src/client/lib/reader-evidence.ts","line":260,"text":"if (uniqueLemmas.size >= 8) break;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:279 coincide con /uniqueLemmas\.size >= 8/
+  - observado: `{"file":"src/client/lib/reader-evidence.ts","line":279,"text":"if (uniqueLemmas.size >= 8) break;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2163 coincide con /if \(!existing \|\| existing\.deleted\) return null/
   - observado: `{"file":"src/client/lib/idb.ts","line":2163,"text":"if (!existing || existing.deleted) return null;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
@@ -201,8 +201,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · probe: acierto con opciones cuenta; exposición por página y sin θ; reto calificado por errores; consulta en el idioma del libro; frecuencia por tokens
   - observado: `{"hard_es_acierto":true,"again_es_fallo":true,"exposicion_por_pagina":true,"exposicion_sin_theta":true,"reto_sin_good":true,"reto_por_errores":true,"modal_pasa_metricas":true,"consulta_con_idioma":true,"frecuencia_por_tokens":true}`
 - ✅ **PASS** · code-absent: /CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts
-- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:123 coincide con /export async function consolidateEpisodicWord/
-  - observado: `{"file":"src/client/lib/reviews.ts","line":123,"text":"export async function consolidateEpisodicWord("}`
+- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:128 coincide con /export async function consolidateEpisodicWord/
+  - observado: `{"file":"src/client/lib/reviews.ts","line":128,"text":"export async function consolidateEpisodicWord("}`
 - ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:138 coincide con /consolidateEpisodicWord\(current\.item/
   - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":138,"text":"void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"}`
 - ⚠️ **UNVERIFIED** · referencia ye2022: forma válida; sin red no se resuelven metadatos (usar --online)
