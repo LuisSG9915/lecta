@@ -279,7 +279,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/WordPanel.tsx",
-          "line": 658,
+          "line": 688,
           "window": 15,
           "expect": "award: false",
           "why": "el autoinforme no paga XP de repaso"

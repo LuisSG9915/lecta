@@ -11,6 +11,7 @@ import {
   type SearchTocRow,
 } from "../lib/book-search";
 import { findLexicalFamily } from "../lib/word-meanings";
+import { lookupDictionaryPack } from "../lib/dictionaryPack";
 import { recordBookConsultedWord } from "../lib/book-glossary";
 import {
   captureDbScope,
@@ -435,8 +436,24 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
           .then(() => lookupLocalLexicon(cleanWord, effectiveLang))
           .catch(() => null)
       : lookupWord(cleanWord, effectiveLang, scope)
-          .then((result) => {
+          .then(async (result) => {
             const family = findLexicalFamily(cleanWord, effectiveLang);
+            // Valida cada candidato contra el paquete de diccionario
+            // instalado: solo se pintan lemas reales, no formas inventadas.
+            const validated = await Promise.all(
+              family.map(async (syn) => {
+                try {
+                  const e = await lookupDictionaryPack(
+                    syn,
+                    effectiveLang === "en" ? "en" : "es",
+                  );
+                  return e ? syn : null;
+                } catch {
+                  return null;
+                }
+              }),
+            );
+            const validFamily = validated.filter(Boolean) as string[];
             if (result.ok && result.found && result.entries.length > 0) {
               const primary = result.entries[0];
               const sense = primary.senses[0];
@@ -444,13 +461,13 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 lemma: primary.lemma || cleanWord.toLowerCase(),
                 partOfSpeech: primary.pos ?? undefined,
                 shortDefinition: sense?.definition ?? "",
-                synonyms: family.slice(0, 4),
+                synonyms: validFamily.slice(0, 4),
               };
             }
             return {
               lemma: cleanWord.toLowerCase(),
               shortDefinition: "",
-              synonyms: family.slice(0, 4),
+              synonyms: validFamily.slice(0, 4),
             };
           })
           .catch(() => null);
@@ -1101,9 +1118,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
             {localEntry && localEntry.synonyms.length > 0 && (
               <div className="word-card-synonyms">
                 {localEntry.synonyms.slice(0, 4).map((syn) => (
-                  <span key={syn} className="word-synonym-pill">
+                  <button
+                    key={syn}
+                    type="button"
+                    className="word-synonym-pill"
+                    onClick={() => onSelectWord?.(syn)}
+                    title={`Explorar ${syn}`}
+                  >
                     {syn}
-                  </span>
+                  </button>
                 ))}
               </div>
             )}
@@ -1187,7 +1210,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                       <span className="lexical-family-label">Familia léxica:</span>
                       <div className="lexical-family-chips">
                         {localEntry.synonyms.slice(0, 6).map((syn) => (
-                          <span key={syn} className="lexical-chip">{syn}</span>
+                          <button
+                            key={syn}
+                            type="button"
+                            className="lexical-chip"
+                            onClick={() => onSelectWord?.(syn)}
+                            title={`Explorar ${syn}`}
+                          >
+                            {syn}
+                          </button>
                         ))}
                       </div>
                     </div>
