@@ -45,6 +45,12 @@ describe("cleanReview", () => {
     expect(cleaned?.kind).toBe("practice");
   });
 
+  it("acepta kind 'reencounter' para el reencuentro pasivo sin consulta", () => {
+    const cleaned = cleanReview({ ...valid, kind: "reencounter" });
+    expect(cleaned).not.toBeNull();
+    expect(cleaned?.kind).toBe("reencounter");
+  });
+
   it("idioma por omisión es 'es' y hints por omisión es 0", () => {
     const cleaned = cleanReview({ ...valid, language: undefined, hints: undefined });
     expect(cleaned?.language).toBe("es");

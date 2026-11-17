@@ -147,6 +147,7 @@ export const REVIEW_KINDS = [
   "clozeNew",
   "write",
   "practice",
+  "reencounter",
 ] as const;
 export const REVIEW_RATINGS = [
   "again",
