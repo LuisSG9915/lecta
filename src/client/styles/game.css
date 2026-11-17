@@ -3397,6 +3397,64 @@
   }
 }
 
+/* Resumen accionable (Hoy) */
+.journey-today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.journey-today-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+}
+
+.journey-today-item {
+  padding: var(--s-3) var(--s-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--s-1);
+}
+
+.journey-today-item + .journey-today-item {
+  border-inline-start: 1px solid var(--rule);
+}
+
+.journey-today-value {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  font-family: var(--font-book);
+  color: var(--vermilion);
+  line-height: 1.2;
+}
+
+.journey-today-label {
+  font-size: var(--fs-xs);
+  font-family: var(--font-ui);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.journey-today-hint {
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .journey-today-grid {
+    grid-template-columns: 1fr;
+  }
+  .journey-today-item + .journey-today-item {
+    border-inline-start: none;
+    border-top: 1px solid var(--rule);
+  }
+}
+
 /* 1. Resumen Hero (tarjeta unificada en vez de 3 cajas SaaS) */
 .journey-hero-card {
   display: grid;

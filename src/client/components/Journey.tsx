@@ -19,6 +19,7 @@ import {
 } from "../lib/idb";
 import { useCompanionSafe } from "./CompanionProvider";
 import { levelProgress, listFamilyProgress } from "../lib/gamification";
+import { isReviewDueWord } from "../lib/fsrs";
 import {
   bookLabel,
   calculateInkPoints,
@@ -348,6 +349,11 @@ export default function Journey({ onClose, books }: JourneyProps) {
     [words, reviews],
   );
   const settledTotal = stages.settledCount + stages.masteredCount;
+  const dueCount = useMemo(
+    () => words.filter((w) => isReviewDueWord(w, new Date())).length,
+    [words],
+  );
+  const streakDays = companion?.state?.stats?.streakDays ?? 0;
   const settledPct =
     stages.total > 0 ? Math.round((settledTotal / stages.total) * 100) : 0;
   const learningPct =
@@ -821,6 +827,50 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 <span className="journey-hero-value">{words.length}</span>
                 <span className="journey-hero-label">Palabras guardadas</span>
               </div>
+            </section>
+
+            {/* Resumen accionable: qué hacer hoy */}
+            <section
+              className="journey-section journey-today"
+              aria-label="Qué hacer hoy"
+            >
+              <h3 className="journey-section-title">Hoy</h3>
+              <div className="journey-today-grid">
+                <div className="journey-today-item">
+                  <span className="journey-today-value">{dueCount}</span>
+                  <span className="journey-today-label">
+                    {dueCount === 1 ? "repaso vencido" : "repasos vencidos"}
+                  </span>
+                </div>
+                <div className="journey-today-item">
+                  <span className="journey-today-value">{stages.masteredCount}</span>
+                  <span className="journey-today-label">
+                    {stages.masteredCount === 1
+                      ? "palabra dominada"
+                      : "palabras dominadas"}
+                  </span>
+                </div>
+                <div className="journey-today-item">
+                  <span className="journey-today-value">{streakDays}</span>
+                  <span className="journey-today-label">
+                    {streakDays === 1 ? "día seguido" : "días seguidos"}
+                  </span>
+                </div>
+              </div>
+              {dueCount > 0 ? (
+                <p className="meta journey-today-hint">
+                  Tienes {dueCount} {dueCount === 1 ? "palabra" : "palabras"} por
+                  repasar en el Cuaderno.
+                </p>
+              ) : stages.total > 0 ? (
+                <p className="meta journey-today-hint">
+                  Sin repasos vencidos. Sigue leyendo para guardar más palabras.
+                </p>
+              ) : (
+                <p className="meta journey-today-hint">
+                  Abre un libro y toca una palabra para empezar tu Cuaderno.
+                </p>
+              )}
             </section>
 
             {/* 2. Vocabulario por etapas FSRS */}
