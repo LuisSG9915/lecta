@@ -4,7 +4,7 @@ import type { SearchSection } from "../../lib/book-search";
 import type { DeepReadingSummary, DeepReadingConfig } from "../../lib/deep-reading";
 import type { ConsolidationModality, EpisodicWordItem } from "../../lib/practice";
 import { isFeatureFlagEnabled, type StrategyPreset } from "../../lib/settings";
-import type { TtsEngineMode } from "../../lib/ttsTypes";
+import type { TtsEngineMode, TtsSnapshot } from "../../lib/ttsTypes";
 import type { PageRecapResult } from "../../lib/page-recap";
 import type { ChapterTarget } from "../../lib/chapters";
 import type { PreparationAnswers } from "../../lib/preparation";
@@ -16,6 +16,7 @@ import DeepReadingModal from "../DeepReadingModal";
 import DeepReadingSummaryModal from "../DeepReadingSummaryModal";
 import BookGlossaryModal from "../BookGlossaryModal";
 import TtsConsentDialog from "../TtsConsentDialog";
+import TtsVoiceSelector, { type NeuralVoiceChoice } from "../TtsVoiceSelector";
 import ReaderMoreMenu from "../ReaderMoreMenu";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
@@ -147,6 +148,11 @@ export interface ReaderOverlaysProps {
   ttsDownloadProgress?: number | null;
   isKittenModelDownloaded?: boolean;
   onDeleteTtsModel?: () => void;
+  ttsVoiceSelectorOpen?: boolean;
+  ttsSnap?: TtsSnapshot;
+  onSelectSystemVoice?: (voiceURI: string | null) => void;
+  onSelectNeuralVoice?: (voice: NeuralVoiceChoice) => void;
+  onCloseVoiceSelector?: () => void;
 
   // PageRecap Dialog
   pageRecap?: PageRecapState | null;
@@ -233,6 +239,11 @@ export function ReaderOverlays({
   ttsDownloadProgress,
   isKittenModelDownloaded = false,
   onDeleteTtsModel,
+  ttsVoiceSelectorOpen = false,
+  ttsSnap,
+  onSelectSystemVoice,
+  onSelectNeuralVoice,
+  onCloseVoiceSelector,
 
   pageRecap = null,
   onClosePageRecap,
@@ -534,6 +545,20 @@ export function ReaderOverlays({
           isModelDownloaded={isKittenModelDownloaded}
           onDeleteModel={onDeleteTtsModel}
           bookLanguage={language}
+        />
+      ) : null}
+
+      {ttsVoiceSelectorOpen &&
+      ttsSnap &&
+      onSelectSystemVoice &&
+      onSelectNeuralVoice &&
+      onCloseVoiceSelector ? (
+        <TtsVoiceSelector
+          bookLanguage={language}
+          snap={ttsSnap}
+          onSelectSystem={onSelectSystemVoice}
+          onSelectNeural={onSelectNeuralVoice}
+          onDismiss={onCloseVoiceSelector}
         />
       ) : null}
 

@@ -112,6 +112,7 @@ export type TtsController = {
   getCurrentSentence(): string | null;
   setKittenVoice?(voiceId: KittenVoiceId): void;
   setEngine?(engine: TtsEngineMode): void;
+  setSystemVoice?(voiceURI: string | null): void;
   getLookaheadBuffers?(): Map<number, AudioBuffer>;
   stop(reason: TtsEndReason): void;
   // La sección que pidió el avance programático terminó de pintar.
@@ -228,6 +229,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       ...snap,
       engine: settings.engine,
       kittenVoice: settings.kittenVoice,
+      voiceURI: settings.voiceURI ?? null,
       activeEngine: active,
       ...next,
     };
@@ -523,7 +525,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const makeSpeaker = (): TtsSpeaker =>
     deps.makeSpeaker
       ? deps.makeSpeaker({ onEnded, onStalled })
-      : createSpeaker({ onEnded, onStalled }, { language: deps.language() });
+      : createSpeaker(
+          { onEnded, onStalled },
+          { language: deps.language(), voiceURI: settings.voiceURI ?? null },
+        );
 
   const buildMapForCurrent = () => {
     const root = deps.root();
@@ -807,6 +812,22 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       saveTtsSettings(settings);
       const active = shouldUseKitten() ? "kitten-neural" : "browser";
       publish({ engine, activeEngine: active });
+      if (snap.status === "speaking" && items[cursor]) {
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        speaker?.cancel();
+        speaker = makeSpeaker();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
+        speakCurrent();
+      }
+    },
+
+    // Voz del sistema elegida (null = automática). Fuerza el motor del
+    // navegador; si está hablando, reinicia la oración con la voz nueva.
+    setSystemVoice(voiceURI: string | null) {
+      settings = { ...settings, voiceURI, engine: voiceURI ? "browser" : "auto" };
+      saveTtsSettings(settings);
+      publish({});
       if (snap.status === "speaking" && items[cursor]) {
         (deps.kittenEngine ?? kittenTtsEngine).stop();
         speaker?.cancel();

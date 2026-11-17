@@ -1958,6 +1958,11 @@ export default function Reader({
     ttsSnap,
     ttsConsentOpen,
     setTtsConsentOpen,
+    voiceSelectorOpen,
+    openVoiceSelector,
+    closeVoiceSelector,
+    selectSystemVoice,
+    selectNeuralVoice,
     ttsDownloadProgress,
     isKittenModelDownloaded,
     handleDeleteTtsModel,
@@ -3632,7 +3637,7 @@ export default function Reader({
           setSettingsTab={setSettingsTab}
           setSheet={setSheet}
           setStrategyPaused={setStrategyPaused}
-          setTtsConsentOpen={setTtsConsentOpen}
+          openVoiceSelector={openVoiceSelector}
           ttsSnap={ttsSnap}
           onTtsRequest={onTtsRequest}
           togglePlayPause={togglePlayPause}
@@ -4003,6 +4008,11 @@ export default function Reader({
         ttsConsentOpen={ttsConsentOpen}
         onTtsConsentAccept={onTtsConsentAccept}
         onTtsConsentDismiss={() => setTtsConsentOpen(false)}
+        ttsVoiceSelectorOpen={voiceSelectorOpen}
+        ttsSnap={ttsSnap}
+        onSelectSystemVoice={selectSystemVoice}
+        onSelectNeuralVoice={selectNeuralVoice}
+        onCloseVoiceSelector={closeVoiceSelector}
         ttsDownloadProgress={ttsDownloadProgress}
         isKittenModelDownloaded={isKittenModelDownloaded}
         onDeleteTtsModel={() => void handleDeleteTtsModel()}

@@ -36,7 +36,7 @@ export interface ReaderDockHostProps {
   setSettingsTab: (tab: ReaderSettingsTab) => void;
   setSheet: (sheet: "settings" | null) => void;
   setStrategyPaused: (paused: boolean) => void;
-  setTtsConsentOpen: (open: boolean) => void;
+  openVoiceSelector: () => void;
   ttsSnap: TtsSnapshot;
   onTtsRequest: () => void;
   togglePlayPause: () => void;
@@ -95,7 +95,7 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
   setSettingsTab,
   setSheet,
   setStrategyPaused,
-  setTtsConsentOpen,
+  openVoiceSelector,
   ttsSnap,
   onTtsRequest,
   togglePlayPause,
@@ -237,7 +237,7 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
       onToggleAutoAdvance={setAutoAdvanceChapter}
       backgroundAudio={backgroundAudio}
       onToggleBackgroundAudio={setBackgroundAudio}
-      onOpenVoiceSelector={() => setTtsConsentOpen(true)}
+      onOpenVoiceSelector={openVoiceSelector}
       onCaptureWord={handleTtsCaptureWord}
       onStopAudio={() => stopTts("user")}
       onOpenCatCorner={onCatTap}

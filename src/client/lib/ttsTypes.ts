@@ -118,6 +118,7 @@ export type TtsSnapshot = {
   // Razón de la última pausa (para mensajes y telemetría).
   pauseReason: TtsPauseReason | null;
   engine?: TtsEngineMode;
+  voiceURI?: string | null;
   kittenVoice?: KittenVoiceId;
   activeEngine?: "kitten-neural" | "piper-neural" | "browser";
   chapterLabel?: string | null;
@@ -134,6 +135,7 @@ export const TTS_IDLE: TtsSnapshot = {
   pauseReason: null,
   engine: "auto",
   kittenVoice: "expr-voice-2-f",
+  voiceURI: null,
   activeEngine: "browser",
   chapterLabel: null,
   sleepTimerEndsAt: null,

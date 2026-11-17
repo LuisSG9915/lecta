@@ -4,6 +4,7 @@ import {
   createSpeaker,
   defaultSpanishLangTag,
   ensureVoices,
+  resolveVoice,
   speakWithSystemVoice,
   stopSystemVoice,
 } from "./ttsSpeech";
@@ -355,5 +356,24 @@ describe("createSpeaker", () => {
     speaker.speak("Hola.", 1);
     expect(spoken[0].voice).toBeUndefined();
     expect(spoken[0].lang).toBe(defaultSpanishLangTag());
+  });
+});
+
+describe("resolveVoice", () => {
+  const v = (voiceURI: string, lang: string) =>
+    ({ voiceURI, name: voiceURI, lang, default: false }) as SpeechSynthesisVoice;
+  const voices = [v("es-a", "es-MX"), v("es-b", "es-ES"), v("en-a", "en-US")];
+
+  it("respeta la voz elegida si habla el idioma del libro", () => {
+    expect(resolveVoice(voices, "es", "es-b").voice?.voiceURI).toBe("es-b");
+  });
+
+  it("ignora la elegida si es de otro idioma o ya no existe", () => {
+    expect(resolveVoice(voices, "es", "en-a").voice?.lang.startsWith("es")).toBe(true);
+    expect(resolveVoice(voices, "es", "no-existe").voice?.lang.startsWith("es")).toBe(true);
+  });
+
+  it("sin voiceURI usa la automática", () => {
+    expect(resolveVoice(voices, "en").voice?.voiceURI).toBe("en-a");
   });
 });

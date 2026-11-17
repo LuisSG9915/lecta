@@ -1695,6 +1695,23 @@ describe("ttsController", () => {
     expect(ctl.snapshot().status).toBe("speaking");
   });
 
+  it("setSystemVoice persiste la voz del sistema y fuerza el motor del navegador", async () => {
+    consent();
+    const { deps } = makeDeps([section("<p>Frase única.</p>")]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    ctl.setSystemVoice?.("voz-1");
+    expect(ctl.snapshot().voiceURI).toBe("voz-1");
+    expect(ctl.snapshot().engine).toBe("browser");
+    expect(loadTtsSettings().voiceURI).toBe("voz-1");
+    ctl.setSystemVoice?.(null);
+    expect(ctl.snapshot().voiceURI).toBeNull();
+    expect(ctl.snapshot().engine).toBe("auto");
+    expect(ctl.snapshot().status).toBe("speaking");
+  });
+
   it("reancla tras una mutación estructural y sigue hablando", async () => {
     consent();
     const root = section("<p>Una frase. Otra frase.</p>");

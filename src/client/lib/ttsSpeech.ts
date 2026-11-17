@@ -45,7 +45,7 @@ const midWatchMs = (text: string, rate: TtsRate) =>
     Math.max(10_000, ((text.length / 11) * 1000) / rate) * 2 + 4_000,
   );
 
-const normalizeLang = (tag: string) => tag.toLowerCase().replace("_", "-");
+export const normalizeLang = (tag: string) => tag.toLowerCase().replace("_", "-");
 
 // es-MX > es-US > es-* > null (null = voz por defecto del sistema).
 export function pickSpanishVoice(
@@ -81,6 +81,24 @@ export function defaultSpanishLangTag(): string {
     if (nav.startsWith("es")) return nav;
   }
   return "es-MX";
+}
+
+// Voz elegida por el usuario (voiceURI) si existe y habla el idioma del
+// libro; si no, la automática. El voiceURI es global del dispositivo y los
+// libros cambian de idioma.
+export function resolveVoice(
+  voices: SpeechSynthesisVoice[],
+  language: string,
+  voiceURI?: string | null,
+): { voice: SpeechSynthesisVoice | null; defaultLangTag: string } {
+  const auto = pickVoiceForLanguage(voices, language);
+  if (!voiceURI) return auto;
+  const lang2 = language.toLowerCase().slice(0, 2);
+  const chosen = voices.find((v) => v.voiceURI === voiceURI);
+  if (chosen && normalizeLang(chosen.lang).startsWith(lang2)) {
+    return { voice: chosen, defaultLangTag: auto.defaultLangTag };
+  }
+  return auto;
 }
 
 // Resuelve la voz y tag BCP 47 idóneo para el idioma especificado.
@@ -167,7 +185,7 @@ export function createSpeaker(
     // resume mudo en iOS. El controlador decide reintentar o cerrar.
     onStalled(kind: SpeechStall): void;
   },
-  options?: { language?: string },
+  options?: { language?: string; voiceURI?: string | null },
 ): TtsSpeaker {
   const synth = () => window.speechSynthesis;
   const targetLanguage = options?.language ?? "es";
@@ -183,7 +201,7 @@ export function createSpeaker(
   let generation = 0;
 
   void ensureVoices().then((voices) => {
-    voice = pickVoiceForLanguage(voices, targetLanguage).voice;
+    voice = resolveVoice(voices, targetLanguage, options?.voiceURI).voice;
   });
 
   const clearWatchdog = () => {
@@ -252,7 +270,7 @@ export function createSpeaker(
     // La voz se elige al momento de hablar (getVoices es síncrono y ya
     // pobló tras ensureVoices): sin `voice` explícita, varios motores
     // Android no resuelven el locale y tragan la utterance en silencio.
-    const selection = pickVoiceForLanguage(synth().getVoices(), targetLanguage);
+    const selection = resolveVoice(synth().getVoices(), targetLanguage, options?.voiceURI);
     if (!voice) voice = selection.voice;
     utterance.lang = voice?.lang ?? selection.defaultLangTag;
     if (voice) utterance.voice = voice;

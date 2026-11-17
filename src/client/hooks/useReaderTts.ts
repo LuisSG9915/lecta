@@ -13,6 +13,7 @@ import {
 import {
   TTS_IDLE,
   TTS_PLAYER_RATES,
+  type KittenVoiceId,
   type TtsEngineMode,
   type TtsRate,
   type TtsSnapshot,
@@ -28,6 +29,7 @@ import {
   setKittenConsent,
 } from '../lib/ttsSettings';
 import { isFeatureFlagEnabled } from '../lib/settings';
+import { PIPER_VOICE_ID } from '../lib/piperModel';
 import {
   noteTtsProgrammaticScroll,
   withTtsProgrammaticNav,
@@ -138,6 +140,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   const ttsRef = useRef<TtsController | null>(null);
   const [ttsSnap, setTtsSnap] = useState<TtsSnapshot>(TTS_IDLE);
   const [ttsConsentOpen, setTtsConsentOpen] = useState(false);
+  const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
   const [ttsDownloadProgress, setTtsDownloadProgress] = useState<number | null>(null);
   const [isKittenModelDownloaded, setIsKittenModelDownloaded] = useState(false);
   const [sleepTimerActive, setSleepTimerActive] = useState(false);
@@ -445,6 +448,23 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     if (!ttsRef.current) saveTtsSettings({ backgroundAudio: value });
   }, []);
 
+  const openVoiceSelector = useCallback(() => setVoiceSelectorOpen(true), []);
+  const closeVoiceSelector = useCallback(() => setVoiceSelectorOpen(false), []);
+  const selectSystemVoice = useCallback((voiceURI: string | null) => {
+    const ctl = ttsRef.current;
+    if (ctl?.setSystemVoice) ctl.setSystemVoice(voiceURI);
+    else saveTtsSettings({ voiceURI, engine: voiceURI ? "browser" : "auto" });
+  }, []);
+  const selectNeuralVoice = useCallback((voice: string) => {
+    const ctl = ttsRef.current;
+    const isPiper = voice === PIPER_VOICE_ID;
+    if (!isPiper) {
+      if (ctl?.setKittenVoice) ctl.setKittenVoice(voice as KittenVoiceId);
+      else saveTtsSettings({ kittenVoice: voice as KittenVoiceId, engine: "kitten-neural" });
+    } else if (ctl?.setEngine) ctl.setEngine("kitten-neural");
+    else saveTtsSettings({ engine: "kitten-neural" });
+  }, []);
+
   const cycleSpeed = useCallback(() => {
     void ttsRef.current?.cycleRate(TTS_PLAYER_RATES);
   }, []);
@@ -654,6 +674,11 @@ return {
     ttsSnap,
     ttsConsentOpen,
     setTtsConsentOpen,
+    voiceSelectorOpen,
+    openVoiceSelector,
+    closeVoiceSelector,
+    selectSystemVoice,
+    selectNeuralVoice,
     ttsDownloadProgress,
     isKittenModelDownloaded,
     handleDeleteTtsModel,
