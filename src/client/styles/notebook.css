@@ -2,14 +2,14 @@
    agrupadas por libro, y el repaso sobre ficha rayada. */
 
 .notebook {
-  /* Cuaderno botánico (Bloque 3): lavado ocre sobre papel, grano encima. */
-  background: var(--grain), var(--surface-herbarium);
+  /* Cuaderno: papel con grano; las palabras son hojas elevadas encima. */
+  background: var(--grain), var(--paper);
 }
 
 /* En modo página la superficie cubre toda la vista del Cuaderno, no solo
    la columna central: la columna queda transparente encima. */
 .app[data-nav="vocabulary"] {
-  background: var(--grain), var(--surface-herbarium);
+  background: var(--grain), var(--paper);
 }
 
 /* Modo overlay (capa sobre el libro al abrir desde el lector) */
@@ -171,7 +171,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   border-inline-start: 3px solid var(--vermilion);
-  box-shadow: var(--shadow-1);
   position: relative;
 }
 
@@ -244,7 +243,6 @@
   background: var(--paper-raised, var(--paper));
   border: var(--border);
   border-radius: var(--r-sheet, 14px);
-  box-shadow: var(--shadow-1);
   animation: rise-in var(--dur-2) var(--ease-out);
   position: relative;
 }
@@ -259,7 +257,7 @@
   flex: 1;
   block-size: 4px;
   background: var(--rule, var(--line));
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   overflow: hidden;
 }
 
@@ -303,7 +301,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   transition: transform var(--dur-1) var(--ease-out);
   user-select: none;
 }
@@ -424,7 +422,7 @@
   background: var(--paper-warm, var(--paper));
   border: 1px solid var(--vermilion-soft, var(--line));
   padding: 0.1rem 0.4rem;
-  border-radius: var(--r-full, 9999px);
+  border-radius: var(--r-pill);
   animation: pop-bounce var(--dur-2) var(--ease-out);
 }
 
@@ -630,7 +628,7 @@
   inset-block-end: calc(env(safe-area-inset-bottom) + var(--s-2));
   z-index: 1;
   inline-size: 100%;
-  box-shadow: 0 -6px 14px -6px rgb(0 0 0 / 0.25);
+  border-top: 1px solid var(--rule);
 }
 
 /* Parejas: dos columnas de botones; el par resuelto se atenúa y se
@@ -703,7 +701,6 @@
   border-color: var(--vermilion);
   background: var(--paper-raised);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-1);
 }
 
 .match-option.is-done {
@@ -923,7 +920,7 @@
   gap: 0.2rem;
   font-size: var(--fs-xs);
   padding: 0.15rem 0.45rem;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: var(--ochre-soft, rgba(212, 164, 58, 0.14));
   border: 1px solid var(--ochre);
   color: var(--amber);
@@ -1308,7 +1305,7 @@
     background: var(--paper-raised);
     border: var(--border);
     border-radius: var(--r-2);
-    box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, 0.16));
+    box-shadow: var(--shadow-sheet);
   }
 }
 
@@ -1465,7 +1462,6 @@
   border: 1px solid var(--rule);
   border-radius: var(--r-2);
   padding: var(--s-4);
-  box-shadow: var(--shadow-1);
   transition:
     transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.22s cubic-bezier(0.22, 1, 0.36, 1),
@@ -1477,7 +1473,6 @@
 /* Elevación sutil al pasar el cursor */
 .nb-word:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-2);
   border-color: var(--rule-strong, rgba(0, 0, 0, 0.15));
 }
 
@@ -1644,14 +1639,14 @@
   inline-size: 100%;
   block-size: 6px;
   background: var(--rule, rgba(120, 95, 70, 0.15));
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   overflow: hidden;
 }
 
 .word-stability-fill {
   block-size: 100%;
   background: linear-gradient(to right, var(--ochre), var(--accent-primary), var(--sage));
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   transition: inline-size var(--dur-2) var(--ease-spring);
 }
 
@@ -1735,7 +1730,7 @@
   padding: 0.35rem 0.75rem;
   font-size: var(--fs-xs);
   font-weight: 600;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
   color: var(--accent-primary);
   border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
@@ -1801,7 +1796,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   border-inline-start: 3px solid var(--vermilion);
-  box-shadow: var(--shadow-1);
 }
 
 .nb-quote-text {
@@ -1928,7 +1922,6 @@
   border: 2px solid var(--rule-strong);
   border-bottom-width: 3px;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
   animation: slot-pop 0.18s var(--ease-out);
 }
 
@@ -1983,7 +1976,6 @@
   color: var(--ink);
   cursor: pointer;
   transition: all var(--dur-1) var(--ease-out);
-  box-shadow: var(--shadow-1);
 }
 
 .scramble-tile.is-syllable {
@@ -2038,7 +2030,6 @@
 .scramble-tile:hover:not(:disabled) {
   border-color: var(--vermilion);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-2);
 }
 
 .scramble-tile:active:not(:disabled) {
@@ -2138,7 +2129,6 @@
 .grammar-cat-btn:hover:not(:disabled) {
   border-color: var(--vermilion);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-2);
 }
 
 .grammar-cat-btn:active:not(:disabled) {
@@ -2295,7 +2285,6 @@
   color: var(--ink);
   cursor: pointer;
   transition: all var(--dur-1) var(--ease-out);
-  box-shadow: var(--shadow-1);
 }
 
 .sentence-chip.is-placed:hover:not(:disabled) {
@@ -2337,13 +2326,11 @@
   color: var(--ink);
   cursor: pointer;
   transition: all var(--dur-1) var(--ease-out);
-  box-shadow: var(--shadow-1);
 }
 
 .sentence-pool-btn:hover:not(:disabled) {
   border-color: var(--vermilion);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-2);
 }
 
 .sentence-pool-btn:active:not(:disabled) {
@@ -2428,7 +2415,6 @@
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
@@ -2505,7 +2491,7 @@
 
 .vocab-progress-pill {
   padding: 0.3rem 0.75rem;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
   background: var(--paper-raised);
   cursor: pointer;
@@ -2568,7 +2554,6 @@
   background: var(--paper-raised);
   border: 1px solid var(--rule);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
 }
 
 .nb-hero-study-desk {
@@ -2629,7 +2614,6 @@
   font-family: var(--font-ui);
   color: var(--ink);
   white-space: nowrap;
-  box-shadow: var(--shadow-1);
   pointer-events: none;
   animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 2;
@@ -2914,7 +2898,7 @@
   padding: 6px 12px;
   background: var(--paper-raised);
   border: 1px solid var(--rule);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: var(--fs-xs);
   font-family: var(--font-book, serif);
   font-weight: 500;
@@ -2968,9 +2952,8 @@
   font-size: 0.82rem;
   font-weight: 600;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   white-space: nowrap;
-  box-shadow: var(--shadow-1);
 }
 
 /* Espaciado inferior seguro frente a MiniReaderBar + AppNav (OBJ-07) */
@@ -2994,7 +2977,6 @@
   padding: 1rem 1.1rem;
   box-shadow:
     0 0 0 100vmax color-mix(in srgb, var(--scrim, rgba(43, 37, 32, 0.32)) 38%, transparent),
-    var(--shadow-2),
     0 0 0 1px var(--rule);
   max-width: 440px;
   width: 92vw;
@@ -3027,14 +3009,14 @@
   text-transform: uppercase;
   opacity: 0.72;
   padding: 0.1rem 0.4rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   /* Mismo criterio que components.css: la píldora tiene que existir en claro. */
   background: color-mix(in srgb, var(--ink) 9%, transparent);
 }
 
 .word-card-save-btn {
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 0.35rem 0.75rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -3088,7 +3070,7 @@
 .word-synonym-pill {
   font-size: 0.74rem;
   padding: 0.15rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
@@ -3196,7 +3178,7 @@
   width: 100px;
   height: 100px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   flex-shrink: 0;
   cursor: pointer;
   transition: transform 140ms var(--ease-spring, ease);
@@ -3243,14 +3225,13 @@
   align-items: center;
   gap: 0.6rem;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 0.75rem 1.25rem;
   background: var(--accent-primary);
   color: var(--on-accent);
   font-weight: 700;
   font-size: 0.92rem;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
   transition:
     transform 140ms ease,
     box-shadow 140ms ease;
@@ -3258,7 +3239,6 @@
 
 .notebook-quick-review-cta:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
 }
 
 .notebook-quick-review-cta:hover {
@@ -3268,7 +3248,7 @@
 .cta-badge {
   background: rgba(0, 0, 0, 0.15);
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 0.75rem;
 }
 
@@ -3364,14 +3344,12 @@
   border-radius: var(--r-2);
   background: var(--paper-raised);
   border: 1px solid var(--rule);
-  box-shadow: var(--shadow-1);
   transition:
     box-shadow 140ms ease,
     transform 140ms ease;
 }
 
 .notebook-word-card:hover {
-  box-shadow: var(--shadow-2);
   transform: translateY(-1px);
 }
 
@@ -3410,7 +3388,7 @@
 .notebook-word-quote {
   font-size: 0.85rem;
   font-style: italic;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   border-left: 2px solid var(--rule-strong);
   margin: 0.5rem 0 0;
   padding-left: 0.65rem;
@@ -3425,9 +3403,9 @@
   cursor: pointer;
   font-size: 1.1rem;
   padding: 0.35rem;
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 999px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: var(--r-pill);
   transition:
     opacity 140ms ease,
     background 140ms ease;
@@ -3495,7 +3473,7 @@
   border: 1px solid var(--accent-primary);
   background: rgba(230, 184, 106, 0.12);
   color: inherit;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 0.45rem 0.85rem;
   font-size: 0.82rem;
   font-weight: 600;
@@ -3513,7 +3491,7 @@
   gap: 0.4rem;
   background: rgba(255, 255, 255, 0.05);
   padding: 0.3rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   margin-top: 0.75rem;
 }
 
@@ -3522,7 +3500,7 @@
   background: transparent;
   color: inherit;
   padding: 0.45rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 0.84rem;
   font-weight: 600;
   cursor: pointer;

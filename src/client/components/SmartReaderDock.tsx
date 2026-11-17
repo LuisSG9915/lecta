@@ -10,7 +10,6 @@ import Icon, { type IconName } from "./Icon";
 import { getWeeklyLearnedWordsCount } from "../lib/journey";
 
 import type { FocusAidType } from "../lib/focus-telemetry";
-import TtsDebugPanel from "./TtsDebugPanel";
 
 export interface FocusSuggestion {
   isFatigued: boolean;
@@ -656,8 +655,6 @@ export default function SmartReaderDock({
         </nav>
       </div>
 
-      {/* Diagnóstico TTS temporal (activar con ?ttsdebug=1) */}
-      <TtsDebugPanel ttsSnap={ttsSnap} />
     </>
   );
 }

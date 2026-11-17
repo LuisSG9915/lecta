@@ -1758,7 +1758,6 @@
   background: var(--paper-raised);
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-pill);
-  box-shadow: var(--shadow-1);
   font-size: var(--fs-xs);
   color: var(--ink);
   max-inline-size: calc(100% - var(--s-4));
@@ -2754,7 +2753,6 @@
   background: var(--paper-raised, var(--paper));
   border: 1px solid var(--rule);
   color: var(--ink-soft);
-  box-shadow: var(--shadow-1);
 }
 
 .companion-thumb .cat {
@@ -2858,7 +2856,6 @@
 .companion-tab-btn[data-active] {
   background: var(--paper-raised);
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 
 .companion-badge-dot {
@@ -2925,7 +2922,6 @@
   border: 1.5px solid var(--ochre);
   border-radius: var(--r-2);
   background: color-mix(in srgb, var(--ochre) 10%, var(--paper-raised));
-  box-shadow: var(--shadow-1);
   animation: rise-in var(--dur-2) var(--ease-out);
 }
 
@@ -3051,7 +3047,6 @@
   border: 1.5px dashed var(--line);
   border-radius: var(--r-2);
   background: var(--paper-raised);
-  box-shadow: var(--shadow-1);
   transition:
     border-color var(--dur-1) var(--ease-out),
     background-color var(--dur-1) var(--ease-out);
@@ -3259,7 +3254,6 @@
   border-radius: var(--r-2);
   background: var(--paper-raised);
   position: relative;
-  box-shadow: var(--shadow-1);
   transition: border-color var(--dur-1) var(--ease-out);
 }
 
@@ -3283,7 +3277,6 @@
   height: 68px;
   object-fit: cover;
   border-radius: var(--r-1);
-  box-shadow: var(--shadow-1);
 }
 
 .exlibris-seal-icon {
@@ -3411,7 +3404,6 @@
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
 }
 
 .journey-hero-stat {
@@ -3543,7 +3535,6 @@
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
   display: grid;
   grid-template-columns: repeat(2, 1fr);
 }
@@ -3603,7 +3594,6 @@
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
 }
 
 .journey-weeks-chart {
@@ -3693,7 +3683,6 @@
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
 }
 
 .journey-insight-block .journey-insight-title {
@@ -3757,7 +3746,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   background: var(--paper-raised);
-  box-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
@@ -3827,7 +3815,6 @@
     color-mix(in srgb, var(--ochre-soft) 55%, var(--paper-raised)) 0%,
     var(--paper-raised) 100%
   );
-  box-shadow: var(--shadow-2);
 }
 
 .journey-sanctuary-scene {
@@ -3911,7 +3898,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   background: var(--paper-raised);
-  box-shadow: var(--shadow-1);
 }
 
 .journey-rank-head {
@@ -3991,7 +3977,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   overflow: hidden;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 @media (max-width: 640px) {
   .journey-ink-path {
@@ -4035,7 +4020,6 @@
   align-items: center;
   justify-content: center;
   background: var(--paper-raised);
-  box-shadow: var(--shadow-2);
   cursor: pointer;
   transition: transform var(--dur-1) var(--ease-out);
 }
@@ -4101,7 +4085,6 @@
   color: var(--ink);
   background: var(--paper-raised);
   border: 1px solid var(--rule);
-  box-shadow: var(--shadow-1);
   padding: 0.15rem 0.5rem;
   border-radius: var(--r-1);
   /* Los nombres de hito («Explorador de Senderos»…) no se cortan:
@@ -4126,7 +4109,6 @@
   background: var(--paper-raised);
   color: var(--ink);
   border: 1px solid var(--rule);
-  box-shadow: var(--shadow-1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -4150,7 +4132,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   padding: var(--s-3);
-  box-shadow: var(--shadow-2);
   z-index: 10;
   animation: rise-in var(--dur-2) var(--ease-out);
 }
@@ -4239,7 +4220,6 @@
   border: var(--border);
   border-radius: var(--r-2);
   padding: var(--s-4);
-  box-shadow: var(--shadow-2);
   animation: rise-in var(--dur-2) var(--ease-out);
   overflow-y: auto;
 }
@@ -4555,7 +4535,6 @@
   border-radius: var(--r-2);
   background: var(--paper-raised);
   border: 1px solid var(--line, rgba(0, 0, 0, 0.08));
-  box-shadow: var(--shadow-2);
   animation: rise-in var(--dur-2, 0.25s) var(--ease-out, ease-out);
 }
 
@@ -4890,7 +4869,6 @@
   border-radius: var(--r-2);
   background: var(--paper-raised, var(--paper));
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-1);
 }
 
 .sentence-cloze-quote-wrapper {
@@ -5006,7 +4984,6 @@
 .sentence-cloze-option-btn:hover:not(:disabled) {
   border-color: var(--ochre);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-1);
 }
 
 .sentence-cloze-option-btn.is-correct {
@@ -5085,7 +5062,6 @@
   background: var(--surface-priming);
   border: 1px solid var(--border-priming);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
 }
 
 .consolidation-card-header {
@@ -5129,7 +5105,6 @@
   min-width: 240px;
   background: var(--paper-raised);
   border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-2);
   border-radius: var(--r-2);
   padding: 0.35rem 0;
   display: flex;
@@ -5171,7 +5146,6 @@
   font-size: var(--fs-xs, 0.8rem);
   font-weight: 600;
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 
 .consolidation-runner-head {
@@ -5412,7 +5386,6 @@
   background: var(--paper-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
 }
 
 .deep-summary-harvest-header {
@@ -5545,7 +5518,6 @@
   background: var(--paper-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
 }
 
 .game-empty-review-text {

@@ -120,7 +120,7 @@ describe("tokens.css", () => {
   });
 
   it("define curvas de animación --ease-spring y --ease-soft (Fase 5.1)", () => {
-    expect(cssContent).toContain("--ease-spring: cubic-bezier(0.22, 1, 0.36, 1);");
+    expect(cssContent).toContain("--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);");
     expect(cssContent).toContain("--ease-soft: cubic-bezier(0.4, 0, 0.2, 1);");
   });
 

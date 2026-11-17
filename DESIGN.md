@@ -20,6 +20,13 @@ colors:
   rule-strong: "#c9beaa"
   on-accent: "#ffffff"
   cat-fur: "#e8833a"
+  night: "#141b2b"
+  night-2: "#1d2740"
+  night-ink: "#efe6d6"
+  night-soft: "#b9b2c6"
+  moon: "#f3c77a"
+  mist: "#6f8fa0"
+  ochre-wash: "color-mix(in srgb, var(--ochre) 22%, var(--paper))"
 typography:
   display:
     fontFamily: "Literata Variable, Literata, Georgia, Times New Roman, serif"

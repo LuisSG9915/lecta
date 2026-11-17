@@ -77,8 +77,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  min-height: 40px;
-  min-width: 40px;
+  min-height: 44px;
+  min-width: 44px;
   padding-inline: var(--s-2);
 }
 
@@ -215,7 +215,6 @@
   background: var(--paper-raised);
   border: 1px solid var(--rule);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1027,8 +1026,7 @@ mark.saved-passage--dario {
   color: var(--vermilion);
   background: var(--paper-raised);
   border: 1px solid var(--vermilion-wash);
-  border-radius: 999px;
-  box-shadow: var(--shadow-1);
+  border-radius: var(--r-pill);
   pointer-events: none;
   animation: resume-badge-fade 5s forwards var(--ease-out);
   z-index: 5;
@@ -1061,8 +1059,7 @@ mark.saved-passage--dario {
   color: var(--accent-primary);
   background: var(--paper-raised);
   border: 1px solid var(--accent-primary);
-  border-radius: 999px;
-  box-shadow: var(--shadow-2);
+  border-radius: var(--r-pill);
   pointer-events: none;
   animation: resume-badge-fade 8s forwards var(--ease-out);
   z-index: 10;
@@ -1100,7 +1097,7 @@ mark.saved-passage--dario {
 .reader-fatigue-btn-audio {
   font-size: 0.85rem;
   padding: 0.35rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1140,7 +1137,7 @@ mark.saved-passage--dario {
   max-inline-size: min(26rem, calc(100vw - var(--s-4) * 2));
   padding: var(--s-1) var(--s-2) var(--s-1) var(--s-4);
   border: var(--border);
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   background: var(--paper-raised);
   box-shadow: var(--shadow-sheet);
   font-size: var(--fs-sm);
@@ -1171,7 +1168,7 @@ mark.saved-passage--dario {
   display: flex;
   align-items: stretch;
   border: var(--border);
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   background: var(--paper-raised);
   box-shadow: var(--shadow-sheet);
   overflow: hidden;
@@ -1419,14 +1416,13 @@ mark.saved-passage--dario {
   inline-size: 2.75rem;
   block-size: 2.75rem;
   padding: 0;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule);
   background: var(--paper);
   color: var(--ink-soft);
   font-size: 1.75rem;
   font-family: var(--font-ui);
   line-height: 1;
-  box-shadow: var(--shadow-1);
   cursor: pointer;
   opacity: 0.35;
   transition:
@@ -1444,7 +1440,6 @@ mark.saved-passage--dario {
   color: var(--ink);
   background: var(--paper-raised);
   transform: translateY(-50%) scale(1.08);
-  box-shadow: var(--shadow-2);
 }
 
 .reader-nav-edge:active:not(:disabled) {
@@ -1497,7 +1492,7 @@ mark.saved-passage--dario {
   padding: 3px;
   margin-block: calc(-1 * var(--s-1)) var(--s-3);
   border: var(--border);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--paper-sunken);
 }
 
@@ -1506,7 +1501,7 @@ mark.saved-passage--dario {
   min-height: 2.75rem;
   padding: var(--s-1) var(--s-2);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--ink-soft);
   font-family: var(--font-ui);
@@ -1527,7 +1522,6 @@ mark.saved-passage--dario {
 .sheet-tab[data-active] {
   background: var(--paper-raised);
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 
 @media (forced-colors: active) {
@@ -1715,9 +1709,7 @@ mark.saved-passage--dario {
 
 .strategy-card[data-active="true"] {
   border-color: var(--vermilion);
-  box-shadow:
-    0 0 0 2px var(--vermilion),
-    var(--shadow-1);
+  box-shadow: 0 0 0 2px var(--vermilion);
   background: var(--paper-raised);
 }
 
@@ -3003,9 +2995,6 @@ b.lecta-anchor {
   position: absolute;
   inset-inline: 0;
   border-block: 1px solid var(--ruler-border, color-mix(in srgb, var(--vermilion) 28%, transparent));
-  box-shadow:
-    0 -1px 4px -1px color-mix(in srgb, var(--vermilion) 15%, transparent),
-    0 1px 4px -1px color-mix(in srgb, var(--vermilion) 15%, transparent);
   transition: inset-block-start 100ms ease-out;
 }
 
@@ -3118,8 +3107,7 @@ b.lecta-anchor {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border: 1px solid var(--rule);
-  border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
+  border-radius: var(--radius-s);
   pointer-events: auto;
   transition:
     opacity var(--dur-2, 0.25s) var(--ease-out),
@@ -3146,9 +3134,9 @@ b.lecta-anchor {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0.25rem 0.65rem;
-  border-radius: var(--r-full, 9999px);
+  border-radius: var(--r-pill);
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -3232,7 +3220,6 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid var(--vermilion);
   border-radius: var(--r-2, 12px);
-  box-shadow: var(--shadow-2);
   cursor: pointer;
   text-align: left;
   animation: companion-bubble-pop 250ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -3573,7 +3560,6 @@ b.lecta-anchor {
   background: var(--paper-sunken);
   border: 1px solid var(--rule);
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 
 /* ==========================================================================
@@ -3618,7 +3604,6 @@ b.lecta-anchor {
   font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 
 .portico-speech-bubble p {
@@ -3649,7 +3634,7 @@ b.lecta-anchor {
   color: var(--vermilion);
   background: var(--vermilion-subtle, rgba(184, 51, 42, 0.08));
   padding: 2px 8px;
-  border-radius: var(--r-full, 999px);
+  border-radius: var(--r-pill);
   border: 1px solid var(--vermilion-soft, rgba(184, 51, 42, 0.2));
 }
 
@@ -3707,7 +3692,6 @@ b.lecta-anchor {
   justify-content: center;
   align-items: center;
   border: 1px solid var(--rule);
-  box-shadow: var(--shadow-1);
 }
 
 .section-preview__flash-card--expanded,
@@ -3829,7 +3813,7 @@ b.lecta-anchor {
 .portico-chip {
   padding: 6px 12px;
   font-size: var(--text-xs, 0.75rem);
-  border-radius: var(--r-full, 999px);
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule);
   background: var(--paper);
   color: var(--ink);
@@ -3876,8 +3860,7 @@ b.lecta-anchor {
   align-items: center;
   background: var(--paper-warm, var(--paper));
   border: 1px solid var(--rule);
-  border-radius: var(--r-full, 999px);
-  box-shadow: var(--shadow-2);
+  border-radius: var(--r-pill);
   padding: 2px;
   animation: strategy-pill-in 0.3s cubic-bezier(0.34, 1.35, 0.64, 1);
   transition:
@@ -3897,7 +3880,7 @@ b.lecta-anchor {
   padding: 6px 12px;
   background: transparent;
   border: none;
-  border-radius: var(--r-full, 999px);
+  border-radius: var(--r-pill);
   color: var(--ink);
   font-size: var(--text-xs, 0.75rem);
   font-weight: 600;
@@ -3920,7 +3903,7 @@ b.lecta-anchor {
   border-inline-start: 1px solid var(--rule);
   color: var(--ink-dim);
   cursor: pointer;
-  border-radius: 0 var(--r-full, 999px) var(--r-full, 999px) 0;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;
 }
 
 .strategy-pill-chevron:hover {
@@ -4136,7 +4119,7 @@ b.lecta-anchor {
   background: var(--paper-sunken);
   border: 1px solid var(--rule);
   padding: 2px 8px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   text-transform: lowercase;
 }
 
@@ -4401,7 +4384,7 @@ b.lecta-anchor {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgba(200, 109, 59, 0.15);
   color: var(--accent-primary);
 }
@@ -4461,7 +4444,7 @@ b.lecta-anchor {
   font-size: var(--fs-xs, 0.8rem);
   font-weight: 500;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--paper-raised);
   border: 1px solid var(--rule);
   color: var(--ink);
@@ -4646,7 +4629,7 @@ b.lecta-anchor {
   text-transform: uppercase;
   opacity: 0.65;
   padding: 0.15rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -4674,7 +4657,7 @@ b.lecta-anchor {
   flex-shrink: 0;
   width: 36px;
   height: 36px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule-strong);
   background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: inherit;
@@ -4704,7 +4687,7 @@ b.lecta-anchor {
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 0.82rem;
   line-height: 1.2;
   white-space: nowrap;
@@ -4718,7 +4701,7 @@ b.lecta-anchor {
   align-items: center;
   gap: 6px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 6px 14px;
   font-size: 0.82rem;
   font-weight: 600;
@@ -4757,11 +4740,10 @@ b.lecta-anchor {
   background: var(--paper-raised);
   color: var(--ink);
   padding: 6px 14px;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   border: 1px solid var(--accent-primary);
   font-size: 0.82rem;
   font-weight: 500;
-  box-shadow: var(--shadow-2);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4778,11 +4760,10 @@ b.lecta-anchor {
   background: var(--paper-raised);
   color: var(--ink-soft);
   padding: 4px 12px;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule);
   font-size: 0.78rem;
   font-weight: 500;
-  box-shadow: var(--shadow-1);
   z-index: 40;
   white-space: nowrap;
   pointer-events: none;
@@ -4807,8 +4788,7 @@ b.lecta-anchor {
   padding: 6px 10px 6px 14px;
   background: var(--paper-raised);
   color: var(--ink);
-  border-radius: var(--r-pill, 999px);
-  box-shadow: var(--shadow-2);
+  border-radius: var(--r-pill);
   font-size: 0.86rem;
   line-height: 1.3;
   z-index: 50;
@@ -4853,7 +4833,7 @@ b.lecta-anchor {
   background: var(--paper-sunken);
   border: none;
   color: inherit;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
   width: 20px;
   height: 20px;
   display: inline-flex;
@@ -4909,7 +4889,6 @@ b.lecta-anchor {
   background: var(--paper-raised);
   color: var(--ink);
   border-radius: var(--r-sheet, 14px);
-  box-shadow: var(--shadow-2);
   border: 1px solid var(--rule);
   box-sizing: border-box;
   z-index: 25;
@@ -4986,7 +4965,7 @@ b.lecta-anchor {
   padding: 0.75rem 1.25rem;
   font-size: 0.95rem;
   font-weight: 600;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-pill);
 }
 
 /* =====================================================================
@@ -5019,7 +4998,7 @@ b.lecta-anchor {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--vermilion) 80%, transparent);
   }
   30% {
-    box-shadow: 0 0 12px 3px color-mix(in srgb, var(--vermilion) 90%, transparent);
+    box-shadow: 0 0 6px 2px color-mix(in srgb, var(--vermilion) 60%, transparent);
   }
   100% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--vermilion) 0%, transparent);
@@ -5061,9 +5040,9 @@ b.lecta-anchor {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0.25rem 0.65rem;
-  border-radius: var(--r-full, 9999px);
+  border-radius: var(--r-pill);
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -5181,10 +5160,13 @@ b.lecta-anchor {
   border-radius: var(--r-2);
   background: var(--dock-bg);
   border: 1px solid var(--dock-border);
-  box-shadow: var(--shadow-2);
   box-sizing: border-box;
   overflow: visible;
   color: var(--dock-ink);
+  transition:
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
 }
 
 .smart-reader-dock.is-audio-mode,
@@ -5237,7 +5219,7 @@ b.lecta-anchor {
   gap: 5px;
   height: 36px;
   padding: 0 10px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   font-size: 0.8125rem;
   font-weight: 500;
   white-space: nowrap;
@@ -5274,7 +5256,7 @@ b.lecta-anchor {
   align-items: center;
   justify-content: center;
   font-size: 0.95rem;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
 }
 
 .dock-audio-play-btn {
@@ -5284,7 +5266,7 @@ b.lecta-anchor {
   background: var(--vermilion);
   color: var(--on-accent) !important;
   font-weight: 600;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5329,7 +5311,7 @@ b.lecta-anchor {
   color: var(--dock-ink-soft);
   background: transparent;
   border: none;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   cursor: pointer;
   flex-shrink: 0;
   transition:
@@ -5381,8 +5363,8 @@ b.lecta-anchor {
 .dock-companion-slot .reader-dock-cat .companion-btn .cat {
   inline-size: 36px;
   block-size: 36px;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 /* Responsividad extrema para móviles angostos (< 390px) */
@@ -5537,7 +5519,6 @@ b.lecta-anchor {
      blanco sobre papel blanco: títulos invisibles). */
   background: var(--paper-raised);
   border: 1px solid var(--rule-strong);
-  box-shadow: var(--shadow-2);
   color: var(--ink);
   display: flex;
   flex-direction: column;
@@ -5624,7 +5605,7 @@ b.lecta-anchor {
   min-height: 44px;
   width: 100%;
   padding: 8px 12px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--ink-soft);
@@ -5676,7 +5657,7 @@ b.lecta-anchor {
 .reader-mini-cat-btn {
   width: 2.5rem;
   height: 2.5rem;
-  border-radius: var(--r-full, 9999px);
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule);
   background: color-mix(in srgb, var(--paper-raised) 85%, transparent);
   -webkit-backdrop-filter: blur(10px);
@@ -5685,7 +5666,6 @@ b.lecta-anchor {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: var(--shadow-2);
   color: var(--ink);
   position: relative;
   transition:
@@ -5725,12 +5705,11 @@ b.lecta-anchor {
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
   padding: 0.35rem 0.85rem;
-  border-radius: var(--r-full, 9999px);
+  border-radius: var(--r-pill);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  box-shadow: var(--shadow-1);
   transition:
     transform 150ms ease,
     background-color 150ms ease,
@@ -5740,7 +5719,6 @@ b.lecta-anchor {
 .reader-section-preview-pill:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--vermilion) 18%, var(--paper-raised));
-  box-shadow: var(--shadow-2);
 }
 
 .reader-section-preview-pill .pill-cta {
@@ -5763,7 +5741,6 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid var(--border-color, color-mix(in srgb, var(--ink) 12%, transparent));
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
   padding: 0.9rem 1.1rem;
   font-family: var(--font-ui, sans-serif);
   animation: recapBubbleDrop 260ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -5876,7 +5853,7 @@ b.lecta-anchor {
   cursor: pointer;
   font-size: 0.76rem;
   padding: 0.18rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--border-color);
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
@@ -5903,7 +5880,7 @@ b.lecta-anchor {
   background: var(--vermilion);
   color: var(--on-accent);
   border: none;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   padding: 0.4rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 600;
@@ -6017,7 +5994,7 @@ b.lecta-anchor {
   border: 1px solid color-mix(in srgb, var(--accent-primary, var(--vermilion)) 25%, transparent);
   color: var(--accent-primary, var(--vermilion));
   padding: 0.22rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-size: 0.78rem;
   font-family: var(--font-ui, sans-serif);
   font-weight: 600;
@@ -6059,7 +6036,6 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid var(--border-color);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-2);
   padding: 0.35rem;
   display: flex;
   flex-direction: column;
@@ -6092,7 +6068,6 @@ b.lecta-anchor {
   background: var(--surface-priming);
   border: 1px solid var(--border-priming);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
   font-family: var(--font-book, serif);
   color: var(--ink);
   box-sizing: border-box;
@@ -6121,7 +6096,7 @@ b.lecta-anchor {
   color: var(--accent-primary, var(--vermilion));
   font-weight: 700;
   padding: 0.2rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 0.75rem;
@@ -6158,7 +6133,6 @@ b.lecta-anchor {
   border: 1px solid var(--border-color);
   border-radius: var(--r-2);
   padding: 0.35rem;
-  box-shadow: var(--shadow-2);
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
@@ -6214,7 +6188,6 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid var(--border-color);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
   transition:
     transform 0.18s ease,
     opacity 0.18s ease;
@@ -6362,18 +6335,17 @@ b.lecta-anchor {
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-priming);
   border: 1px solid var(--border-priming);
   font-size: 0.82rem;
   color: var(--ink);
-  box-shadow: var(--shadow-2);
-  min-height: 36px;
+  min-height: 44px;
 }
 
 .focus-ruler-close-btn {
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
   touch-action: manipulation;
 }
 
@@ -6448,8 +6420,7 @@ b.lecta-anchor {
   padding: 0.4rem 0.85rem;
   background: var(--paper-raised);
   border: 1px solid var(--rule);
-  border-radius: 9999px;
-  box-shadow: var(--shadow-2);
+  border-radius: var(--r-pill);
   font-size: 0.84rem;
   color: var(--ink);
   white-space: nowrap;
@@ -6466,7 +6437,7 @@ b.lecta-anchor {
   background: var(--vermilion);
   color: var(--on-accent);
   border: none;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   padding: 0.25rem 0.65rem;
   font-size: 0.76rem;
   font-weight: 600;
@@ -6511,7 +6482,7 @@ b.lecta-anchor {
   gap: 5px;
   height: 32px;
   padding: 0 10px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   font-size: 0.8125rem;
   font-weight: 500;
   white-space: nowrap;
@@ -6856,11 +6827,10 @@ b.lecta-anchor {
   transform: translateY(-50%);
   width: 34px;
   height: 38px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--rule-strong);
   background: var(--surface-elevated);
   color: var(--text-primary);
-  box-shadow: var(--shadow-2);
   display: flex;
   align-items: center;
   justify-content: center;

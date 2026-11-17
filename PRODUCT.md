@@ -171,8 +171,9 @@ OWN-WORLD TOKENS (`src/client/styles/tokens.css`):
   lienzo base.
 - **Campos cromáticos por contexto**:
   1. `Papel / Noche base`: Biblioteca, Lector y Explora.
-  2. `Lavado Ocre (--ochre-wash)`: superficie completa del Cuaderno y Herbario
-     en `notebook.css` (no solo en chips).
+  2. `Lavado Ocre (--surface-herbarium = ocre al 12 % sobre papel)`: superficie
+     del Cuaderno y Herbario en `notebook.css`. `--ochre-wash` (22–28 %) se
+     reserva a chips y bordes: al 22–28 % se ve barroso en noche.
   3. `Pizarra Noche (--night / --night-2)`: superficie del dock del lector
      cuando está en modo Voz (TTS) y del bloque de vinculación Kindle e-ink
      (`.kindle-panel`).
@@ -189,9 +190,10 @@ VIEW-BY-VIEW EXECUTION:
   La ficha `.sheet` emerge como papeleta encartada con doble filete superior.
   Al guardar una palabra (`★ Guardar`), el icono del Herbario confirma con un
   micro-brote botánico (apagado si `prefers-reduced-motion`).
-- **Cuaderno y Herbario (`Notebook.tsx` / `notebook.css`)**: Fondo lavado ocre
-  (`--ochre-wash`); cada palabra se presenta como espécimen recolectado con su
-  cita literaria en `Literata` cursiva.
+- **Cuaderno y Herbario (`Notebook.tsx` / `notebook.css`)**: Fondo de papel con
+  lavado ocre suave (`--surface-herbarium`, ocre al 12 %); cada palabra se
+  presenta como espécimen recolectado con su cita literaria en `Literata`
+  cursiva. `--ochre-wash` (22–28 %) se reserva a chips y bordes.
 - **Tu Recorrido (`Journey.tsx`)**: El Sendero de Tinta se dibuja verticalmente
   mostrando la etapa actual del gato (de «recién llegado» a «bibliotecario» con
   sol bermellón al fondo en el nivel máximo) e integra el acceso al Guardarropa

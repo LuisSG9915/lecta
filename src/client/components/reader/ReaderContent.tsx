@@ -17,6 +17,7 @@ import { captureDbScope, saveSessionValue } from "../../lib/idb";
 import type { WordHit } from "../../lib/words";
 import type { EpisodicWordItem } from "../../lib/practice";
 import { MidChapterRecallCard } from "./MidChapterRecallCard";
+import ReaderChapterHeader from "./ReaderChapterHeader";
 
 export type ReaderSectionRow = { index: number; fragment?: string; label: string };
 
@@ -222,7 +223,7 @@ export function ReaderContent(props: ReaderContentProps) {
       Esta sección no tiene texto legible (puede ser una portada o una imagen).
     </p>
   ) : null}
-  {showChapterTitle ? <h1 className="chapter-title">{sectionTitle}</h1> : null}
+  <ReaderChapterHeader title={sectionTitle} visible={showChapterTitle} />
   {recapBubbleVisible ? (
     <ReaderRecapBubble
       recapBullets={recapBubbleBullets}

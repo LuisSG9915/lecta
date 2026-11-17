@@ -40,7 +40,10 @@ export const screenZoneGate: MiddlewareHandler<{ Bindings: WorkerEnv }> = async 
   next,
 ) => {
   if (context.env.SCREEN_ENABLED !== "1") {
-    return context.json({ error: "Esta función no está disponible." }, 503);
+    return context.json(
+      { error: "Series y películas está temporalmente desactivado." },
+      503,
+    );
   }
   await next();
 };

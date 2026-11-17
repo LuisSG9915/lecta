@@ -195,7 +195,10 @@ describe("Shelf - Explora diferido", () => {
     // tardaba más que unas cuantas microtareas y la prueba fallaba sola.
     await act(async () => {
       await import("./ExploreShelf");
-      for (let i = 0; i < 10; i++) await Promise.resolve();
+      // Esperar a que React monte el chunk resuelto (microtasks + macrotask).
+      for (let i = 0; i < 50; i++) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      for (let i = 0; i < 50; i++) await Promise.resolve();
     });
     expect(host.querySelector(".shelf-explore-tabs")).toBeTruthy();
   });

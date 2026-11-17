@@ -173,7 +173,6 @@ button.app-nav-sync-indicator:focus-visible {
   border: var(--border);
   border-radius: var(--radius-s);
   padding: var(--s-6);
-  box-shadow: var(--shadow-1);
 }
 
 .db-error-title {
@@ -394,7 +393,6 @@ button.app-nav-sync-indicator:focus-visible {
   gap: var(--s-2);
   padding: var(--s-2) var(--s-4);
   border-radius: var(--r-pill);
-  box-shadow: var(--shadow-2);
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
   animation: rise-in var(--dur-2) var(--ease-out);
@@ -501,7 +499,6 @@ button.app-nav-sync-indicator:focus-visible {
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: var(--shadow-1);
   color: var(--ink);
   font-family: var(--font-ui);
   text-align: left;
@@ -515,7 +512,6 @@ button.app-nav-sync-indicator:focus-visible {
 .account-journey-btn:hover {
   border-color: var(--vermilion);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
 }
 
 .account-journey-btn-icon {
@@ -551,7 +547,7 @@ button.app-nav-sync-indicator:focus-visible {
 
 .account-journey-btn-arrow {
   font-size: 1.5rem;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
 }
 
 /* Tarjeta de cuenta y sesión en Tú */
@@ -563,7 +559,6 @@ button.app-nav-sync-indicator:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  box-shadow: var(--shadow-1);
   margin-bottom: var(--s-5);
 }
 
@@ -1028,7 +1023,6 @@ button.app-nav-sync-indicator:focus-visible {
   border-radius: var(--r-pill);
   min-width: 15px;
   text-align: center;
-  box-shadow: var(--shadow-1);
 }
 
 .app-nav-sparkle {
@@ -1067,7 +1061,6 @@ button.app-nav-sync-indicator:focus-visible {
   background: var(--paper-raised);
   border: 1px solid var(--rule);
   border-radius: var(--r-pill);
-  box-shadow: var(--shadow-2);
   padding: 6px 8px 6px 6px;
   display: flex;
   align-items: center;
@@ -1125,7 +1118,7 @@ button.app-nav-sync-indicator:focus-visible {
   flex-shrink: 0;
   font-size: 0.84rem;
   padding: 6px 14px;
-  min-height: 36px;
+  min-height: 44px;
   border-radius: var(--r-pill);
   white-space: nowrap;
 }

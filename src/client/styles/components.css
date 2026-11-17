@@ -235,7 +235,6 @@
    ni aislar al lector con desenfoques fuertes. */
 .sheet--peek {
   max-height: min(48vh, 24rem);
-  box-shadow: var(--shadow-2);
 }
 
 .sheet-scrim:has(.sheet--peek) {
@@ -465,7 +464,6 @@
   block-size: 22px;
   border-radius: 50%;
   background: var(--paper-raised);
-  box-shadow: var(--shadow-1);
   transition: transform var(--dur-3) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -586,7 +584,6 @@
 .segmented button.is-active {
   background: var(--paper-raised);
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 
 @media (forced-colors: active) {
@@ -917,7 +914,6 @@ mark.saved-word[data-level="settled"] {
   border: var(--border);
   border-radius: var(--r-2);
   padding: var(--s-3);
-  box-shadow: var(--shadow-2);
   overflow: hidden;
 }
 
@@ -927,7 +923,6 @@ mark.saved-word[data-level="settled"] {
   width: auto;
   height: auto;
   border-radius: var(--r-1);
-  box-shadow: var(--shadow-1);
   display: block;
 }
 
@@ -989,7 +984,6 @@ mark.saved-word[data-level="settled"] {
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-pill);
-  box-shadow: var(--shadow-2);
   padding: 3px;
   transform: translate(-50%, -100%) translateY(-8px);
   animation: selection-menu-in var(--dur-2) var(--ease-out);
@@ -1184,7 +1178,6 @@ mark.saved-word[data-level="settled"] {
   margin-bottom: var(--s-3);
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
-  box-shadow: var(--shadow-2);
   animation: fadeInToast 0.25s var(--ease-out);
 }
 
@@ -1257,7 +1250,6 @@ mark.saved-word[data-level="settled"] {
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-pill);
-  box-shadow: var(--shadow-2);
   opacity: 0.45;
   transition: opacity var(--dur-2) var(--ease-out);
 }
@@ -1715,12 +1707,10 @@ mark.saved-word[data-level="settled"] {
 
 .glossary-card:hover {
   border-color: var(--rule-strong);
-  box-shadow: var(--shadow-1);
 }
 
 .glossary-card[data-expanded] {
   border-color: var(--vermilion);
-  box-shadow: var(--shadow-2);
 }
 
 .glossary-card[data-cultism] {
@@ -2171,7 +2161,6 @@ mark.saved-word[data-level="settled"] {
   border: 1px solid var(--rule);
   border-radius: var(--r-sheet);
   padding: 1.5rem 1.25rem;
-  box-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2250,7 +2239,6 @@ mark.saved-word[data-level="settled"] {
     transform: translateY(-1px);
     border-color: var(--vermilion);
     background: var(--paper-sunken);
-    box-shadow: var(--shadow-1);
   }
 }
 
@@ -2405,7 +2393,6 @@ mark.saved-word[data-level="settled"] {
   padding: 1.5rem;
   background: var(--paper, var(--bg-surface));
   border-radius: var(--r-sheet, var(--radius-lg, 16px));
-  box-shadow: var(--shadow-1);
 }
 
 .cat-calibration-header {
@@ -2621,7 +2608,6 @@ mark.saved-word[data-level="settled"] {
      toques: el cierre por toque fuera sigue pasando al contenido). */
   box-shadow:
     0 0 0 100vmax color-mix(in srgb, var(--scrim, rgba(43, 37, 32, 0.32)) 38%, transparent),
-    var(--shadow-2),
     0 0 0 1px var(--rule);
   max-width: 440px;
   width: 92vw;
@@ -2767,7 +2753,6 @@ mark.saved-word[data-level="settled"] {
   font-weight: 700;
   font-size: 0.92rem;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
   transition: transform 140ms ease;
 }
 
