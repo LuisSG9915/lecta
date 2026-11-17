@@ -442,6 +442,16 @@ describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Fl
     expect(css).toMatch(/\.focus-ruler\s*\{[^}]*pointer-events:\s*none;[^}]*z-index:\s*25/);
     expect(css).toMatch(/\.focus-ruler__handle\s*\{[^}]*pointer-events:\s*auto/);
   });
+
+  it("dock de audio: objetivos de 44px, estado propio y compactación a iconos", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const css = await fs.readFile(path.resolve(process.cwd(), "src/client/styles/reader.css"), "utf-8");
+    expect(css).toMatch(/\.is-audio-mode \.dock-pill-btn,\s*\.is-audio-mode \.dock-audio-pill-btn\s*\{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(/\.dock-audio-status\s*\{[^}]*flex:\s*1 0 100%/);
+    expect(css).toMatch(/@media \(max-width: 480px\)\s*\{\s*\.smart-reader-dock\.is-audio-mode/);
+    expect(css).toMatch(/\.is-audio-mode \.dock-audio-play-btn \.dock-action-label-collapsible\s*\{[^}]*display:\s*none/);
+  });
 });
 
 describe("Cableado Maestro e Integración en Reader.tsx (Fase 1 y Fase 2)", () => {

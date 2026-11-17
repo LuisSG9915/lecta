@@ -4,7 +4,7 @@ import {
   type ReadingPreset,
   isFeatureFlagEnabled,
 } from "../lib/settings";
-import type { TtsSnapshot } from "../lib/ttsTypes";
+import type { TtsPauseReason, TtsSnapshot } from "../lib/ttsTypes";
 import { unlockAudioContext } from "../lib/kittenTtsEngine";
 import { IS_IOS } from "../lib/ttsSpeech";
 import Icon, { type IconName } from "./Icon";
@@ -17,6 +17,15 @@ export interface FocusSuggestion {
   reason?: "none" | "stall" | "regressions" | "sustained-load";
   recommendedAid: FocusAidType;
 }
+
+const PAUSE_REASON_TEXT: Partial<Record<TtsPauseReason, string>> = {
+  word_lookup: "tocaste una palabra",
+  panel_opened: "abriste un panel",
+  fatigue: "descanso",
+  visibility: "saliste de la pestaña",
+  render_change: "cambió el texto",
+  error: "algo falló",
+};
 
 export function formatCompactProgress(raw: string): { compact: string; title: string } {
   if (!raw) return { compact: "", title: "" };
@@ -209,6 +218,12 @@ export default function SmartReaderDock({
   const isPillHidden = isReadingActive || isScrollHidden;
 
   const progressMeta = formatCompactProgress(progressText);
+  const pauseText =
+    ttsSnap.status === "paused"
+      ? ttsSnap.pauseReason && PAUSE_REASON_TEXT[ttsSnap.pauseReason]
+        ? `En pausa · ${PAUSE_REASON_TEXT[ttsSnap.pauseReason]}`
+        : "En pausa"
+      : null;
   const isAudioMode = ttsSnap.status !== "idle" && ttsSnap.status !== "stopping";
 
   const effectiveIsFatigued = Boolean(
@@ -333,7 +348,9 @@ export default function SmartReaderDock({
             role="status"
             aria-live="polite"
           >
-            <span aria-hidden="true">🏆</span>
+            <span aria-hidden="true">
+              <Icon name="trophy" size={16} />
+            </span>
             <span>{recordToast}</span>
           </div>
         )}
@@ -545,7 +562,8 @@ export default function SmartReaderDock({
                     }}
                     aria-label="Escuchar los próximos 5 min"
                   >
-                    <span>Escuchar 5 min 🎧</span>
+                    <span>Escuchar 5 min</span>
+                    <Icon name="headphones" size={14} />
                   </button>
                 )}
                 <button
@@ -555,7 +573,7 @@ export default function SmartReaderDock({
                   aria-label="Opciones para silenciar sugerencias de enfoque"
                   title="Opciones de sugerencias"
                 >
-                  ✕
+                  <Icon name="close" size={14} />
                 </button>
               </>
             ) : (
@@ -592,7 +610,7 @@ export default function SmartReaderDock({
                   }}
                   aria-label="Cerrar"
                 >
-                  ✕
+                  <Icon name="close" size={14} />
                 </button>
               </div>
             )}
@@ -688,6 +706,13 @@ export default function SmartReaderDock({
             </>
           ) : (
             /* ================= MODO AUDIO / TTS ================= */
+            <>
+            <div className="dock-audio-status" role="status" title={progressMeta.title || progressText}>
+              <span className="dock-chapter-text">{progressMeta.compact || progressText}</span>
+              {pauseText ? (
+                <span className="dock-audio-pause-reason">{pauseText}</span>
+              ) : null}
+            </div>
             <div className="dock-actions-group dock-audio-group">
               {/* Frase anterior */}
               {onPrevSentence ? (
@@ -699,7 +724,7 @@ export default function SmartReaderDock({
                   aria-label="Frase anterior"
                   title="Frase anterior"
                 >
-                  ⏮
+                  <Icon name="skip-back" size={20} />
                 </button>
               ) : null}
 
@@ -720,11 +745,23 @@ export default function SmartReaderDock({
                       : "Reanudar lectura"
                 }
               >
-                {ttsSnap.status === "preparing"
-                  ? "⏳"
-                  : ttsSnap.status === "speaking"
-                    ? "⏸ Pausa"
-                    : "▶ Seguir"}
+                <Icon
+                  name={
+                    ttsSnap.status === "preparing"
+                      ? "clock"
+                      : ttsSnap.status === "speaking"
+                        ? "pause"
+                        : "play"
+                  }
+                  size={20}
+                />
+                <span className="dock-action-label-collapsible">
+                  {ttsSnap.status === "preparing"
+                    ? "Preparando"
+                    : ttsSnap.status === "speaking"
+                      ? "Pausa"
+                      : "Seguir"}
+                </span>
               </button>
 
               {/* Frase siguiente */}
@@ -737,7 +774,7 @@ export default function SmartReaderDock({
                   aria-label="Frase siguiente"
                   title="Frase siguiente"
                 >
-                  ⏭
+                  <Icon name="skip-forward" size={20} />
                 </button>
               ) : null}
 
@@ -797,7 +834,9 @@ export default function SmartReaderDock({
                   aria-label="Capturar joya léxica de la frase al Cuaderno"
                   title="Guardar palabra clave de la frase"
                 >
-                  <span aria-hidden="true">{wordCapturedToast ? "✓" : "★"}</span>
+                  <span aria-hidden="true">
+                    <Icon name={wordCapturedToast ? "check" : "star"} size={14} />
+                  </span>
                   <span className="dock-action-label-collapsible">{wordCapturedToast ? " Guardada" : " Joya"}</span>
                 </button>
               ) : null}
@@ -810,9 +849,10 @@ export default function SmartReaderDock({
                 aria-label="Detener audio y volver a lectura silenciosa"
                 title="Volver a lectura silenciosa"
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
+            </>
           )}
         </nav>
       </div>

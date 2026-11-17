@@ -357,7 +357,7 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
 
       const audioBtn = container.querySelector(".reader-focus-pill-audio") as HTMLButtonElement;
       expect(audioBtn).not.toBeNull();
-      expect(audioBtn.textContent).toContain("Escuchar 5 min 🎧");
+      expect(audioBtn.textContent).toContain("Escuchar 5 min");
 
       act(() => audioBtn.click());
       expect(onStartAudio5Min).toHaveBeenCalled();
@@ -585,8 +585,25 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
       const toast = container.querySelector(".reader-record-toast");
       expect(toast).not.toBeNull();
       expect(toast?.textContent).toContain("Nuevo récord: tu lectura más larga este mes");
-      expect(toast?.textContent).toContain("🏆");
+      expect(toast?.querySelector("svg")).not.toBeNull();
     });
+  });
+
+  it("modo audio: iconos SVG en vez de emojis, progreso y motivo de pausa", () => {
+    render({ ttsSnap: speakingSnap });
+    const dock = container.querySelector(".is-audio-mode") as HTMLElement;
+    expect(dock).not.toBeNull();
+    expect(dock.textContent).toContain("Pág. 14 · ~4m");
+    expect(dock.querySelectorAll("svg").length).toBeGreaterThanOrEqual(5);
+    expect(dock.textContent).not.toMatch(/[⏮⏳⏸▶⏭★✓✕🏆🎧]/u);
+    expect(dock.querySelector(".dock-audio-pause-reason")).toBeNull();
+
+    render({
+      ttsSnap: { ...speakingSnap, status: "paused", pauseReason: "word_lookup" },
+    });
+    expect(container.querySelector(".dock-audio-pause-reason")?.textContent).toBe(
+      "En pausa · tocaste una palabra",
+    );
   });
 });
 

@@ -5210,6 +5210,7 @@ b.lecta-anchor {
 .smart-reader-dock.is-audio-mode,
 .reader-smart-dock.is-audio-mode {
   justify-content: center;
+  flex-wrap: wrap;
   gap: 4px;
   --dock-bg: var(--night);
   --dock-ink: var(--ink-on-night);
@@ -5238,6 +5239,26 @@ b.lecta-anchor {
   text-overflow: ellipsis;
   display: inline-block;
   max-width: 100%;
+}
+
+/* Progreso y motivo de pausa del dock de audio: renglón propio sobre los controles */
+.dock-audio-status {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--dock-ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.dock-audio-pause-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dock-ink);
 }
 
 /* Acciones del dock */
@@ -5271,6 +5292,12 @@ b.lecta-anchor {
     transform 120ms ease;
 }
 
+.is-audio-mode .dock-pill-btn,
+.is-audio-mode .dock-audio-pill-btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .dock-pill-btn:hover,
 .dock-action-btn:hover,
 .dock-audio-pill-btn:hover {
@@ -5300,6 +5327,8 @@ b.lecta-anchor {
 .dock-audio-play-btn {
   height: 44px;
   min-height: 44px;
+  min-width: 44px;
+  gap: 6px;
   padding: 0 12px;
   background: var(--vermilion);
   color: var(--on-accent) !important;
@@ -5438,6 +5467,38 @@ b.lecta-anchor {
 }
 
 @media (max-width: 480px) {
+  .smart-reader-dock.is-audio-mode,
+  .reader-smart-dock.is-audio-mode {
+    padding: 5px 8px;
+  }
+  /* El cierre sube a la franja de estado: así los 7 controles caben en una fila a 360 px */
+  .is-audio-mode .dock-audio-status {
+    min-height: 44px;
+    align-items: center;
+    padding: 0 48px;
+    box-sizing: border-box;
+  }
+  .is-audio-mode .dock-audio-close-btn {
+    position: absolute;
+    top: 5px;
+    right: 8px;
+  }
+  .is-audio-mode .dock-audio-group {
+    gap: 2px;
+  }
+  .is-audio-mode .dock-audio-pill-btn,
+  .is-audio-mode .dock-audio-step-btn,
+  .is-audio-mode .dock-audio-close-btn {
+    min-width: 44px;
+    padding: 0 4px;
+  }
+  .is-audio-mode .dock-audio-step-btn,
+  .is-audio-mode .dock-audio-close-btn {
+    width: 44px;
+  }
+  .is-audio-mode .dock-audio-play-btn .dock-action-label-collapsible {
+    display: none;
+  }
   .smart-reader-dock:not(.is-audio-mode),
   .reader-smart-dock:not(.is-audio-mode) {
     padding: 5px 8px;

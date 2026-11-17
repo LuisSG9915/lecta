@@ -50,6 +50,7 @@ export type IconName =
   | "star"
   | "check"
   | "pause"
+  | "play"
   | "skip-back"
   | "skip-forward"
   | "retry"
@@ -430,6 +431,8 @@ function renderIconPath(name: IconName) {
           <rect x="14" y="4" width="4" height="16" rx="1" />
         </>
       );
+    case "play":
+      return <polygon points="6 4 20 12 6 20 6 4" />;
     case "skip-back":
       return (
         <>
