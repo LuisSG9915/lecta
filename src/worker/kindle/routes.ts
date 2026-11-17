@@ -2053,6 +2053,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const chapterGlossary =
     ((loaded.chapter as { glossary?: Record<string, { lemma: string; pos: string | null; gloss: string; ipa?: string | null }> })?.glossary) || {};
   const cleanPageUrlForDict = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}${renderQuerySuffix}`;
+  const pageTextForDict = stripHtml(rawPageHtml);
   let dictCardsHtml = "";
   const seenDictWords = new Set<string>();
   for (const w of extractPageWords(rawPageHtml, bookLang)) {
@@ -2061,6 +2062,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
     const g = chapterGlossary[key];
     if (!g) continue;
     seenDictWords.add(key);
+    // Misma oración episódica que el fallback ?lookup= (alimenta el cloze).
+    const dictContextSentence = extractCompactContextSentence(pageTextForDict, key) || "";
     const saveForm =
       user && g.gloss
         ? `
@@ -2069,7 +2072,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
         <input type="hidden" name="lemma" value="${escapeHtml(g.lemma || key)}" />
         <input type="hidden" name="pos" value="${escapeHtml(g.pos || "")}" />
         <input type="hidden" name="meaning" value="${escapeHtml(g.gloss)}" />
-        <input type="hidden" name="context" value="" />
+        <input type="hidden" name="context" value="${escapeHtml(dictContextSentence)}" />
         <input type="hidden" name="bookHash" value="${escapeHtml(hash)}" />
         <input type="hidden" name="language" value="${escapeHtml(bookLang)}" />
         <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrlForDict)}" />
@@ -2077,7 +2080,6 @@ kindleRoutes.get("/read/:hash", async (c) => {
       </form>`
         : "";
     dictCardsHtml += `
-      <a href="${escapeHtml(cleanPageUrlForDict)}" class="dict-backdrop" aria-label="Cerrar definición"></a>
       <div class="dict-card" id="dict-${escapeHtml(key)}" role="dialog" aria-label="Definición de ${escapeHtml(key)}">
         <div class="inline-lookup-header">
           <div>

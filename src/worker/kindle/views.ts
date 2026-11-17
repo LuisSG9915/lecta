@@ -742,6 +742,7 @@ export const KINDLE_CSS = `
     border: 2px solid #000000;
     border-left: 5px solid #000000;
     background: #ffffff;
+    color: #000000;
     padding: 10px 14px;
     margin-bottom: 8px;
     position: relative;
@@ -754,13 +755,6 @@ export const KINDLE_CSS = `
     bottom: 52px;
     max-width: 636px;
     margin: 0 auto;
-  }
-  .dict-backdrop {
-    display: none;
-  }
-  .dict-card:target ~ .dict-backdrop,
-  .dict-backdrop:target {
-    display: none;
   }
   .inline-lookup-header {
     display: flex;
