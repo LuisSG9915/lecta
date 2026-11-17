@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { resolve } from "node:path";
 import { makeSignature } from "better-auth/crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1760,6 +1761,101 @@ describe("Kindle Routes (/k and /kindle)", () => {
           typeof call[0] === "string" && call[0].startsWith("kcache/ch/abababababababababababababababababababababababababababababababab/"),
         ),
       ).toBe(true);
+    });
+
+    it("el glosario viaja en el artefacto kcache y la segunda petición lo sirve sin releer el EPUB", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lexicon_forms")) {
+          return {
+            rows: [
+              {
+                queried_form: "ephemeral",
+                entry_id: "1",
+                lemma: "ephemeral",
+                pos: "adjetivo",
+                freq_rank: 100,
+                zipf: 5,
+                ipa: null,
+                definition: "Que dura poco tiempo.",
+                example: null,
+                sense_order: 1,
+              },
+              {
+                queried_form: "beauty",
+                entry_id: "2",
+                lemma: "beauty",
+                pos: "sustantivo",
+                freq_rank: 120,
+                zipf: 2,
+                ipa: null,
+                definition: "Belleza.",
+                example: null,
+                sense_order: 1,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      });
+      const getChapterSpy = vi.spyOn(epubReader, "getEpubChapter").mockResolvedValue({
+        bookTitle: "Test Book",
+        bookAuthor: "Author",
+        chapterTitle: "Chapter One",
+        contentHtml: "<p>The ephemeral beauty of morning light upon the river.</p>",
+        totalSections: 2,
+        sectionIndex: 0,
+        language: "en",
+      });
+
+      try {
+        const res1 = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&primed=1", {}, env);
+        expect(res1.status).toBe(200);
+        const html1 = await res1.text();
+        expect(html1).toContain('id="dict-ephemeral"');
+        // Política del glosario: solo lemas frecuentes (zipf >= 3).
+        expect(html1).not.toContain('id="dict-beauty"');
+
+        // El artefacto escrito en R2 trae el glosario acotado.
+        const putCall = mockBooksBucket.put.mock.calls.find(
+          (call) => typeof call[0] === "string" && call[0] === "kcache/ch/abababababababababababababababababababababababababababababababab/0.json",
+        );
+        expect(putCall).toBeDefined();
+        const artifactBytes = putCall![1] as Uint8Array;
+        const artifact = JSON.parse(
+          new TextDecoder().decode(gunzipSync(Buffer.from(artifactBytes))),
+        ) as { glossary?: Record<string, { lemma: string; gloss: string }> };
+        expect(artifact.glossary?.ephemeral).toEqual({
+          lemma: "ephemeral",
+          pos: "adjetivo",
+          gloss: "Que dura poco tiempo.",
+          ipa: null,
+        });
+        expect(artifact.glossary?.beauty).toBeUndefined();
+
+        // Segunda petición desde el artefacto (memoria del isolate vacía):
+        // no vuelve a parsear el EPUB y sigue inyectando la tarjeta.
+        resetKindleCacheMemory();
+        mockBooksBucket.get.mockImplementation(async (key: string) => {
+          if (key === putCall![0]) {
+            return {
+              arrayBuffer: async () => new Uint8Array(artifactBytes).buffer,
+              httpMetadata: { contentType: "application/json; charset=utf-8", contentEncoding: "gzip" },
+            };
+          }
+          return defaultEpubGet(key);
+        });
+        const chapterCallsBefore = getChapterSpy.mock.calls.length;
+        const res2 = await app.request("/k/read/abababababababababababababababababababababababababababababababab?section=0&page=0&primed=1", {}, env);
+        expect(res2.status).toBe(200);
+        expect(getChapterSpy.mock.calls.length).toBe(chapterCallsBefore);
+        expect(await res2.text()).toContain('id="dict-ephemeral"');
+        mockBooksBucket.get.mockImplementation(defaultEpubGet);
+      } finally {
+        getChapterSpy.mockRestore();
+      }
     });
 
     it("sirve recursos desde kcache/res sin volver a descargar el EPUB", async () => {
