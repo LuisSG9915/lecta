@@ -694,7 +694,8 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
 ## Probar con un clásico (sin cuenta)
 
 - Única excepción a la cuenta obligatoria: `/?probar=<id>` (allowlist en
-  `src/client/lib/trial.ts`: `marianela`, `alice-wonderland`) abre ese
+  `src/client/lib/trial.ts`: `marianela`, `lazarillo`, `nino-bola`,
+  `alice-wonderland`, `christmas-carol`, `call-of-the-wild`) abre ese
   clásico en el lector sin sesión. `App.tsx` lleva `trial`
   (`loading` → `reading` → `ended`): mientras no sea `ended` no se muestra
   `Welcome` ni la estantería (solo «Abriendo…» y el lector). El libro se

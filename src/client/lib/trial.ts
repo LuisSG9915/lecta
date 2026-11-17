@@ -11,10 +11,22 @@ export type TrialBook = Pick<CatalogBook, "id" | "title" | "author">;
 /** Allowlist: solo estos clásicos se abren sin cuenta. */
 export const TRIAL_BOOKS: Record<string, TrialBook> = {
   marianela: { id: "marianela", title: "Marianela", author: "Benito Pérez Galdós" },
+  lazarillo: { id: "lazarillo", title: "El Lazarillo de Tormes", author: "Anónimo" },
+  "nino-bola": { id: "nino-bola", title: "El Niño de la Bola", author: "Pedro Antonio de Alarcón" },
   "alice-wonderland": {
     id: "alice-wonderland",
     title: "Alice's Adventures in Wonderland",
     author: "Lewis Carroll",
+  },
+  "christmas-carol": {
+    id: "christmas-carol",
+    title: "A Christmas Carol",
+    author: "Charles Dickens",
+  },
+  "call-of-the-wild": {
+    id: "call-of-the-wild",
+    title: "The Call of the Wild",
+    author: "Jack London",
   },
 };
 
