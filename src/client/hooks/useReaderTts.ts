@@ -252,6 +252,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
       },
       emit: (draft) => ttsFns.current.trackEvent(draft as unknown as VisitEventDraft),
       noteActivity: () => ttsFns.current.noteActivity(true),
+      onNotice: (msg) => onShowNotice(msg),
       onSnapshot: (snap) => {
         setTtsSnap(snap);
         if (snap.status === "idle" || snap.status === "stopping") {

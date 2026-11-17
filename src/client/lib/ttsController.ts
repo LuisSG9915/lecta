@@ -80,6 +80,9 @@ export type TtsControllerDeps = {
   // cuando endReason === "error" — aviso por la vía de estado, sin
   // bloquear la lectura.
   onSessionEnd?(reason: TtsEndReason): void;
+  // Nota al margen no bloqueante cuando la voz neural falla y se cae
+  // a la voz del sistema (p. ej. modelo no disponible). Opcional.
+  onNotice?(msg: string): void;
   // Punto de arranque: el Reader decide por posición guardada →
   // primera oración visible → 0 (sentenceIndexForAnchor).
   resolveStartIndex?(items: SentenceLayoutItem[]): number;
@@ -139,6 +142,8 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   let destroyed = false;
   let speakGen = 0;
   let sleepTimerDeadline = 0;
+  // Evita repetir la nota de degradación neural→sistema en cada oración.
+  let neuralFallbackNotified = false;
   // «Fin de capítulo»: vive aquí (no en finish) y sobrevive al cruce de capítulo.
   let sleepAtChapterEnd = false;
 
@@ -391,6 +396,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         } catch (err) {
           if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
           console.warn("[Lecta TTS] KittenTTS falló al reproducir pre-sintetizado:", err);
+          if (!neuralFallbackNotified) {
+            neuralFallbackNotified = true;
+            deps.onNotice?.("La voz neural no está disponible; usando la voz del sistema.");
+          }
           engine.releaseWorkerMemory?.();
           speaker?.speak(item.text, settings.rate);
         }
@@ -421,6 +430,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
               "[Lecta TTS] KittenTTS falló o liberó memoria; cambiando a voz nativa del sistema:",
               err,
             );
+            if (!neuralFallbackNotified) {
+              neuralFallbackNotified = true;
+              deps.onNotice?.("La voz neural no está disponible; usando la voz del sistema.");
+            }
             engine.releaseWorkerMemory?.();
             speaker?.speak(item.text, settings.rate);
           });
@@ -607,6 +620,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       sectionAdvances = 0;
       stallRetries = 0;
       sleepAtChapterEnd = false;
+      neuralFallbackNotified = false;
       publish({
         chapterLabel: nextCtx.chapterLabel ?? null,
         sleepTimerEndsAt: sleepTimerDeadline || null,
@@ -805,6 +819,12 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
       if (snap.status === "speaking" && items[cursor]) {
         speakCurrent();
+      } else if (snap.status === "paused") {
+        // Cambio de motor en pausa: soltar el audio anterior para que
+        // resume() re-sintetice con el nuevo motor (ver resume()).
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
       }
     },
 
@@ -820,6 +840,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         lookaheadBuffers.clear();
         lookaheadPending.clear();
         speakCurrent();
+      } else if (snap.status === "paused") {
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
       }
     },
 
@@ -836,6 +860,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         lookaheadBuffers.clear();
         lookaheadPending.clear();
         speakCurrent();
+      } else if (snap.status === "paused") {
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
       }
     },
 

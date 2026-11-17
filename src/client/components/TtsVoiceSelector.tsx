@@ -77,6 +77,23 @@ export default function TtsVoiceSelector({
   const chooseNeural = async (voice: NeuralVoiceChoice) => {
     setErrorMsg(null);
     if (downloaded !== true) {
+      // Pre-chequeo de cuota: evitar empezar una descarga de ~24/63 MB
+      // que no va a poder completarse por falta de espacio.
+      if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
+        try {
+          const est = await navigator.storage.estimate();
+          const needed = neuralKind === "piper" ? 63_122_309 * 1.1 : 24_369_971 * 1.1;
+          const available = (est.quota ?? 0) - (est.usage ?? 0);
+          if (available > 0 && available < needed) {
+            setErrorMsg(
+              "No hay espacio suficiente para descargar la voz. Libera espacio e inténtalo de nuevo.",
+            );
+            return;
+          }
+        } catch {
+          // Si la API no está disponible, continuar: la descarga fallará con su propio error.
+        }
+      }
       setPending(voice);
       setPercent(0);
       try {
