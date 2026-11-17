@@ -1046,6 +1046,11 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   en una línea con scroll (`.shelf-community-filters`) y ordena por afinidad con
   `compareBookCoverages` — las sin medir conservan el orden del servidor al final
   y la medición sigue siendo solo de lo visible (`attempted*Ref`, sin bucles).
-- **Búsqueda Gutenberg lenta**: el `LIKE '%…%'` hace FULL SCAN en
-  CockroachDB (p50 ~926 ms medido con 60k filas sintéticas). Si crece,
-  evaluar columna `search_tokens` con índice antes de tocar el plan.
+- **Búsqueda Gutenberg**: migración 030 (2026-11-17) añade `search_tokens STRING[]`
+  con índice invertido (`idx_gutenberg_books_search_tokens`) y el worker usa
+  `search_tokens @> $terms` en vez de `LIKE '%…%'` (sin full scan; pierde
+  coincidencia por prefijo). Aplicada en `lecta_dev` (28 052 filas, tokens
+  dedupados). Pendiente en `lecta` (prod): unlock `gutenberg_books` →
+  `LECTA_MIGRATE_TARGET=lecta LECTA_MIGRATE_TIMEOUT_MS=300000 pnpm db:migrate`
+  → re-lock; y re-cargar el índice con `--load --gate-ok --remote` cuando
+  gutenberg.org reviva. El script ya escribe `search_tokens` (dedup) en el UPSERT.
