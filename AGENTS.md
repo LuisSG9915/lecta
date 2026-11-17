@@ -280,11 +280,13 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   veraz en `lecta_user_activity` (`started_at = ended_at`, 0 minutos) —
   la bitácora es append-only por `id` y los intervalos fabricados serían
   descartados por el merge.
-- **Migración 020 pendiente en producción** (`lecta`): orden seguro =
-  deploy primero (el código tolera la tabla ausente), luego
-  `LECTA_MIGRATE_TARGET=lecta pnpm db:migrate`, y verificar `/k`,
-  `/k/ajustes`, `/k/preview` y `GET/PUT /api/kindle/prefs`. Requiere
-  autorización expresa de Luis.
+- **Migración 020 verificada en producción** (`lecta`, 2026-11-17): `020_kindle_prefs.sql`
+  ya estaba registrada en `lecta_schema_migrations` y la tabla `lecta_kindle_prefs`
+  existe (también en `lecta_dev`). Endpoints sin sesión responden como se espera
+  (`/k`, `/k/ajustes`, `/k/preview` → 302; `/api/kindle/prefs` → 401). No fue
+  necesario correr `db:migrate`. Verificación C3/C4 del plan de cierre. (C4:
+  `lecta` y `lecta_dev` tienen `lecta_user_plan`, `lecta_stripe_events` y
+  `gutenberg_books`; ambas bases en migración 029.)
 
 ## MCP
 
