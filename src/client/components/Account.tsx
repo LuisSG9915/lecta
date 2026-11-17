@@ -242,7 +242,9 @@ export default function Account({
   const [historyOn, setHistoryOn] = useState(true);
   // Preferencia «compañero y logros» (el gato del Cuaderno): igual.
   const [gameOn, setGameOn] = useState(true);
-  // Presencia del gato al leer — registro del perfil del compañero:
+  // Resumen semanal por correo: preferencia del servidor.
+  const [digestOptIn, setDigestOptIn] = useState(false);
+  const [digestSending, setDigestSending] = useState(false);
   // con sesión sincroniza por la cuenta, sin ella queda en el dispositivo.
   const [presence, setPresence] = useState<ReadingPresence>("visits");
   // Preferencias del dispositivo (companionDevicePrefs): el sonido
@@ -359,6 +361,13 @@ export default function Account({
     void loadGameEnabled(scope).then((on) => {
       if (!cancelled) setGameOn(on);
     });
+    void accountFetch("/api/digest/preferences", undefined, scope)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { optIn?: boolean } | null) => {
+        if (!cancelled && data && typeof data.optIn === "boolean")
+          setDigestOptIn(data.optIn);
+      })
+      .catch(() => undefined);
     void loadCompanionDevicePrefs(scope).then((prefs) => {
       if (!cancelled) setDevicePrefs(prefs);
     });
@@ -513,6 +522,39 @@ export default function Account({
       setUseAi(!next);
       setError("No se pudo guardar la preferencia. Intenta de nuevo.");
     });
+  };
+
+  const toggleDigestOptIn = () => {
+    const next = !digestOptIn;
+    setDigestOptIn(next);
+    void accountFetch("/api/digest/preferences", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ optIn: next }),
+    }, captureDbScope())
+      .then((res) => {
+        if (!res.ok) throw new Error("fail");
+        return res.json() as Promise<{ optIn?: boolean }>;
+      })
+      .then((data) => {
+        if (typeof data?.optIn === "boolean") setDigestOptIn(data.optIn);
+      })
+      .catch(() => {
+        setDigestOptIn(!next);
+        setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+      });
+  };
+
+  const sendDigestNow = () => {
+    setDigestSending(true);
+    void accountFetch("/api/digest/weekly", { method: "POST" }, captureDbScope())
+      .then((res) => res.json().catch(() => null))
+      .then((data: { ok?: boolean; reason?: string } | null) => {
+        if (data?.ok) setError("");
+        else setError(data?.reason === "email_not_configured" ? "Correo no configurado en el servidor." : "No se pudo enviar el resumen.");
+      })
+      .catch(() => setError("No se pudo enviar el resumen."))
+      .finally(() => setDigestSending(false));
   };
 
   const toggleHistory = () => {
@@ -1005,6 +1047,47 @@ export default function Account({
           ) : (
             <span className="meta">Sin palabras cacheadas</span>
           )}
+        </div>
+      </section>
+
+      <section className="account-card" aria-label="Resumen semanal por correo">
+        <div className="account-card-header">
+          <strong className="account-card-title">Resumen semanal por correo</strong>
+          <p className="account-card-desc">
+            Un correo cada lunes con tu tiempo de lectura, palabras guardadas y
+            repasos de la semana.
+          </p>
+        </div>
+        <div className="setting-row setting-row--toggle">
+          <div className="setting-info">
+            <span className="setting-label">Recibir resumen semanal</span>
+            <p className="setting-hint">
+              {digestOptIn
+                ? "Activo: te enviaremos el resumen cada lunes."
+                : "Desactivado: no recibirás correos semanales."}
+            </p>
+          </div>
+          <Toggle
+            label="Recibir resumen semanal"
+            checked={digestOptIn}
+            onChange={toggleDigestOptIn}
+          />
+        </div>
+        <div className="setting-row">
+          <div className="setting-info">
+            <span className="setting-label">Enviar ahora</span>
+            <p className="setting-hint">
+              Manda el resumen de esta semana a tu correo de inmediato.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={() => void sendDigestNow()}
+            disabled={digestSending}
+          >
+            {digestSending ? "Enviando…" : "Enviar resumen"}
+          </button>
         </div>
       </section>
 
