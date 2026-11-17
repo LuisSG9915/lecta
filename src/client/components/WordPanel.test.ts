@@ -15,7 +15,8 @@ vi.mock("../lib/lexicon", () => ({
         lemma: "efimero",
         pos: "adjetivo",
         zipf: 2.5,
-        senses: [{ definition: "De corta duración.", senseOrder: 1 }],
+        ipa: "eˈfimero",
+        senses: [{ definition: "De corta duración.", example: null, senseOrder: 1 }],
       },
     ],
   })),
@@ -1232,5 +1233,108 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       expect(host.querySelector(".character-memory-card")).toBeNull();
     });
   });
+  describe("WordPanel - IPA y pronunciación lenta (remediación)", () => {
+    it("pinta el IPA bajo el término cuando el entry lo trae", async () => {
+      render(
+        h(WordPanel, {
+          word: "efimero",
+          context: "Un momento efimero.",
+          language: "es",
+          bookHash: "book123",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+      await flush();
+      const ipa = host.querySelector(".word-panel__ipa");
+      expect(ipa).not.toBeNull();
+      expect(ipa?.textContent).toContain("eˈfimero");
+    });
+
+    it("no pinta IPA cuando el entry no lo trae", async () => {
+      const { lookupWord } = await import("../lib/lexicon");
+      vi.mocked(lookupWord).mockResolvedValueOnce({
+        ok: true,
+        found: true,
+        entries: [
+          {
+            entryId: null,
+            lemma: "efimero",
+            pos: "adjetivo",
+            freqRank: null,
+            zipf: 2.5,
+            senses: [{ definition: "De corta duración.", example: null, senseOrder: 1 }],
+          },
+        ],
+      });
+
+      render(
+        h(WordPanel, {
+          word: "efimero",
+          context: "Un momento efimero.",
+          language: "es",
+          bookHash: "book123",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+      await flush();
+      expect(host.querySelector(".word-panel__ipa")).toBeNull();
+    });
+
+    it("long-press del altavoz dispara speakWord con rate 0.6", async () => {
+      const { speakWord } = await import("../lib/speech");
+      vi.mocked(speakWord).mockClear();
+
+      render(
+        h(WordPanel, {
+          word: "efimero",
+          context: "Un momento efimero.",
+          language: "es",
+          bookHash: "book123",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+      await flush();
+
+      const audioBtn = host.querySelector<HTMLButtonElement>(".btn--pronounce")!;
+      await act(async () => {
+        audioBtn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      await flush();
+
+      expect(speakWord).toHaveBeenCalledWith("efimero", "es", 0.6);
+    });
+
+    it("click normal del altavoz dispara speakWord con rate por defecto", async () => {
+      const { speakWord } = await import("../lib/speech");
+      vi.mocked(speakWord).mockClear();
+
+      render(
+        h(WordPanel, {
+          word: "efimero",
+          context: "Un momento efimero.",
+          language: "es",
+          bookHash: "book123",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+      await flush();
+
+      const audioBtn = host.querySelector<HTMLButtonElement>(".btn--pronounce")!;
+      await act(async () => {
+        click(audioBtn);
+      });
+      await flush();
+
+      expect(speakWord).toHaveBeenCalledWith("efimero", "es");
+    });
+  });
+
 });
 

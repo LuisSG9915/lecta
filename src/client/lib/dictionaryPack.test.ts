@@ -92,9 +92,9 @@ import {
 } from "./dictionaryPack";
 
 const PACK_TSV = [
-  "#lecta-dict v5 en",
-  "E\tschool\tsustantivo\tEscuela, instituto, colegio.\x1FCardumen, banco de peces.",
-  "E\tstilt\tsustantivo\tZanco.\x1FPilar elevado.",
+  "#lecta-dict v6 en",
+  "E\tschool\tsustantivo\tEscuela, instituto, colegio.\x1FCardumen, banco de peces.\tˈskuːl",
+  "E\tstilt\tsustantivo\tZanco.\x1FPilar elevado.\t",
   "F\tschools\tschool",
   "F\tstilts\tstilt",
 ].join("\n") + "\n";
@@ -144,6 +144,7 @@ describe("dictionaryPack", () => {
     expect(lemma?.lemma).toBe("school");
     expect(lemma?.pos).toBe("sustantivo");
     expect(lemma?.senses[0]?.definition).toContain("Escuela");
+    expect(lemma?.ipa).toBe("ˈskuːl");
 
     const flexion = await lookupDictionaryPack("schools", "en");
     expect(flexion?.lemma).toBe("school");
@@ -191,12 +192,12 @@ describe("dictionaryPack", () => {
   it("instalar un idioma no borra al otro", async () => {
     const en = packResponse();
     stubPackInfo("en", en.sha, en.gz.length);
-    const esTsv = "#lecta-dict v1 es\nE\tcasa\tsustantivo\tVivienda.\n";
+    const esTsv = "#lecta-dict v6 es\nE\tcasa\tsustantivo\tVivienda.\t/viˈβjen.da/\n";
     const es = packResponse(esTsv);
     stubPackInfo("es", es.sha, es.gz.length);
     const bodies: Record<string, ArrayBuffer> = {
-      "/dict/dict-en-v5.bin": new Uint8Array(en.gz).buffer,
-      "/dict/dict-es-v1.bin": new Uint8Array(es.gz).buffer,
+      "/dict/dict-en-v6.bin": new Uint8Array(en.gz).buffer,
+      "/dict/dict-es-v6.bin": new Uint8Array(es.gz).buffer,
     };
     vi.stubGlobal(
       "fetch",

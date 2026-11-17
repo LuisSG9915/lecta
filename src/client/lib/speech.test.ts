@@ -69,6 +69,15 @@ describe("speech", () => {
     expect(utterance.lang).toBe("es-MX");
   });
 
+  it("respeta la tasa indicada (audio lento)", async () => {
+    await speakWord("apple", "en", 0.6);
+
+    expect(speakMock).toHaveBeenCalledTimes(1);
+    const utterance = speakMock.mock.calls[0][0] as SpeechSynthesisUtterance;
+    expect(utterance.text).toBe("apple");
+    expect(utterance.rate).toBe(0.6);
+  });
+
   it("no hace nada si la palabra está vacía", async () => {
     await speakWord("   ", "es");
     expect(speakMock).not.toHaveBeenCalled();
@@ -109,8 +118,29 @@ describe("speech", () => {
 
     expect(synthesizeSpy).toHaveBeenCalledWith("serendipity", expect.any(String), 0.9);
     expect(playSpy).toHaveBeenCalled();
-    // No debe usar speechSynthesis si KittenTTS neural está listo
-    expect(speakMock).not.toHaveBeenCalled();
+
+    kittenTtsEngine.setReadyForTesting(false);
+    synthesizeSpy.mockRestore();
+    playSpy.mockRestore();
+  });
+
+  it("utiliza KittenTTS neural a tasa lenta cuando se pide 0.6", async () => {
+    const { kittenTtsEngine } = await import("./kittenTtsEngine");
+    kittenTtsEngine.setReadyForTesting(true);
+
+    const synthesizeSpy = vi.spyOn(kittenTtsEngine, "synthesize").mockResolvedValue({
+      sampleRate: 24000,
+      length: 2400,
+      duration: 0.1,
+    } as AudioBuffer);
+    const playSpy = vi.spyOn(kittenTtsEngine, "play").mockImplementation((_, __, onEnded) => {
+      onEnded?.();
+    });
+
+    await speakWord("serendipity", "en", 0.6);
+
+    expect(synthesizeSpy).toHaveBeenCalledWith("serendipity", expect.any(String), 0.6);
+    expect(playSpy).toHaveBeenCalled();
 
     kittenTtsEngine.setReadyForTesting(false);
     synthesizeSpy.mockRestore();
