@@ -1,5 +1,4 @@
 import { updateAppBadge, scheduleHabitReminder } from "../lib/localNotificationScheduler";
-import { applyTtsLandingMarker, loadTtsLandingPosition } from "../lib/tts-landing";
 import "../styles/reader.css";
 import {
   useCallback,
@@ -26,7 +25,6 @@ import {
 import {
   applyAttentionBudget,
   bookHelpKey,
-  resolveBookHelpOpening,
   saveBookMicroHighlightsEnabled,
 } from "../lib/attention-budget";
 import {
@@ -36,19 +34,16 @@ import {
   listReadingEvents,
   listSavedWords,
   loadBookPosition,
-  saveBookPosition,
   saveKnowledge,
   saveWordWithKnowledge,
   updateBookMeta,
   saveSessionValue,
-  listIntervals,
   loadSessionValue,
   wordKey,
   type DbScope,
   type SavedWord,
   type SavedBookPosition,
 } from "../lib/idb";
-import { activeFragmentAt, fragElements } from "../lib/scroll-fragments";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import { consolidateEpisodicWord, scheduleCapturedReview, type EpisodicOutcome } from "../lib/reviews";
 import {
@@ -67,12 +62,7 @@ import {
   type VocabProfile,
 } from "../lib/knowledge";
 import {
-  extractKeyWordFromSentence,
-} from "../lib/section-words";
-import {
-  chapterSummary,
   countSavedInRange,
-  hasChapterSummary,
   pruneReadingHistory,
   trackReadingEvent,
   type ChapterSummary,
@@ -84,19 +74,9 @@ import {
   minutesLeft,
   updateWpm,
 } from "../lib/progress";
-import { award, localDayKey } from "../lib/game";
+import { award } from "../lib/game";
 import type { KnownWord } from "../lib/idb";
 import {
-  applySyntacticLines,
-  clearSyntacticLines,
-} from "../lib/syntactic-lines";
-import {
-  clearParagraphFocus,
-  updateParagraphFocus,
-} from "../lib/paragraph-focus";
-import {
-  detectDensePassageStall,
-  loadBaselineWpm,
   resetDenseStallPage,
   recordFocusAidOutcome,
   muteBookFocusSuggestions,
@@ -124,17 +104,13 @@ import {
   isFeatureFlagEnabled,
 } from "../lib/settings";
 import {
-  scrollToAnchor,
   viewTopAnchor,
   charOffsetAtViewTop,
 } from "../lib/reading-location";
 import {
   pageLayout,
   pageAdvance,
-  totalPages,
   anchorAtPage,
-  pageForFragment,
-  pageForText,
   pageOfElement,
   buildFragmentPageMap,
   type PageLayout,
@@ -149,29 +125,21 @@ import {
 import { loadUseAi } from "../lib/ai-pref";
 import {
   calibrationDoneKey,
-  hasCalibrationEvidence,
-  languageCalibrationStatus,
 } from "../lib/calibration";
 import {
   applyPreviewKnownSignal,
   applyWordPanelLookupSignal,
   calibrationBankZipf,
 } from "../lib/knowledge";
-import {
-  isTtsProgrammaticScroll,
-} from "../lib/ttsGuards";
 import ResumeSessionOverlay, {
   extractLastSentences,
   formatSceneRecapOneLine,
 } from "./ResumeSessionOverlay";
 import {
   DAY_GOAL_MS,
-  READING_GOAL_KEY,
-  parseReadingGoal,
 } from "../lib/reading-goal";
 import {
   getWeeklyLearnedWordsCount,
-  isLongestSessionThisMonth,
   setJourneySelectorCache,
 } from "../lib/journey";
 import { isReviewDueWord } from "../lib/fsrs";
@@ -181,7 +149,6 @@ import {
   stopAmbientPurr,
   startSoundscape,
   stopSoundscape,
-  type SoundscapeKind,
 } from "../lib/companion-audio";
 import {
   requestPageRecap,
@@ -189,7 +156,7 @@ import {
   generateZeroSpoilerSceneRecap,
   type SceneReturnRecap,
 } from "../lib/page-recap";
-import { checkHasInactivityGap, type TimeInterval } from "../lib/reading-activity";
+import { type TimeInterval } from "../lib/reading-activity";
 import {
   checkPassiveExposure as checkPassiveExposureEvidence,
   refreshProfile,
@@ -222,6 +189,30 @@ import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
 import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
 import { useReaderTts } from "../hooks/useReaderTts";
+import { useTtsLandingMarker } from "../hooks/useTtsLandingMarker";
+import { useTtsCaptureWord } from "../hooks/useTtsCaptureWord";
+import { useAmbientSoundscape } from "../hooks/useAmbientSoundscape";
+import { useVisualPacer } from "../hooks/useVisualPacer";
+import { useReaderContext } from "../hooks/useReaderContext";
+import { useReaderPositionSync } from "../hooks/useReaderPositionSync";
+import { useReaderBookAward } from "../hooks/useReaderBookAward";
+import { useReaderSessionStart } from "../hooks/useReaderSessionStart";
+import { useReaderCalibrationOffer } from "../hooks/useReaderCalibrationOffer";
+import { useReaderZenFade } from "../hooks/useReaderZenFade";
+import { useReaderDenseStall } from "../hooks/useReaderDenseStall";
+import { useReaderPageMetrics } from "../hooks/useReaderPageMetrics";
+import { useReaderReflow } from "../hooks/useReaderReflow";
+import { useReaderChapterSummary } from "../hooks/useReaderChapterSummary";
+import { useReaderTargetEntered } from "../hooks/useReaderTargetEntered";
+import { useReaderParagraphFocus } from "../hooks/useReaderParagraphFocus";
+import { useReaderSyntacticLines } from "../hooks/useReaderSyntacticLines";
+import { useReaderScrollBars } from "../hooks/useReaderScrollBars";
+import { useReaderRefMirrors } from "../hooks/useReaderRefMirrors";
+import { useReaderCheckpoint } from "../hooks/useReaderCheckpoint";
+import { useReaderLongPressHint } from "../hooks/useReaderLongPressHint";
+import { useReaderRecap } from "../hooks/useReaderRecap";
+import { useReaderLongestToast } from "../hooks/useReaderLongestToast";
+import { useReaderHelpNotice } from "../hooks/useReaderHelpNotice";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
 import { useReaderDeepReadingCycle } from "../hooks/useReaderDeepReadingCycle";
 import { useReaderChrome } from "../hooks/useReaderChrome";
@@ -245,7 +236,6 @@ import {
   buildChapterCatalog,
   suggestedChapterTarget,
   trackCalibrationOffer,
-  type CalibrationTrack,
   targetAt,
   chapterIdFor,
   type ChapterCatalog,
@@ -585,16 +575,10 @@ export default function Reader({
   // del libro al terminar el primer tramo leído, si la cuenta no ha
   // calibrado ni descartado la oferta («calibrationDone»). La franja
   // espera; «Ahora no» marca la llave y cierra la vía automática.
-  // Tramo candidato a «primer lectura real» de la apertura: se arma
-  // solo viendo el tramo antes de su final — retomar, un marcador o un
-  // salto que aterriza ya en el final no disparan la invitación.
-  const calTrack = useRef<CalibrationTrack | null>(null);
   // Franja de ayuda de vocabulario al abrir un libro NUEVO (sin
   // posición guardada): pregunta una sola vez por libro; la decisión
   // se guarda en `bookHelp:v1:` y solo mueve el interruptor de
   // micro-destacados — jamás escribe palabras en el Cuaderno.
-  const helpAskedRef = useRef<string | null>(null);
-  const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
   // Espejo de `selection` para el listener de `selectionchange` (que no se
@@ -885,8 +869,6 @@ export default function Reader({
   const [recapBubbleVisible, setRecapBubbleVisible] = useState(false);
   const [recapBubbleBullets, setRecapBubbleBullets] = useState<string[]>([]);
   const [recapBubbleLoading, setRecapBubbleLoading] = useState(false);
-  const recapCheckedRef = useRef(false);
-
   // Track 12: Ensamblaje Maestro de Ciclo de Vida del Capítulo
   const currentChapterLookups = useRef<EpisodicWordItem[]>([]);
   const chapterStartedAtRef = useRef<number>(0);
@@ -909,19 +891,14 @@ export default function Reader({
     hasPendingReviewsDosing: boolean;
   } | null>(null);
 
-  useEffect(() => {
-    const now = Date.now();
-    if (!sessionStartRef.current) sessionStartRef.current = now;
-    if (!chapterStartedAtRef.current) chapterStartedAtRef.current = now;
-    if (!pageTurnTimeRef.current) pageTurnTimeRef.current = now;
-    if (focusTelemetryRef.current.pageEnteredAt === 0) focusTelemetryRef.current.pageEnteredAt = now;
-    void loadSessionValue(READING_GOAL_KEY, captureDbScope()).then((raw) => {
-      const parsed = parseReadingGoal(raw);
-      if (parsed && typeof parsed.dailyGoalMs === "number" && parsed.dailyGoalMs > 0) {
-        setDailyGoalMs(parsed.dailyGoalMs);
-      }
-    }).catch(() => undefined);
-  }, []);
+  // Inicialización de refs de tiempo al montar — extraído a useReaderSessionStart (B7).
+  useReaderSessionStart({
+    sessionStartRef,
+    chapterStartedAtRef,
+    pageTurnTimeRef,
+    focusTelemetryRef,
+    setDailyGoalMs,
+  });
   // Track 5: Doble toque para traducir párrafo
   const lastTapRef = useRef<{ time: number; element: HTMLElement | null }>({ time: 0, element: null });
   const [returnPoint, setReturnPoint] = useState<{
@@ -1347,85 +1324,27 @@ export default function Reader({
     if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
   }, [navKey, zenFadeTimerRef, setIsZenFaded, denseStallDetectorRef, stallBubbleTimerRef]);
 
-  // Escucha de actividad de puntero y toques para despertar la barra Zen y registrar telemetría
-  useEffect(() => {
-    const onPointerActivity = (e: Event) => {
-      lastActivityAtRef.current = Date.now();
-      // `pointermove` dispara hasta 120 veces por segundo: rearmar el
-      // temporizador de zen en cada evento era trabajo térmico puro.
-      // 5 comprobaciones por segundo bastan para el mismo gesto.
-      const now = performance.now();
-      if (now - lastPointerCheckRef.current < 200) return;
-      lastPointerCheckRef.current = now;
-      let clientY = 0;
-      if ("clientY" in e && typeof (e as { clientY: unknown }).clientY === "number") {
-        clientY = (e as { clientY: number }).clientY;
-      } else if ("touches" in e && (e as TouchEvent).touches.length > 0) {
-        clientY = (e as TouchEvent).touches[0].clientY;
-      }
-      if (isZenFaded) {
-        if ("clientY" in e || clientY < window.innerHeight / 3) {
-          resetZenFadeTimer();
-        }
-      } else {
-        resetZenFadeTimer();
-      }
-    };
+  // Escucha de actividad de puntero/toques — extraído a useReaderZenFade (B7).
+  useReaderZenFade({
+    isZenFaded,
+    resetZenFadeTimer,
+    lastActivityAtRef,
+    lastPointerCheckRef,
+    zenFadeTimerRef,
+  });
 
-    window.addEventListener("pointermove", onPointerActivity, { passive: true });
-    window.addEventListener("touchstart", onPointerActivity, { passive: true });
-    return () => {
-      window.removeEventListener("pointermove", onPointerActivity);
-      window.removeEventListener("touchstart", onPointerActivity);
-      if (zenFadeTimerRef.current) clearTimeout(zenFadeTimerRef.current);
-    };
-  }, [isZenFaded, resetZenFadeTimer, lastActivityAtRef, lastPointerCheckRef, zenFadeTimerRef]);
-
-  // Chequeo periódico de pasajes densos (B.2). Solo el preset
-  // inmersivo usa el aviso: en los demás no se instancia el intervalo.
-  useEffect(() => {
-    if (state !== "ready" || isDeepReading) return;
-    if (settings.strategyPreset !== "immersive") return;
-    const checkDenseStall = () => {
-      if (state !== "ready" || isDeepReading || document.hidden) return;
-      const now = Date.now();
-      const baselineWpm = loadBaselineWpm();
-      const pageWords = Math.max(30, Math.round(sectionWords / (pageCount || 1)));
-      const isStalled = detectDensePassageStall(
-        denseStallDetectorRef.current,
-        now,
-        pageWords,
-        baselineWpm,
-        lastActivityAtRef.current,
-      );
-      if (isStalled) {
-        setStallBubble(
-          "¿Pasaje denso? Tócame para iluminar el párrafo paso a paso.",
-        );
-        if (stallBubbleTimerRef.current)
-          clearTimeout(stallBubbleTimerRef.current);
-        stallBubbleTimerRef.current = setTimeout(() => {
-          setStallBubble(null);
-        }, 6000);
-      }
-    };
-
-    const interval = setInterval(checkDenseStall, 4000);
-    return () => {
-      clearInterval(interval);
-      if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
-    };
-  }, [
+  // Chequeo periódico de pasajes densos — extraído a useReaderDenseStall (B7).
+  useReaderDenseStall({
     state,
     isDeepReading,
     sectionWords,
     pageCount,
-    settings.strategyPreset,
+    strategyPreset: settings.strategyPreset,
     denseStallDetectorRef,
     lastActivityAtRef,
     setStallBubble,
     stallBubbleTimerRef,
-  ]);
+  });
 
   if (seenStatus !== statusText) setSeenStatus(statusText);
 
@@ -1494,56 +1413,27 @@ export default function Reader({
   }, [saveLatest, onBack]);
 
   // Detección de récord mensual (>10 min y supera récord de 30 días) (Fase 1 Anti-Abandono)
-  useEffect(() => {
-    if (state !== "ready" || longestToastFiredRef.current) return;
-    const check = () => {
-      // El umbral es de 10 minutos: mirar cada minuto llega de sobra y
-      // no despierta el hilo 12 veces por minuto. En pestaña oculta no
-      // se cumplen sesiones de lectura, así que no se evalúa.
-      if (document.hidden || longestToastFiredRef.current) return;
-      const now = Date.now();
-      const currentSessionMs = now - (sessionStartRef.current || now);
-      if (currentSessionMs < 10 * 60_000) return;
-      if (!isLongestSessionThisMonth(currentSessionMs, intervalsRef.current, now)) return;
-      longestToastFiredRef.current = true;
-      setRecordToast("Nuevo récord: tu lectura más larga este mes");
-      signalCompanion({ kind: "goal_completed" });
-      window.setTimeout(() => {
-        setRecordToast(null);
-      }, 5000);
-    };
-    const interval = window.setInterval(check, 60_000);
-    return () => window.clearInterval(interval);
-  }, [state, signalCompanion, setRecordToast]);
+  // Aviso de récord mensual de lectura — extraído a useReaderLongestToast (B7).
+  useReaderLongestToast({
+    state,
+    signalCompanion,
+    setRecordToast,
+    sessionStartRef,
+    intervalsRef,
+    longestToastFiredRef,
+  });
 
-  // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?" (Track 8: Cero Spoilers)
-  useEffect(() => {
-    if (recapCheckedRef.current || !bookHash) return;
-    recapCheckedRef.current = true;
-    const scope = captureDbScope();
-    void listIntervals(scope)
-      .then((intervals) => {
-        intervalsRef.current = intervals;
-        setJourneySelectorCache({ intervals });
-        if (checkHasInactivityGap(intervals, bookHash)) {
-          const offset = containerRef.current
-            ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
-            : sectionTextRef.current.length;
-          const textBefore = sectionTextRef.current.slice(0, offset);
-          const lastInterval = intervals[intervals.length - 1];
-          const lastMs = lastInterval ? lastInterval.endedAt : Date.now() - 7 * 3600 * 1000;
-          const recap = generateZeroSpoilerSceneRecap(
-            textBefore,
-            lastMs,
-            Date.now(),
-            language || "es",
-          );
-          setSceneRecap(recap);
-          setRecapBubbleVisible(true);
-        }
-      })
-      .catch(() => undefined);
-  }, [bookHash, language]);
+  // Detección de inactividad > 6h — extraído a useReaderRecap (B7).
+  useReaderRecap({
+    bookHash,
+    language,
+    containerRef,
+    sectionTextRef,
+    intervalsRef,
+    setJourneySelectorCache,
+    setSceneRecap,
+    setRecapBubbleVisible,
+  });
 
   const handleTriggerReturnRecap = async () => {
     setRecapBubbleLoading(true);
@@ -1601,45 +1491,21 @@ export default function Reader({
     };
   }, [bookHash, state]);
 
-  // Track 5: Contexto de lectura para el gato (personajes sin spoilers en la página visible)
-  useEffect(() => {
-    if (!companion?.setReaderContext) return;
-    const container = containerRef.current;
-    let pageText = "";
-    if (container) {
-      if (settings.layout === "pages" && pageMetrics) {
-        const paras = Array.from(
-          container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
-        );
-        const pageParas = paras.filter((p) => pageOfElement(p, pageMetrics) === page);
-        if (pageParas.length > 0) {
-          pageText = pageParas.map((p) => p.textContent ?? "").join("\n\n");
-        }
-      }
-      if (!pageText) {
-        const paras = Array.from(
-          container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
-        );
-        const viewH = window.innerHeight;
-        const visible = paras.filter((p) => {
-          const rect = p.getBoundingClientRect();
-          return rect.bottom >= 0 && rect.top <= viewH;
-        });
-        if (visible.length > 0) {
-          pageText = visible.map((p) => p.textContent ?? "").join("\n\n");
-        }
-      }
-    }
-
-    companion.setReaderContext({
-      pageText,
-      currentChapterIndex: sectionIndex,
-      bookId: bookHash,
-      sections: bookRef.current?.sections,
-      toc: tocRowsRef.current,
-      language: language ?? "es",
-    });
-  }, [companion, page, sectionIndex, bookHash, settings.layout, pageMetrics, state, language]);
+  // Track 5: Contexto de lectura para el gato (personajes sin spoilers en la
+  // página visible) — extraído a useReaderContext (B7).
+  useReaderContext({
+    companion,
+    containerRef,
+    settingsLayout: settings.layout,
+    pageMetrics,
+    page,
+    sectionIndex,
+    bookHash,
+    language,
+    bookRef,
+    tocRowsRef,
+    state,
+  });
 
   // Track 5 & Track 11: Doble toque para traducir párrafo (modo bilingüe fluido en inglés)
   const toggleParagraphTranslation = async (p: HTMLElement) => {
@@ -2162,55 +2028,19 @@ export default function Reader({
     ttsStopOnNavRef,
   });
 
-  // Posición remota que llega después de abrir: se aplica sobre el libro
-  // ya montado. Si el lector ya se movió, no se le arranca de donde está.
-  const appliedSyncVersionRef = useRef(0);
-  const appliedResumeKeyRef = useRef(0);
-
-  useEffect(() => {
-    if (!resumeRequest || resumeRequest.key === appliedResumeKeyRef.current) return;
-    if (state !== "ready") return;
-    appliedResumeKeyRef.current = resumeRequest.key;
-    void navigate("resume", {
-      index: resumeRequest.sectionIndex,
-      restore: {
-        ratio: resumeRequest.ratio,
-        anchor: resumeRequest.anchor,
-        anchorOffset: resumeRequest.anchorOffset,
-      },
-    });
-    onStatus("Continuando desde tu otro dispositivo…");
-  }, [resumeRequest, state, navigate, onStatus]);
-
-  useEffect(() => {
-    if (positionSyncVersion <= appliedSyncVersionRef.current) return;
-    if (state !== "ready") return;
-    appliedSyncVersionRef.current = positionSyncVersion;
-    let cancelled = false;
-    void (async () => {
-      const current = capturePosition();
-      // Solo se retoma solo si la persona sigue al principio: si ya
-      // avanzó, su lectura manda sobre lo que traiga la nube.
-      const atStart =
-        sectionIndexRef.current === 0 && (!current || (current.ratio ?? 0) < 0.02);
-      if (!atStart) return;
-      const saved = await loadBookPosition(bookHash, captureDbScope());
-      if (cancelled || !saved) return;
-      if (saved.sectionIndex === 0 && (saved.ratio ?? 0) < 0.02) return;
-      await navigate("resume", {
-        index: saved.sectionIndex,
-        restore: {
-          ratio: saved.ratio,
-          anchor: saved.anchor,
-          anchorOffset: saved.anchorOffset,
-        },
-      });
-      onStatus("Retomando donde lo dejaste en otro dispositivo.");
-    })().catch(() => null);
-    return () => {
-      cancelled = true;
-    };
-  }, [positionSyncVersion, state, capturePosition, bookHash, navigate, onStatus]);
+  // Sincronización de posición remota sobre el libro ya montado — extraída a
+  // useReaderPositionSync (B7).
+  useReaderPositionSync({
+    resumeRequest,
+    positionSyncVersion,
+    state,
+    bookHash,
+    navigate,
+    capturePosition,
+    captureDbScope,
+    onStatus,
+    sectionIndexRef,
+  });
 
   // ---------- «Leer en voz alta» ----------
   const {
@@ -2594,17 +2424,16 @@ export default function Reader({
   // Trayecto: anota cada destino distinto al que se entra en la
   // visita (secciones del mismo capítulo comparten destino y no
   // repiten). Es diagnóstico local; nada de esto bloquea la lectura.
-  useEffect(() => {
-    if (state !== "ready") return;
-    const target = currentChapterTarget ?? targetAt(catalog?.ranges ?? [], sectionIndex);
-    if (!target || lastTargetEnteredRef.current === target.id) return;
-    lastTargetEnteredRef.current = target.id;
-    trackEvent({
-      kind: "target_entered",
-      targetId: target.id,
-      sectionIndex,
-    });
-  }, [state, sectionIndex, catalog, currentChapterTarget, trackEvent]);
+  // Registra target_entered al entrar a un capítulo — extraído a
+  // useReaderTargetEntered (B7).
+  useReaderTargetEntered({
+    state,
+    sectionIndex,
+    catalog,
+    currentChapterTarget,
+    lastTargetEnteredRef,
+    trackEvent,
+  });
 
   // Preferencia «Usar IA» (una sola lectura por apertura del libro).
   // Con ella apagada, el enriquecimiento automático ni se ofrece ni se
@@ -2761,107 +2590,29 @@ export default function Reader({
     };
   }, [language, openSelection, closeSelection]);
 
-  // Aviso único de descubrimiento para la pulsación larga en táctil (clave por cuenta)
-  useEffect(() => {
-    if (state !== "ready") return;
-    const isTouchDevice =
-      typeof window !== "undefined" &&
-      (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window);
-    if (!isTouchDevice) return;
+  // Aviso único de descubrimiento para la pulsación larga en táctil — extraído a
+  // useReaderLongPressHint (B7).
+  useReaderLongPressHint({ state, setShowLongPressHint });
 
-    const key = "hint:longPress:v1";
-    const scope = captureDbScope();
-    let timer: number | undefined;
-    void loadSessionValue(key, scope).then((seen) => {
-      if (!seen) {
-        setShowLongPressHint(true);
-        timer = window.setTimeout(() => {
-          setShowLongPressHint(false);
-          void saveSessionValue(key, "1", scope).catch(() => undefined);
-        }, 9000);
-      }
-    });
-    return () => window.clearTimeout(timer);
-  }, [state, setShowLongPressHint]);
-
-  // Barras que se retiran al bajar y vuelven al subir, y guardado de
-  // posición con la fracción leída de la sección. En modo paginado el
-  // documento no hace scroll, pero el guardado por ocultar sigue vivo.
-  useEffect(() => {
-    const onScroll = () => {
-      // El auto-scroll que sigue a la voz no es señal de lectura:
-      // no abre ni estira el segmento de actividad. El scroll crudo
-      // del lector sí (adelantar con los ojos es uso bimodal).
-      if (!isTtsProgrammaticScroll()) noteActivity();
-      saveSoon();
-      if (rafPending.current) return;
-      rafPending.current = true;
-      const paint = document.hidden
-        ? (cb: FrameRequestCallback) => window.setTimeout(cb, 50)
-        : requestAnimationFrame;
-      paint(() => {
-        rafPending.current = false;
-        const y = window.scrollY;
-        const delta = y - lastScrollY.current;
-        lastScrollY.current = y;
-        if (y < 90 || delta < -4) setBarsVisible(true);
-        else if (delta > 4 && y > 160) setBarsVisible(false);
-        // La fracción leída solo se publica cada 0,5 %: cada llamada
-        // re-renderiza el lector entero y antes corría una por frame.
-        const nextRatio = scrollRatioNow();
-        if (
-          nextRatio === 0 ||
-          nextRatio === 1 ||
-          Math.abs(nextRatio - lastScrollRatioRef.current) >= 0.005
-        ) {
-          lastScrollRatioRef.current = nextRatio;
-          setScrollRatio(nextRatio);
-        }
-        if (containerRef.current && currentSectionTargetsRef.current.length > 1) {
-          const bestFrag = activeFragmentAt(
-            fragElements(containerRef.current),
-            180,
-            settingsRef.current?.layout === "pages",
-          );
-          if (bestFrag !== activeScrollFragRef.current) {
-            activeScrollFragRef.current = bestFrag;
-            setActiveScrollFragment(bestFrag);
-          }
-        }
-        if (
-          (settingsRef.current?.paragraphFocus ||
-            settingsRef.current?.focusMode === "paragraph") &&
-          containerRef.current
-        ) {
-          updateParagraphFocus(containerRef.current);
-        }
-      });
-    };
-    // Al salir de la página no hay debounce que esperar: guardar ya.
-    const onHide = () => {
-      if (document.visibilityState === "hidden") closeActivity();
-      if (document.visibilityState !== "hidden") return;
-      const pos = capturePosition();
-      if (pos) void saveBookPosition(pos, captureDbScope());
-    };
-    // `pagehide` es el último aviso antes de congelar o descargar la
-    // página: el gesto de atrás que sale de la app y el bfcache llegan
-    // ahí sin `visibilitychange` (o con la transacción a medio vuelo).
-    const onPageHide = () => {
-      const pos = capturePosition();
-      if (pos) {
-        void saveBookPosition({ ...pos, updatedAt: Date.now() }, captureDbScope());
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", onPageHide);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", onPageHide);
-    };
-  }, [saveSoon, capturePosition, closeActivity, noteActivity, setBarsVisible, setScrollRatio]);
+  // Barras que se retiran al bajar y guardado por ocultar — extraído a
+  // useReaderScrollBars (B7).
+  useReaderScrollBars({
+    saveSoon,
+    capturePosition,
+    captureDbScope,
+    closeActivity,
+    noteActivity,
+    setBarsVisible,
+    setScrollRatio,
+    setActiveScrollFragment,
+    rafPending,
+    lastScrollY,
+    lastScrollRatioRef,
+    activeScrollFragRef,
+    settingsRef,
+    containerRef,
+    currentSectionTargetsRef,
+  });
 
   // Recomponer la paginación conservando el ancla: al cambiar modo,
   // columnas, fuente, tamaño, sección — y cuando la ventana o las
@@ -2875,56 +2626,21 @@ export default function Reader({
 
   // Recuento real de páginas: corre tras el pintado de las columnas
   // (doble rAF; scrollWidth a medio reflujo da conteos fantasma). Con
-  // pestaña oculta el rAF no corre y se usa el mismo fallback por
-  // timer que en la carga de sección.
-  useEffect(() => {
-    const metrics = pageMetrics;
-    if (!metrics || layoutRef.current !== "pages") return;
-    let live = true;
-    const run = () => {
-      if (!live || layoutRef.current !== "pages") return;
-      const container = containerRef.current;
-      if (!container) return;
-      const total = totalPages(container.scrollWidth, metrics);
-      pageCountRef.current = total;
-      setPageCount(total);
-      const pending = pendingPageRef.current;
-      pendingPageRef.current = null;
-      let next = pageRef.current;
-      let intent = false;
-      if (pending) {
-        intent = true;
-        if (pending.snippet)
-          next = pageForText(container, pending.snippet, metrics, "snippet") ?? 0;
-        else if (pending.fragment)
-          next = pageForFragment(container, pending.fragment, metrics) ?? 0;
-        else if (pending.anchor)
-          next = pageForText(container, pending.anchor, metrics, "anchor") ?? 0;
-        else if (pending.at === "end") next = total - 1;
-        else if (pending.ratio) next = Math.round(pending.ratio * (total - 1));
-        else next = 0;
-      } else if (pageAnchorRef.current) {
-        next =
-          pageForText(container, pageAnchorRef.current, metrics, "anchor", false) ??
-          pageRef.current;
-      }
-      setPageIdx(Math.min(next, total - 1), intent);
-      // Con el destino pendiente ya resuelto se conoce la página real:
-      // esta captura corrige la posición que la carga dejó en el tope.
-      if (pending) {
-        const pos = capturePosition();
-        if (pos) void saveBookPosition(pos, captureDbScope());
-      }
-    };
-    const handle = document.hidden
-      ? window.setTimeout(run, 60)
-      : requestAnimationFrame(() => requestAnimationFrame(run));
-    return () => {
-      live = false;
-      if (document.hidden) window.clearTimeout(handle);
-      else cancelAnimationFrame(handle);
-    };
-  }, [pageMetrics, setPageIdx, capturePosition]);
+  // Recuento de páginas y resolución del destino pendiente — extraído a
+  // useReaderPageMetrics (B7).
+  useReaderPageMetrics({
+    pageMetrics,
+    layoutRef,
+    containerRef,
+    pageCountRef,
+    pendingPageRef,
+    pageAnchorRef,
+    pageRef,
+    setPageCount,
+    setPageIdx,
+    capturePosition,
+    captureDbScope,
+  });
 
   useEffect(() => {
     if (settings.layout !== "pages" || state !== "ready") return;
@@ -2937,124 +2653,50 @@ export default function Reader({
   // `layoutRef` todavía guarda el modo anterior dentro de este efecto
   // (su espejo corre después): así se distingue la transición de un
   // refluje dentro del mismo modo.
-  useEffect(() => {
-    if (state !== "ready") return;
-    const wasPages = layoutRef.current === "pages";
-    const raf = requestAnimationFrame(() => {
-      const container = containerRef.current;
-      const saved = latestPositionRef.current;
-      if (!container) return;
-      if (settings.layout === "scroll") {
-        if (saved?.anchor) {
-          const scrolled = scrollToAnchor(container, saved.anchor, {
-            offset: saved.anchorOffset,
-          });
-          if (!scrolled) {
-            const ratio = saved?.ratio ?? 0;
-            const max = document.documentElement.scrollHeight - window.innerHeight;
-            window.scrollTo(0, ratio * Math.max(0, max));
-          }
-        }
-      } else {
-        // Venir del scroll: el ancla visible manda sobre la página
-        // recordada; dentro del modo ya manda pageAnchorRef.
-        if (!wasPages && saved?.anchor) pageAnchorRef.current = saved.anchor;
-        remeasure();
-      }
-    });
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.layout, settings.font, settings.size, settings.measure, settings.leading, state]);
-
-  // «Líneas sintácticas» envuelve el texto ya montado; al salir del
-  // modo se desenrolla. Como en un refluje, después se reubica la
-  // lectura al mismo ancla (página en paginado, scroll en continuo).
-  useEffect(() => {
-    if (state !== "ready") return;
-    const container = containerRef.current;
-    if (!container) return;
-    const raf = requestAnimationFrame(() => {
-      const isChroma =
-        Boolean(settings.chromaticGuide || settings.focusMode === "chromatic");
-      const needsLines =
-        !strategyPaused &&
-        (settings.syntacticLines ||
-          settings.focusMode === "syntactic" ||
-          isChroma ||
-          settings.bionicAnchors ||
-          settings.visualPacer);
-      if (needsLines) {
-        applySyntacticLines(container, {
-          syntacticLines: settings.syntacticLines,
-          chromaticGuide: isChroma,
-          bionicAnchors: settings.bionicAnchors,
-        });
-      } else {
-        clearSyntacticLines(container);
-      }
-
-      container.dataset.chromaPalette = settings.chromaticPalette || "editorial";
-      container.dataset.chromaticGuide = isChroma && !strategyPaused ? "true" : "false";
-      container.dataset.bionicAnchors = settings.bionicAnchors && !strategyPaused ? "true" : "false";
-
-      if (!strategyPaused && (settings.paragraphFocus || settings.focusMode === "paragraph"))
-        updateParagraphFocus(container);
-      else clearParagraphFocus(container);
-
-      // Las líneas sintácticas reenvuelven los nodos de texto: el
-      // mapa de oraciones quedó viejo y se re-ancla por huella.
-      ttsRef.current?.onDomMutated();
-      if (layoutRef.current === "pages") {
-        remeasure();
-      } else {
-        const saved = latestPositionRef.current;
-        const max =
-          document.documentElement.scrollHeight - window.innerHeight;
-        if (
-          !saved?.anchor ||
-          !scrollToAnchor(container, saved.anchor, { offset: saved.anchorOffset })
-        )
-          window.scrollTo(0, (saved?.ratio ?? 0) * Math.max(0, max));
-      }
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [
-    settings.focusMode,
-    settings.syntacticLines,
-    settings.chromaticGuide,
-    settings.chromaticPalette,
-    settings.bionicAnchors,
-    settings.paragraphFocus,
-    settings.visualPacer,
-    strategyPaused,
+  // Reflujo al cambiar modo/fuente/tamaño — extraído a useReaderReflow (B7).
+  useReaderReflow({
     state,
+    settingsLayout: settings.layout,
+    settingsFont: settings.font,
+    settingsSize: settings.size,
+    settingsMeasure: settings.measure,
+    settingsLeading: settings.leading,
+    layoutRef,
+    containerRef,
+    latestPositionRef,
+    pageAnchorRef,
     remeasure,
+  });
+
+  // «Líneas sintácticas» + reubicación del ancla tras el reflujo — extraído a
+  // useReaderSyntacticLines (B7).
+  useReaderSyntacticLines({
+    state,
+    strategyPaused,
+    focusMode: settings.focusMode,
+    syntacticLines: settings.syntacticLines,
+    chromaticGuide: Boolean(settings.chromaticGuide),
+    chromaticPalette: settings.chromaticPalette,
+    bionicAnchors: settings.bionicAnchors,
+    paragraphFocus: settings.paragraphFocus,
+    visualPacer: Boolean(settings.visualPacer),
+    layoutRef,
+    containerRef,
     latestPositionRef,
     ttsRef,
-  ]);
+    remeasure,
+  });
 
-  // En modo foco de párrafo, reenfocar al cambiar de sección o de página.
-  useEffect(() => {
-    if (
-      state !== "ready" ||
-      strategyPaused ||
-      (!settings.paragraphFocus && settings.focusMode !== "paragraph")
-    )
-      return;
-    const container = containerRef.current;
-    if (!container) return;
-    const raf = requestAnimationFrame(() => {
-      updateParagraphFocus(container);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [
-    settings.focusMode,
-    settings.paragraphFocus,
-    strategyPaused,
+  // Reenfoque del párrafo en modo foco — extraído a useReaderParagraphFocus (B7).
+  useReaderParagraphFocus({
     state,
+    strategyPaused,
+    paragraphFocus: settings.paragraphFocus,
+    focusMode: settings.focusMode,
     page,
     sectionIndex,
-  ]);
+    containerRef,
+  });
 
   useReaderResizeRemeasure({
     settings: { layout: settings.layout },
@@ -3063,10 +2705,6 @@ export default function Reader({
     viewportRef,
     remeasure,
   });
-
-  useEffect(() => {
-    pageEnteredAtRef.current = Date.now();
-  }, [page, sectionIndex]);
 
   // Exposición pasiva: la lógica vive en lib/reader-evidence.ts; aquí solo se
   // le pasan los refs y el estado que lee.
@@ -3133,11 +2771,16 @@ export default function Reader({
   };
 
 
-  // Espejo del modo para callbacks estables (guardado, teclado,
-  // restauración): leen refs, no estado que cierra viejo.
-  useEffect(() => {
-    layoutRef.current = settings.layout;
-  }, [settings.layout]);
+  // Espejos de ref (layoutRef, pageEnteredAtRef) — extraídos a useReaderRefMirrors (B7).
+  useReaderRefMirrors({
+    layout: settings.layout,
+    layoutRef,
+    page,
+    sectionIndex,
+    pageEnteredAtRef,
+    settings,
+    settingsRef,
+  });
 
 
 
@@ -3205,48 +2848,13 @@ export default function Reader({
     onStatus(`«${word.form}» ya está en tu cuaderno.`);
   }, [language, applyPrediction, onStatus, bookHash, ttsRef, flashCatSavedWord]);
 
-  const handleTtsCaptureWord = useCallback(async () => {
-    const ctl = ttsRef.current;
-    if (!ctl) return;
-    const currentSentence = ctl.getCurrentSentence();
-    if (!currentSentence) return;
-
-    const keyWord = extractKeyWordFromSentence(
-      currentSentence,
-      language,
-    );
-    if (!keyWord || !keyWord.form) return;
-
-    triggerHaptic("selection");
-    const scope = captureDbScope();
-    try {
-      const { word: savedWord } = await saveWordWithKnowledge(
-        {
-          word: {
-            form: keyWord.form,
-            lemma: keyWord.lemma || keyWord.form.toLowerCase(),
-            pos: keyWord.pos,
-            language,
-            context: currentSentence,
-            bookHash,
-          },
-          knowledge: {
-            language,
-            lemma: (keyWord.lemma || keyWord.form).toLowerCase(),
-            known: false,
-            source: "saved",
-            status: "unknown",
-          },
-        },
-        scope,
-      );
-      onWordSaved(savedWord);
-      setTtsCapturedToast(keyWord.form);
-      setTimeout(() => setTtsCapturedToast(null), 2500);
-    } catch {
-      // fallback silencioso
-    }
-  }, [language, bookHash, onWordSaved, setTtsCapturedToast, ttsRef]);
+  const handleTtsCaptureWord = useTtsCaptureWord({
+    language,
+    bookHash,
+    ttsRef,
+    onWordSaved,
+    setTtsCapturedToast,
+  });
 
   const onWordRemoved = (word: SavedWord) => {
     savedWordsRef.current = removeSavedWord(savedWordsRef.current, word.key);
@@ -3387,11 +2995,6 @@ export default function Reader({
   }, [resumeCard, setResumeCard, trackEvent, jumpTo]);
 
   // El modo de preparación lo leen los callbacks de navegación sin
-  // depender del ciclo de render.
-  useEffect(() => {
-    settingsRef.current = settings;
-  }, [settings]);
-
   // Ajustes del lector: la lógica vive en hooks/useReaderSettings.ts.
   const { updateSettings } = useReaderSettings({ bookHash, setSettings, setBookOverride });
 
@@ -3479,17 +3082,7 @@ export default function Reader({
   }, [settings, bookHash, setFatigueNotice]);
 
   // Marcador de Aterrizaje Auditivo (Fase 3: Anti-pérdida de posición)
-  const prevTtsStatusRef = useRef(ttsSnap.status);
-  useEffect(() => {
-    const prev = prevTtsStatusRef.current;
-    prevTtsStatusRef.current = ttsSnap.status;
-    if ((prev === "speaking" || prev === "stopping") && ttsSnap.status === "idle") {
-      const landing = loadTtsLandingPosition(bookHash);
-      if (landing && containerRef.current) {
-        applyTtsLandingMarker(containerRef.current, landing);
-      }
-    }
-  }, [ttsSnap.status, bookHash]);
+  useTtsLandingMarker(containerRef, bookHash, ttsSnap.status);
 
   const handleAcceptFocusAid = (aid: FocusAidType) => {
     const prof = loadFocusTelemetryProfile();
@@ -3597,212 +3190,54 @@ export default function Reader({
   // pueden terminar el mismo libro): se congela en la primera
   // detección para que los re-disparos manden el mismo premio. La
   // celebración también se dispara una sola vez por libro.
-  const bookCheeredRef = useRef<string | null>(null);
-  const bookAwardRef = useRef<{ hash: string; meta: { id: string; at: number; dayKey: string } } | null>(null);
-  useEffect(() => {
-    if (progress >= 0.995) {
-      if (bookAwardRef.current?.hash !== bookHash) {
-        const at = Date.now();
-        bookAwardRef.current = {
-          hash: bookHash,
-          meta: {
-            id: `book:${bookHash}:${crypto.randomUUID()}`,
-            at,
-            dayKey: localDayKey(at),
-          },
-        };
-      }
-      void award(
-        { kind: "book_finished", bookHash },
-        captureDbScope(),
-        bookAwardRef.current.meta,
-      );
-      if (bookCheeredRef.current !== bookHash) {
-        bookCheeredRef.current = bookHash;
-        signalCompanion({ kind: "goal_completed" });
-      }
-    }
-  }, [progress, bookHash, signalCompanion]);
+  // Crédito por libro terminado — extraído a useReaderBookAward (B7).
+  useReaderBookAward({ progress, bookHash, signalCompanion });
 
-  // Micro-hitos de página (25%, 50%, 75%, 100%) para dopamina visual y retención TDAH
-  const lastCheckpointRef = useRef<number>(0);
-  const lastSectionForCheckpointRef = useRef<number>(sectionIndex);
-  useEffect(() => {
-    if (lastSectionForCheckpointRef.current !== sectionIndex) {
-      lastSectionForCheckpointRef.current = sectionIndex;
-      lastCheckpointRef.current = 0;
-    }
-    if (state !== "ready") return;
-    const checkpoints = [0.25, 0.5, 0.75, 1.0];
-    for (const cp of checkpoints) {
-      if (viewRatio >= cp && lastCheckpointRef.current < cp) {
-        lastCheckpointRef.current = cp;
-        window.dispatchEvent(
-          new CustomEvent("lecta:checkpoint-reached", {
-            detail: { checkpoint: cp },
-          }),
-        );
-        presenceReact();
-        break;
-      }
-    }
-  }, [viewRatio, sectionIndex, state, presenceReact]);
+  // Micro-hitos de página — extraído a useReaderCheckpoint (B7).
+  useReaderCheckpoint({ viewRatio, sectionIndex, state, presenceReact });
 
   // Paisajes sonoros procedurales Web Audio y ronroneo ambiental («Body Doubling» acústico)
-  useEffect(() => {
-    const activeSound =
-      settings.soundscape || (settings.ambientPurr ? "purr" : "none");
-    const shouldPlay =
-      activeSound !== "none" &&
-      !strategyPaused &&
-      state === "ready" &&
-      !readingPaused &&
-      ttsSnap.status !== "speaking";
-
-    if (shouldPlay) {
-      if (activeSound === "purr") {
-        startAmbientPurr();
-      } else {
-        startSoundscape(activeSound as SoundscapeKind);
-      }
-    } else {
-      stopAmbientPurr();
-      stopSoundscape();
-    }
-    return () => {
-      stopAmbientPurr();
-      stopSoundscape();
-    };
-  }, [
-    settings.soundscape,
-    settings.ambientPurr,
+  useAmbientSoundscape({
+    soundscape: settings.soundscape,
+    ambientPurr: settings.ambientPurr,
     strategyPaused,
     state,
     readingPaused,
-    ttsSnap.status,
-  ]);
+    ttsStatus: ttsSnap.status,
+    startAmbientPurr,
+    startSoundscape,
+    stopAmbientPurr,
+    stopSoundscape,
+  });
 
   // Marcapasos Visual ("Ritmo Guiado" para TDAH)
-  useEffect(() => {
-    const container = containerRef.current;
-    if (
-      !settings.visualPacer ||
-      strategyPaused ||
-      pacerPaused ||
-      state !== "ready" ||
-      readingPaused
-    ) {
-      if (container) {
-        container.querySelectorAll(".lecta-pacer-active").forEach((el) => {
-          el.classList.remove("lecta-pacer-active");
-        });
-      }
-      return;
-    }
-
-    if (!container) return;
-
-    let timer: number | null = null;
-    let destroyed = false;
-
-    const stepPacer = () => {
-      if (destroyed) return;
-      const chunks = Array.from(
-        container.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"),
-      );
-      if (chunks.length === 0) return;
-
-      if (pacerIndexRef.current >= chunks.length) {
-        pacerIndexRef.current = 0;
-      }
-      const activeChunk = chunks[pacerIndexRef.current];
-
-      chunks.forEach((chunk, i) => {
-        if (i === pacerIndexRef.current) {
-          chunk.classList.add("lecta-pacer-active");
-        } else {
-          chunk.classList.remove("lecta-pacer-active");
-        }
-      });
-
-      if (activeChunk) {
-        const rect = activeChunk.getBoundingClientRect();
-        if (rect.bottom > window.innerHeight - 80 || rect.top < 60) {
-          activeChunk.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }
-
-      const text = activeChunk?.textContent || "";
-      const words = Math.max(1, text.trim().split(/\s+/).filter(Boolean).length);
-      const wpm = settings.pacerWpm || 210;
-      const durationMs = Math.max(200, Math.min(5000, Math.round((words / wpm) * 60_000)));
-
-      pacerIndexRef.current += 1;
-      timer = window.setTimeout(stepPacer, durationMs);
-    };
-
-    stepPacer();
-
-    return () => {
-      destroyed = true;
-      if (timer) window.clearTimeout(timer);
-      if (container) {
-        container.querySelectorAll(".lecta-pacer-active").forEach((el) => {
-          el.classList.remove("lecta-pacer-active");
-        });
-      }
-    };
-  }, [
-    settings.visualPacer,
-    settings.pacerWpm,
+  useVisualPacer({
+    containerRef,
+    pacerIndexRef,
+    visualPacer: settings.visualPacer,
+    pacerWpm: settings.pacerWpm,
     strategyPaused,
     pacerPaused,
     state,
     readingPaused,
-    sectionIndex,
-  ]);
+  });
 
   // Invitación a la prueba de vocabulario, una vez por apertura del
   // libro: se ofrece al terminar el primer tramo que el lector leyó
   // (su última sección con la vista casi completa, o ya más allá).
   // Todo lo que decide corre en el dispositivo — sin red hasta que la
   // persona acepta y App descarga la muestra.
-  useEffect(() => {
-    if (state !== "ready" || calEvaluated.current) return;
-    // En paginado la posición aterriza cuando el recuento resuelve el
-    // destino pendiente: observar antes leería un «página 0 de 1»
-    // ficticio — y lo que cuenta es dónde quedó el lector.
-    if (pendingPageRef.current) return;
-    const next = trackCalibrationOffer(
-      calTrack.current,
-      sectionIndex,
-      viewRatio,
-      rangeFor,
-    );
-    calTrack.current = next.track;
-    if (!next.offer) return;
-    calEvaluated.current = true;
-    void (async () => {
-      // Disponible en español e inglés; con otra lengua la invitación
-      // no existiría.
-      if (language !== "es" && language !== "en") return;
-      const scope = captureDbScope();
-      const doneKey = calibrationDoneKey(language);
-      const done = await loadSessionValue(doneKey, scope).catch(
-        () => "1",
-      );
-      if (done != null) return;
-      // Evidencia de calibración (p. ej. bajada por sincronización)
-      // también cierra la oferta y deja la marca para no releer.
-      if (await hasCalibrationEvidence(language, scope).catch(() => false)) {
-        void saveSessionValue(doneKey, "1", scope).catch(
-          () => undefined,
-        );
-        return;
-      }
-      setCalNotice(true);
-    })();
-  }, [state, sectionIndex, viewRatio, language, rangeFor, setCalNotice]);
+  // Oferta automática de calibración — extraído a useReaderCalibrationOffer (B7).
+  useReaderCalibrationOffer({
+    state,
+    sectionIndex,
+    viewRatio,
+    language,
+    rangeFor,
+    pendingPageRef,
+    setCalNotice,
+    trackCalibrationOffer,
+  });
 
   // «Ajustar mi vocabulario»: la descarga corre por App; si la hoja no
   // llegó a abrirse (sin conexión o muestra vacía) el aviso se conserva
@@ -3825,36 +3260,15 @@ export default function Reader({
   // guardada o apenas empezado) y solo en es/en — los idiomas con
   // banco y catálogo. Una decisión guardada manda sobre el default
   // del interruptor y no vuelve a preguntar.
-  useEffect(() => {
-    if (state !== "ready" || sectionIndex !== 0) return;
-    if (language !== "es" && language !== "en") return;
-    if (helpAskedRef.current === bookHash) return;
-    let cancelled = false;
-    void (async () => {
-      const scope = captureDbScope();
-      const [decision, saved] = await Promise.all([
-        loadSessionValue(bookHelpKey(bookHash), scope).catch(() => null),
-        loadBookPosition(bookHash, scope).catch(() => null),
-      ]);
-      if (cancelled || helpAskedRef.current === bookHash) return;
-      const isNewBook =
-        !saved || (saved.sectionIndex === 0 && (saved.ratio ?? 0) < 0.02);
-      const outcome = resolveBookHelpOpening(decision, isNewBook);
-      if (outcome === "none") return;
-      helpAskedRef.current = bookHash;
-      if (outcome !== "ask") {
-        saveBookMicroHighlightsEnabled(bookHash, outcome === "apply-on");
-        return;
-      }
-      setHelpIsCalibrated(
-        languageCalibrationStatus(language) === "calibrated",
-      );
-      setHelpNotice(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [state, sectionIndex, language, bookHash, setHelpIsCalibrated, setHelpNotice]);
+  // Aviso de ayuda de vocabulario al abrir — extraído a useReaderHelpNotice (B7).
+  useReaderHelpNotice({
+    state,
+    sectionIndex,
+    language,
+    bookHash,
+    setHelpIsCalibrated,
+    setHelpNotice,
+  });
 
   const saveHelpDecision = useCallback((value: "on" | "off" | "dismissed") => {
     void saveSessionValue(bookHelpKey(bookHash), value, captureDbScope()).catch(
@@ -3983,24 +3397,15 @@ export default function Reader({
     targetId: string;
     summary: ChapterSummary;
   } | null>(null);
-  const summaryForRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!atChapterEnd || !endTarget || !endRange) return;
-    if (summaryForRef.current === endTarget.id) return;
-    const range = endRange;
-    const visitId = visitIdRef.current ?? "";
-    void listReadingEvents(bookHash, captureDbScope())
-      .then((events) => {
-        const summary = chapterSummary(events, range, visitId);
-        if (hasChapterSummary(summary)) {
-          summaryForRef.current = endTarget.id;
-          setEndSummary({ targetId: endTarget.id, summary });
-        } else {
-          setEndSummary(null);
-        }
-      })
-      .catch(() => undefined);
-  }, [atChapterEnd, endTarget, endRange, bookHash]);
+  // Resumen de capítulo al final del tramo — extraído a useReaderChapterSummary (B7).
+  useReaderChapterSummary({
+    atChapterEnd,
+    endTarget,
+    endRange,
+    bookHash,
+    visitIdRef,
+    setEndSummary,
+  });
 
   const summaryParts = endSummary
     ? [
