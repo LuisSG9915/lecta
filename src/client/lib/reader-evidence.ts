@@ -14,6 +14,7 @@ import {
   type KnownWord,
   type SavedWord,
 } from "./idb";
+import { recordPassiveReencounter } from "./reviews";
 import {
   batchLookup,
 } from "./lexicon";
@@ -64,6 +65,9 @@ export interface ExposureRefs {
   pageRef: Ref<number>;
   sectionIndexRef: Ref<number>;
   savedForms: Ref<Map<string, MarkLevel>>;
+  /** Palabras guardadas (para reencuentro pasivo). Opcional: si falta, no se
+   *  registran reencuentros (solo exposición pasiva sobre conocimiento). */
+  savedWordsRef?: Ref<SavedWord[]>;
 }
 
 export interface PassiveExposureInput {
@@ -222,6 +226,7 @@ export function checkPassiveExposure(
     pageRef,
     sectionIndexRef,
     savedForms,
+    savedWordsRef,
   } = refs;
   const { language, sectionWords, analysisFor, forward = true } = input;
   const now = Date.now();
@@ -250,10 +255,24 @@ export function checkPassiveExposure(
   const candidates = pageForms(analysis, pageRef.current, totalPages).filter(
     (f) => !consulted.has(f),
   );
+  // Mapa lema → palabra guardada, para detectar reencuentros pasivos.
+  const savedByLemma = new Map<string, SavedWord>();
+  for (const w of savedWordsRef?.current ?? []) {
+    if (!w.deleted) savedByLemma.set((w.lemma || w.form).toLowerCase(), w);
+  }
   const uniqueLemmas = new Set<string>();
   for (const f of candidates) {
     const entry = analysis.entries[f]?.[0];
     const lemma = (entry?.lemma ?? f).toLowerCase();
+    const savedWord = savedByLemma.get(lemma);
+    if (savedWord) {
+      // Reencuentro pasivo: la palabra guardada apareció sin ser
+      // consultada. Se anota como repaso «reencounter» (sin XP ni grado
+      // FSRS) para que cuente como exposición.
+      const scope = captureDbScope();
+      void recordPassiveReencounter(savedWord, scope).catch(() => {});
+      continue;
+    }
     if (!savedForms.current.has(f) && !savedForms.current.has(lemma)) {
       uniqueLemmas.add(lemma);
     }

@@ -23,6 +23,7 @@ export type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 // que falte cuando vuelva la conexión.
 export async function recordReview(
   input: {
+    id?: string;
     language: string;
     form: string;
     kind: ReviewKind;
@@ -35,7 +36,11 @@ export async function recordReview(
   const bound = scope ?? captureDbScope();
   const saved = await saveReview(
     {
-      ...input,
+      id: input.id,
+      language: input.language,
+      form: input.form,
+      kind: input.kind,
+      rating: input.rating,
       hints: input.hints ?? 0,
       createdAt: Date.now(),
     },
@@ -255,4 +260,28 @@ export async function recordLookupLapse(
     { award: false },
   ).catch(() => undefined);
   return stored;
+}
+
+// Reencuentro pasivo: la palabra guardada apareció en el texto que se está
+// leyendo y no fue consultada. Se anota como repaso «reencounter» (sin XP ni
+// grado FSRS) para que cuente como exposición. Dedup por id: una sola vez
+// por palabra y día local; los reintentos del mismo día son no-op.
+export async function recordPassiveReencounter(
+  word: SavedWord,
+  scope?: DbScope,
+  now = new Date(),
+): Promise<SavedReview | null> {
+  if (word.deleted) return null;
+  if ((word.card?.reps ?? 0) <= 0 && !(word.presentedAt ?? 0)) return null;
+  const bound = scope ?? captureDbScope();
+  const day = localDayKey(now.getTime());
+  const id = `reencounter:${word.language}:${word.form.toLowerCase()}:${day}`;
+  const existing = await withDb(bound, (db) => db.get("reviews", id)).catch(() => null);
+  if (existing) return existing as SavedReview;
+  const saved = await recordReview(
+    { id, language: word.language, form: word.form, kind: "reencounter", rating: "known", hints: 0 },
+    bound,
+    { award: false },
+  ).catch(() => null);
+  return saved ?? null;
 }

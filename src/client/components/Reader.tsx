@@ -2620,7 +2620,7 @@ export default function Reader({
   const checkPassiveExposure = useCallback(
     (forward = true) =>
       checkPassiveExposureEvidence(
-        { bookRef, consultedInPageRef, pageCountRef, pageEnteredAtRef, pageRef, sectionIndexRef, savedForms },
+        { bookRef, consultedInPageRef, pageCountRef, pageEnteredAtRef, pageRef, sectionIndexRef, savedForms, savedWordsRef },
         { language, sectionWords, analysisFor, forward },
       ),
     [analysisFor, sectionWords, language],
