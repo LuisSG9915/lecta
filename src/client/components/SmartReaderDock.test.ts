@@ -162,6 +162,17 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(container.querySelector(".dock-sleep-popover")).toBeNull();
   });
 
+  it("el sheet de sueño ofrece «Escuchar en segundo plano» con nota honesta", () => {
+    const onToggleBackgroundAudio = vi.fn();
+    render({ ttsSnap: speakingSnap, onSetSleepTimer: vi.fn(), onToggleBackgroundAudio, backgroundAudio: false });
+    act(() => (container.querySelector(".dock-sleep-btn") as HTMLButtonElement).click());
+    const toggles = container.querySelectorAll<HTMLInputElement>(".dock-sleep-toggle input");
+    expect(toggles).toHaveLength(2);
+    act(() => toggles[1].click());
+    expect(onToggleBackgroundAudio).toHaveBeenCalledWith(true);
+    expect(container.querySelector(".dock-sleep-popover .setting-hint")?.textContent).toMatch(/voz neural/);
+  });
+
   it("muestra la cuenta atrás del sleep timer en la luna", () => {
     render({
       ttsSnap: { ...speakingSnap, sleepTimerEndsAt: Date.now() + 14 * 60_000 + 5_000 },

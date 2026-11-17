@@ -15,7 +15,7 @@ import type { TtsRate } from "./ttsTypes";
 export const TTS_CHUNK_MAX = 240;
 
 // iOS/iPadOS: pause+resume deja la cola muda con frecuencia.
-const IS_IOS =
+export const IS_IOS =
   typeof navigator !== "undefined" &&
   (/iP(hone|ad|od)/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));

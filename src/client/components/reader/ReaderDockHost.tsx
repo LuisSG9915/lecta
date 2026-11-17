@@ -46,6 +46,8 @@ export interface ReaderDockHostProps {
   setSleepTimer: (opt: number | { chapterEnd: true } | null) => void;
   autoAdvanceChapter: boolean;
   setAutoAdvanceChapter: (value: boolean) => void;
+  backgroundAudio: boolean;
+  setBackgroundAudio: (value: boolean) => void;
   stopTts: (reason?: "user" | "navigation" | "visibility") => void;
   handleTtsCaptureWord: () => Promise<void>;
   handleRecapClick: () => Promise<void>;
@@ -103,6 +105,8 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
   setSleepTimer,
   autoAdvanceChapter,
   setAutoAdvanceChapter,
+  backgroundAudio,
+  setBackgroundAudio,
   stopTts,
   handleTtsCaptureWord,
   handleRecapClick,
@@ -231,6 +235,8 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
       onSetSleepTimer={setSleepTimer}
       autoAdvanceChapter={autoAdvanceChapter}
       onToggleAutoAdvance={setAutoAdvanceChapter}
+      backgroundAudio={backgroundAudio}
+      onToggleBackgroundAudio={setBackgroundAudio}
       onOpenVoiceSelector={() => setTtsConsentOpen(true)}
       onCaptureWord={handleTtsCaptureWord}
       onStopAudio={() => stopTts("user")}

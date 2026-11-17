@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T18:20:39.041Z",
+  "generatedAt": "2026-11-17T18:49:29.464Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "d2c2c7a19c64d6c9ba612f568dc557c3979f12fa",
+  "commit": "f1a83779ea19789881dab3c4e53d4d16f947bda3",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -518,12 +518,18 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:3885 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "FAIL",
+          "detail": "src/client/components/Reader.tsx:3883-3887 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 3885,
-            "text": "applyPreviewKnownSignal(currentLang, beta);"
+            "asked": 3885,
+            "excerpt": [
+              "3883:         }}",
+              "3884:         onDiscardPrep={discardPrep}",
+              "3885:         initialStrategy={settings.strategyPreset}",
+              "3886:         onSelectStrategy={(preset) => selectStrategyPreset(preset)}",
+              "3887:         onMarkKnown={(lemma, beta) => {"
+            ]
           }
         },
         {
@@ -1719,5 +1725,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

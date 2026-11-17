@@ -153,6 +153,14 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
   distinto gana (viene de otro dispositivo). Filas escritas por clientes viejos llegan con
   `anchor_offset` nulo → `undefined` en el JSON.
 
+## Audio en segundo plano (TTS)
+
+- **Opt-in**: `backgroundAudio` (`ttsSettings.ts`, default apagado), toggle «Escuchar en segundo plano» en el popover de la luna del dock. Con él y voz **neural** (Kitten/Piper) el efecto de pausas de `useReaderTts` no llama `pause("visibility")` (`ctl.canPlayInBackground()`), el motor activa `keepAlive` (no libera el worker al ocultar ni por inactividad; se apaga al pausar y terminar) y `ttsMediaSession.ts` publica MediaSession (título por `bookDisplayName`, capítulo, icono de `/icons/`, play/pausa/oración ant./sig./stop).
+- **Chrome Android exige un elemento multimedia sonando** para mantener la pestaña y mostrar la notificación: `startSilentKeepAlive()` reproduce un `<audio loop>` en silencio (WAV generado en memoria) y debe arrancar dentro de un gesto (`onTtsRequest`).
+- **Watchdog por reloj del AudioContext**: `armPlaybackWatchdog` mide con `ctx.currentTime`; en pausa o pantalla bloqueada no avanza en falso. `source.onended` sigue siendo la señal real.
+- **Límites que no se pueden arreglar**: en **iOS** (Safari/WebView) la voz se detiene al bloquear la pantalla — el toggle va deshabilitado con aviso (`IS_IOS`). La **voz del sistema** (`speechSynthesis`) se pausa al ocultarse la pestaña en Android e iOS: el background solo se promete con voz neural en Chrome Android.
+- **Sin verificar en dispositivo real** (2026-11-17): hace falta probar por adb (neural + background + bloquear pantalla: audio sigue, controles de lockscreen, el capítulo avanza). Riesgo abierto: `onSectionRendered` depende de que React pinte la sección siguiente y con la pestaña oculta `requestAnimationFrame` no corre.
+
 ## Ficha de palabra (WordPanel)
 
 - **Dos variantes de `/api/ai/explain-in-passage`.** El servidor elige el prompt

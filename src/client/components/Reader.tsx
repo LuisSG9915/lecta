@@ -1969,11 +1969,14 @@ export default function Reader({
     cycleSpeed,
     setSleepTimer,
     autoAdvanceChapter,
+    backgroundAudio,
+    setBackgroundAudio,
     setAutoAdvanceChapter,
     stopTts,
     handleStartAudio5Min,
   } = useReaderTts({
     bookHash,
+    bookTitle: bookDisplayName({ title, name: fileName }),
     state,
     language,
     sectionIndex,
@@ -3639,6 +3642,8 @@ export default function Reader({
           setSleepTimer={setSleepTimer}
           autoAdvanceChapter={autoAdvanceChapter}
           setAutoAdvanceChapter={setAutoAdvanceChapter}
+          backgroundAudio={backgroundAudio}
+          setBackgroundAudio={setBackgroundAudio}
           stopTts={stopTts}
           handleTtsCaptureWord={handleTtsCaptureWord}
           handleRecapClick={handleRecapClick}

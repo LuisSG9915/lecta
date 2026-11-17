@@ -6,6 +6,7 @@ import {
 } from "../lib/settings";
 import type { TtsSnapshot } from "../lib/ttsTypes";
 import { unlockAudioContext } from "../lib/kittenTtsEngine";
+import { IS_IOS } from "../lib/ttsSpeech";
 import Icon, { type IconName } from "./Icon";
 import { getWeeklyLearnedWordsCount } from "../lib/journey";
 
@@ -97,6 +98,8 @@ export interface SmartReaderDockProps {
   onSetSleepTimer?: (opt: number | { chapterEnd: true } | null) => void;
   autoAdvanceChapter?: boolean;
   onToggleAutoAdvance?: (value: boolean) => void;
+  backgroundAudio?: boolean;
+  onToggleBackgroundAudio?: (value: boolean) => void;
   onOpenVoiceSelector?: () => void;
   onCaptureWord?: () => void;
   onStopAudio: () => void;
@@ -142,6 +145,8 @@ export default function SmartReaderDock({
   onSetSleepTimer,
   autoAdvanceChapter = true,
   onToggleAutoAdvance,
+  backgroundAudio = false,
+  onToggleBackgroundAudio,
   onOpenVoiceSelector,
   onCaptureWord,
   onStopAudio,
@@ -430,6 +435,20 @@ export default function SmartReaderDock({
               />
               <span>Continuar al siguiente capítulo</span>
             </label>
+            <label className="dock-sleep-toggle">
+              <input
+                type="checkbox"
+                checked={backgroundAudio && !IS_IOS}
+                disabled={IS_IOS}
+                onChange={(e) => onToggleBackgroundAudio?.(e.target.checked)}
+              />
+              <span>Escuchar en segundo plano</span>
+            </label>
+            <small className="setting-hint">
+              {IS_IOS
+                ? "En iPhone la voz se detiene al bloquear la pantalla; mantén la pantalla encendida o usa la voz neural."
+                : "Solo con la voz neural en Android. Con la voz del sistema la lectura se pausa al bloquear la pantalla."}
+            </small>
           </div>
         )}
 

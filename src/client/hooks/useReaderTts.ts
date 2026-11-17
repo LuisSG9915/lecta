@@ -40,6 +40,7 @@ import type { SavedBookPosition } from '../lib/idb';
 import type { VisitEventDraft } from '../lib/reading-events';
 import type { FocusSuggestion } from '../components/SmartReaderDock';
 import { triggerHaptic } from '../lib/deep-reading';
+import { mediaSessionReset, startSilentKeepAlive, syncMediaSession } from '../lib/ttsMediaSession';
 
 export type ReaderNavigateFn = (
   intent: "initial" | "chapter" | "resume" | "lookup" | "return",
@@ -64,6 +65,8 @@ export interface UseReaderTtsParams {
 
   // Modo integrado Reader.tsx
   bookHash?: string;
+  // Título limpio (bookDisplayName) para la notificación multimedia.
+  bookTitle?: string;
   state?: string;
   language?: string;
   sectionIndex?: number;
@@ -102,6 +105,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     onAdvanceSection,
     onShowNotice = () => undefined,
     bookHash = "",
+    bookTitle = "",
     state = "idle",
     language = "es",
     sectionIndex = 0,
@@ -382,6 +386,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   const onTtsRequest = useCallback(() => {
     const ctl = ttsRef.current;
     if (!ctl) return;
+    if (backgroundAudio) startSilentKeepAlive();
     if (ttsSnap.status !== "idle") {
       ctl.stop("user");
       return;
@@ -391,7 +396,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
       return;
     }
     startTts();
-  }, [ttsSnap.status, startTts]);
+  }, [ttsSnap.status, startTts, backgroundAudio]);
 
   const onTtsConsentAccept = useCallback(
     (engineMode?: TtsEngineMode) => {
@@ -449,6 +454,31 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     ttsRef.current?.stop(reason);
     audioControllerRef.current?.stop();
   }, []);
+
+  // MediaSession: notificación y controles de pantalla bloqueada (solo con la voz neural en segundo plano).
+  useEffect(() => {
+    const ctl = ttsRef.current;
+    if (!ctl || !backgroundAudio) return;
+    if (ttsSnap.status === "idle") {
+      mediaSessionReset();
+      return;
+    }
+    if (!ctl.canPlayInBackground?.()) return;
+    if (ttsSnap.status === "speaking" || ttsSnap.status === "preparing") startSilentKeepAlive();
+    syncMediaSession(
+      ttsSnap,
+      { title: bookTitle || "Lecta", chapter: ttsSnap.chapterLabel ?? null, artwork: "/icons/icon-512.png" },
+      {
+        play: () => ctl.resume(),
+        pause: () => ctl.pause("user"),
+        next: () => ctl.nextSentence(),
+        prev: () => ctl.prevSentence(),
+        stop: () => stopTts("user"),
+      },
+    );
+  }, [ttsSnap, backgroundAudio, bookTitle, stopTts]);
+
+  useEffect(() => mediaSessionReset, []);
 
   const onDomMutated = useCallback(() => {
     ttsRef.current?.onDomMutated();
