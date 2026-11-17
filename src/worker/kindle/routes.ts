@@ -18,6 +18,8 @@ import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "t
 
 // Retención del ritmo «Equilibrado» (RETENTION_BY_HORIZON.standard del cliente).
 const KINDLE_REQUEST_RETENTION = 0.9;
+// Glosario del artefacto kcache: pista de una línea por lema frecuente.
+const KINDLE_GLOSS_MAX_CHARS = 90;
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
@@ -1646,9 +1648,19 @@ async function loadKindleChapterForRead(
       ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
       for (const [form, entries] of Object.entries(entriesMap)) {
         if (!Array.isArray(entries) || entries.length === 0) continue;
-        const entry = entries[0];
-        const gloss = entry.senses?.[0]?.definition?.trim();
-        if (!gloss) continue;
+        // Solo lemas frecuentes con glosa recortada: el glosario viaja en el
+        // artefacto del capítulo y sin acotar lo triplicaba (revisión
+        // 2026-11-17: zipf≥3 + glosa≤90 deja el capítulo denso en +36 KB gzip
+        // en vez de +52). Mismo umbral que el pack IPA; las raras caen al
+        // fallback ?lookup=.
+        const entry = entries.find(
+          (e) => e.zipf != null && e.zipf >= 3 && e.senses?.[0]?.definition?.trim(),
+        );
+        if (!entry) continue;
+        let gloss = entry.senses[0].definition.trim();
+        if (gloss.length > KINDLE_GLOSS_MAX_CHARS) {
+          gloss = gloss.slice(0, KINDLE_GLOSS_MAX_CHARS).trimEnd() + "…";
+        }
         glossary[form.toLowerCase()] = {
           lemma: (entry.lemma || form).toLowerCase(),
           pos: entry.pos ?? null,

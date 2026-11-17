@@ -65,7 +65,7 @@ The main app also wires these exports at top level ([`../app.ts`](../app.ts)):
   `renderKindleLinkView`, `renderReaderView`, `renderLookupView`,
   `renderPracticeView`, `renderKindleChapterPrimingView`, `renderKindleTocView`,
   `renderKindleSettingsView`, `renderKindleCatSvg`.
-- `cache.ts`: `KINDLE_CHAPTER_CACHE_V` (currently 3), `getCachedChapter`,
+- `cache.ts`: `KINDLE_CHAPTER_CACHE_V` (currently 4), `getCachedChapter`,
   `putCachedChapter`, `getCachedResource`, `putCachedResource`,
   `purgeKindleBookCache`, `resetKindleCacheMemory`.
 - `timing.ts`: `createTimer`, `KindleTimer`.

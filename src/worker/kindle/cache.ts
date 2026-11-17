@@ -19,7 +19,7 @@
 
 import type { R2Bucket } from "@cloudflare/workers-types";
 
-export const KINDLE_CHAPTER_CACHE_V = 3;
+export const KINDLE_CHAPTER_CACHE_V = 4;
 export const KINDLE_RESOURCE_CACHE_PREFIX = "kcache/res/";
 
 
