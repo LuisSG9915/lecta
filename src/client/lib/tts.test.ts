@@ -517,6 +517,97 @@ describe("kittenTtsEngine", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("watchdog de reproducción (reloj del AudioContext)", () => {
+    type FakeCtx = {
+      state: string;
+      currentTime: number;
+      resume: ReturnType<typeof vi.fn>;
+      suspend: ReturnType<typeof vi.fn>;
+      createBufferSource: () => unknown;
+    };
+    const makeCtx = (): FakeCtx => ({
+      state: "running",
+      currentTime: 0,
+      resume: vi.fn().mockResolvedValue(undefined),
+      suspend: vi.fn().mockResolvedValue(undefined),
+      createBufferSource: () => ({
+        buffer: null,
+        playbackRate: { value: 1 },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+        onended: null,
+      }),
+    });
+    const buf = (duration: number) => ({ duration, length: 240, sampleRate: 24000 }) as unknown as AudioBuffer;
+    const inject = (ctx: FakeCtx) => {
+      (kittenTtsEngine as unknown as { audioCtx: unknown }).audioCtx = ctx;
+    };
+
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => {
+      vi.useRealTimers();
+      (kittenTtsEngine as unknown as { audioCtx: unknown }).audioCtx = null;
+    });
+
+    it("en pausa (contexto suspendido) el reloj de pared no avanza la oración", () => {
+      const ctx = makeCtx();
+      inject(ctx);
+      const onEnded = vi.fn();
+      kittenTtsEngine.play(buf(2), 1, onEnded);
+      ctx.state = "suspended";
+      vi.advanceTimersByTime(10_000);
+      expect(onEnded).not.toHaveBeenCalled();
+      ctx.state = "running";
+      ctx.currentTime = 2.9;
+      vi.advanceTimersByTime(1100);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    });
+
+    it("si onended no llega, avanza al pasar duración + 0,8 s de tiempo del contexto", () => {
+      const ctx = makeCtx();
+      inject(ctx);
+      const onEnded = vi.fn();
+      kittenTtsEngine.play(buf(1), 1, onEnded);
+      vi.advanceTimersByTime(1000);
+      expect(onEnded).not.toHaveBeenCalled();
+      ctx.currentTime = 1.85;
+      vi.advanceTimersByTime(900);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    });
+
+    it("con onended normal se cancela y no dispara dos veces", () => {
+      const ctx = makeCtx();
+      inject(ctx);
+      let src: { onended: (() => void) | null } | null = null;
+      ctx.createBufferSource = () => (src = { ...(makeCtx().createBufferSource() as object), onended: null } as never);
+      const onEnded = vi.fn();
+      kittenTtsEngine.play(buf(1), 1, onEnded);
+      src!.onended?.();
+      ctx.currentTime = 5;
+      vi.advanceTimersByTime(10_000);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    });
+
+    it("Piper vence con PIPER_INFERENCE_TIMEOUT_MS y no con el de Kitten", async () => {
+      const engine = kittenTtsEngine as unknown as {
+        getWorker: () => unknown;
+        requestAudioBuffer: (t: string, v: string, s: number, p: "high" | "low", e: string) => Promise<unknown>;
+      };
+      const spy = vi.spyOn(engine, "getWorker").mockReturnValue({ postMessage: vi.fn() });
+      const p = engine.requestAudioBuffer("Hola mundo.", "v", 1, "high", "piper");
+      const settled = vi.fn();
+      p.catch(settled);
+      await vi.advanceTimersByTimeAsync(12_500);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(18_000);
+      expect(settled).toHaveBeenCalledTimes(1);
+      await expect(p).rejects.toThrow(/30000ms/);
+      spy.mockRestore();
+    });
+  });
+
   it("playSentencesLoop reproduce con Kitten TTS si el modelo está descargado", async () => {
     const isDownloadedSpy = vi.spyOn(kittenTtsEngine, "isModelDownloaded").mockResolvedValue(true);
     const speakSpy = vi.spyOn(kittenTtsEngine, "speakSentenceWithLookahead").mockResolvedValue();

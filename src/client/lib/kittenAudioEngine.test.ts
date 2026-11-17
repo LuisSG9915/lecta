@@ -149,8 +149,13 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
     });
 
     it("play() dispara el callback onEnded incluso con AudioBuffer silencioso o corto", async () => {
+      const t0 = Date.now();
       const fakeCtx = {
         state: "running",
+        // Reloj del contexto: el watchdog ya no mide con reloj de pared.
+        get currentTime() {
+          return (Date.now() - t0) / 1000;
+        },
         resume: vi.fn().mockResolvedValue(undefined),
         createBufferSource: () => ({
           buffer: null,

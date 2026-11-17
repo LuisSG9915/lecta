@@ -826,6 +826,7 @@ export class KittenTtsEngine {
 
     let promise: Promise<AudioBuffer>;
     if (worker) {
+      const jobTimeoutMs = engine === "piper" ? PIPER_INFERENCE_TIMEOUT_MS : WORKER_INFERENCE_TIMEOUT_MS;
       promise = new Promise<AudioBuffer>((resolve, reject) => {
         const timer = typeof window !== "undefined"
           ? window.setTimeout(() => {
@@ -838,10 +839,9 @@ export class KittenTtsEngine {
                   ),
                 );
               }
-            }, WORKER_INFERENCE_TIMEOUT_MS)
+            }, jobTimeoutMs)
           : undefined;
 
-        const jobTimeoutMs = engine === "piper" ? PIPER_INFERENCE_TIMEOUT_MS : WORKER_INFERENCE_TIMEOUT_MS;
         this.pendingJobs.set(key, { resolve, reject, epoch: currentEpoch, engine, timer });
         worker.postMessage({
           type: "SYNTHESIZE",
@@ -978,20 +978,13 @@ export class KittenTtsEngine {
 
         // Watchdog de seguridad: garantiza que la cola de lectura avance incluso si source.onended
         // se traba en background o la oración fue puramente silenciosa
-        const safetyTimer = typeof window !== "undefined"
-          ? window.setTimeout(() => {
-              if (!settled) {
-                settled = true;
-                this.stopCurrentSource();
-                resolve();
-              }
-            }, expectedDurationMs + 800)
-          : undefined;
+        // Reloj del AudioContext (no de pared): en pausa o con la pantalla bloqueada no avanza en falso.
+        let cancelWatchdog: (() => void) | undefined;
 
         const onDone = () => {
           if (!settled) {
             settled = true;
-            if (safetyTimer) window.clearTimeout(safetyTimer);
+            cancelWatchdog?.();
             if (this.currentSource === source) {
               this.currentSource = null;
             }
@@ -1024,6 +1017,10 @@ export class KittenTtsEngine {
 
           onSentenceAudioStart?.();
           source.start(0);
+          cancelWatchdog = this.armPlaybackWatchdog(ctx, duration, () => {
+            this.stopCurrentSource();
+            onDone();
+          });
         } catch {
           onDone();
         }
@@ -1106,10 +1103,12 @@ export class KittenTtsEngine {
     const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
     const expectedDurationMs = Math.max(50, Math.round(duration * 1000));
 
+    let cancelWatchdog: (() => void) | undefined;
+
     const onDone = () => {
       if (!settled) {
         settled = true;
-        if (safetyTimer) window.clearTimeout(safetyTimer);
+        cancelWatchdog?.();
         if (this.currentSource === source) {
           this.currentSource = null;
         }
@@ -1117,10 +1116,6 @@ export class KittenTtsEngine {
         onEnded?.();
       }
     };
-
-    const safetyTimer = typeof window !== "undefined"
-      ? window.setTimeout(onDone, expectedDurationMs + 800)
-      : undefined;
 
     if (!ctx) {
       if (typeof window !== "undefined") {
@@ -1142,9 +1137,49 @@ export class KittenTtsEngine {
 
       this.currentSource = source;
       source.start(0);
+      cancelWatchdog = this.armPlaybackWatchdog(ctx, duration, () => {
+        this.stopCurrentSource();
+        onDone();
+      });
     } catch {
       onDone();
     }
+  }
+
+  /**
+   * Respaldo por si `onended` no llega. Mide con `ctx.currentTime`: un contexto suspendido
+   * (pausa, pantalla bloqueada) no avanza, así que no dispara en falso. Devuelve el cancelador.
+   */
+  private armPlaybackWatchdog(ctx: AudioContext, durationSec: number, onTimeout: () => void): () => void {
+    const startAt = ctx.currentTime;
+    const limit = durationSec + 0.8;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    const arm = (ms: number) => {
+      timer = setTimeout(tick, ms);
+    };
+    const tick = () => {
+      if (cancelled) return;
+      if (ctx.state === "closed") {
+        onTimeout();
+        return;
+      }
+      if (ctx.state !== "running") {
+        arm(1000);
+        return;
+      }
+      const elapsed = ctx.currentTime - startAt;
+      if (elapsed >= limit) {
+        onTimeout();
+        return;
+      }
+      arm((limit - elapsed) * 1000 + 50);
+    };
+    arm(limit * 1000);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }
 
   pause(): void {
