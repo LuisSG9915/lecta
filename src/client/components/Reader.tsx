@@ -70,6 +70,7 @@ import {
 import { daysAgo, relativeDay } from "../lib/relative-time";
 import {
   bookProgress,
+  chapterMinutesLeft,
   minutesLeft,
   updateWpm,
 } from "../lib/progress";
@@ -251,6 +252,7 @@ import {
   trackCalibrationOffer,
   targetAt,
   chapterIdFor,
+  chapterOrdinal,
   type ChapterCatalog,
   type ChapterTarget,
   type IntraSectionContext,
@@ -1010,6 +1012,11 @@ export default function Reader({
   // autoevaluación y el repaso a mitad de capítulo siguen existiendo y
   // comparten la misma clave.
   const currentChapterId = chapterIdFor(currentChapterTarget, sectionIndex);
+  // Capítulo real (N de M) y su rango para el dock; null → texto por secciones.
+  const chapterOrd = useMemo(
+    () => chapterOrdinal(catalog, currentChapterTarget),
+    [catalog, currentChapterTarget],
+  );
 
   const [midChapterRecall, setMidChapterRecall] = useState<{ section: number; item: EpisodicWordItem } | null>(null);
   const previousRecallSectionRef = useRef(-1);
@@ -3110,7 +3117,17 @@ export default function Reader({
         : 0
       : scrollRatio;
   const progress = bookProgress(sectionSizes, sectionIndex, viewRatio);
-  const minutes = minutesLeft(sectionWords, viewRatio, wpm);
+  const minutes =
+    settings.layout === "pages"
+      ? minutesLeft(sectionWords, viewRatio, wpm)
+      : chapterMinutesLeft(
+          sectionSizes,
+          sectionIndex,
+          chapterOrd?.range ?? null,
+          sectionWords,
+          viewRatio,
+          wpm,
+        );
 
   // El hilo de progreso lleno cuenta como libro terminado; el journal
   // deduplica el crédito por bookHash así que el efecto puede
@@ -3677,6 +3694,7 @@ export default function Reader({
           sectionIndex={sectionIndex}
           sectionTotal={sectionTotal}
           minutes={minutes}
+          chapterOrdinal={chapterOrd}
           prediction={prediction}
           scrollRatio={scrollRatio}
           barsShown={barsShown}

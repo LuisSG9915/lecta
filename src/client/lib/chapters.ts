@@ -447,6 +447,23 @@ export function chapterIdFor(target: ChapterTarget | null, sectionIndex: number)
   return target?.id ?? `sec-${sectionIndex}`;
 }
 
+// Posición del capítulo real (N de M) para el dock. Cuentan los destinos
+// «chapter» o «uncertain» (mismo criterio que el fin de capítulo); un
+// preliminar, «other» o un libro sin catálogo dan null. El rango se busca
+// por id: con varios capítulos en un archivo cada uno tiene el suyo.
+export function chapterOrdinal(
+  catalog: ChapterCatalog | null,
+  target: ChapterTarget | null,
+): { n: number; total: number; range: ChapterRange | null } | null {
+  if (!catalog || !target) return null;
+  const counted = catalog.targets.filter((t) => t.kind === "chapter" || t.kind === "uncertain");
+  if (!counted.length) return null;
+  const index = counted.findIndex((t) => t.id === target.id);
+  if (index < 0) return null;
+  const range = catalog.ranges.find((r) => r.target.id === target.id) ?? null;
+  return { n: index + 1, total: counted.length, range };
+}
+
 export function targetAt(
   ranges: ChapterRange[],
   sectionIndex: number,

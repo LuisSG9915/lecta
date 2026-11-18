@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-17T22:33:35.035Z
+Generado: 2026-11-18T13:07:26.229Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `01ea5bb500f7ef8e5c07dcc66214c5338a31e446`
+Commit: `3e392168ae6922dc7d673356ecf5e87936f56658`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -142,8 +142,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3899 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":3899,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3961 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":3961,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:717 coincide con /award: false/
@@ -195,7 +195,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — Antes el reto de fin de capítulo solo pagaba XP y las tarjetas se creaban con D/S inventados por origen. Hoy la tarjeta nace limpia y el ejercicio resuelto la avanza con Rating.Good.
 - evidencia: `src/client/lib/fsrs.ts:1-28`
 - evidencia: `src/client/lib/reviews.ts:86-160`
-- evidencia: `src/client/components/DeepReadingSummaryModal.tsx:122-145`
+- evidencia: `src/client/components/DeepReadingSummaryModal.tsx:125-148`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Tarjetas limpias y consolidación conectada»
 - ✅ **PASS** · probe: acierto con opciones cuenta; exposición por página y sin θ; reto calificado por errores; consulta en el idioma del libro; frecuencia por tokens
@@ -203,8 +203,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:128 coincide con /export async function consolidateEpisodicWord/
   - observado: `{"file":"src/client/lib/reviews.ts","line":128,"text":"export async function consolidateEpisodicWord("}`
-- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:138 coincide con /consolidateEpisodicWord\(current\.item/
-  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":138,"text":"void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"}`
+- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:141 coincide con /consolidateEpisodicWord\(current\.item/
+  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":141,"text":"void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"}`
 - ⚠️ **UNVERIFIED** · referencia ye2022: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1145/3534678.3539081","url":null}`
 - ⚠️ **UNVERIFIED** · referencia lindsey2014: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -226,12 +226,12 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — La velocidad como proxy de dominio se eliminó en vez de conectarse, y el doble registro de repasos en el Cuaderno se corrigió: un ejercicio, un evento.
 - evidencia: `src/client/lib/practice.ts:535-555`
-- evidencia: `src/client/hooks/useReaderNavigation.ts:201-270`
+- evidencia: `src/client/hooks/useReaderNavigation.ts:225-295`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Sin calificación implícita por velocidad»
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
-- ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:217 coincide con /const completeChapterTo/
-  - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":217,"text":"const completeChapterTo = useCallback("}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:241 coincide con /const completeChapterTo/
+  - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":241,"text":"const completeChapterTo = useCallback("}`
 - ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:711 coincide con /await grade\(item, wrongs/
   - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":711,"text":"const saved = await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)

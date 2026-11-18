@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildChapterCatalog,
   chapterIdFor,
+  chapterOrdinal,
   reachedRangeEnd,
   suggestedChapterTarget,
   targetAt,
   trackCalibrationOffer,
   type CalibrationTrack,
+  type ChapterCatalog,
+  type ChapterKind,
 } from "./chapters";
 import type { EpubBook, EpubTocItem } from "./epub";
 
@@ -641,3 +644,45 @@ describe("caso Calibre / King's Cage (sin landmarks bodymatter)", () => {
   });
 });
 
+
+describe("chapterOrdinal", () => {
+  const t = (id: string, sectionIndex: number, kind: ChapterKind) => ({
+    id,
+    label: id,
+    href: id,
+    sectionIndex,
+    depth: 0,
+    kind,
+  });
+  const targets = [
+    t("pro", 0, "preliminary"),
+    t("fm", 1, "frontmatter"),
+    t("c1", 2, "chapter"),
+    t("c2", 3, "uncertain"),
+    t("c3", 3, "chapter"),
+  ];
+  const catalog: ChapterCatalog = {
+    targets,
+    ranges: [
+      { target: targets[0], startSection: 0, endSection: 1 },
+      { target: targets[1], startSection: 1, endSection: 2 },
+      { target: targets[2], startSection: 2, endSection: 3 },
+      { target: targets[3], startSection: 3, endSection: 5 },
+      { target: targets[4], startSection: 3, endSection: 5 },
+    ],
+  };
+
+  it("cuenta solo capítulos y da N de total con su rango", () => {
+    const ord = chapterOrdinal(catalog, targets[3]);
+    expect(ord).toMatchObject({ n: 2, total: 3 });
+    expect(ord?.range?.endSection).toBe(5);
+  });
+  it("dos capítulos en la misma sección tienen cada uno su N", () => {
+    expect(chapterOrdinal(catalog, targets[4])?.n).toBe(3);
+  });
+  it("preliminar o sin catálogo → null", () => {
+    expect(chapterOrdinal(catalog, targets[0])).toBeNull();
+    expect(chapterOrdinal(null, targets[2])).toBeNull();
+    expect(chapterOrdinal(catalog, null)).toBeNull();
+  });
+});

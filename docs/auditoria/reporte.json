@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-17T22:33:35.035Z",
+  "generatedAt": "2026-11-18T13:07:26.229Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "01ea5bb500f7ef8e5c07dcc66214c5338a31e446",
+  "commit": "3e392168ae6922dc7d673356ecf5e87936f56658",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -519,10 +519,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:3899 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "detail": "src/client/components/Reader.tsx:3961 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 3899,
+            "line": 3961,
             "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
@@ -723,7 +723,7 @@
         "evidencia": [
           "src/client/lib/fsrs.ts:1-28",
           "src/client/lib/reviews.ts:86-160",
-          "src/client/components/DeepReadingSummaryModal.tsx:122-145"
+          "src/client/components/DeepReadingSummaryModal.tsx:125-148"
         ]
       },
       "codeStatus": "PASS",
@@ -771,10 +771,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/DeepReadingSummaryModal.tsx:138 coincide con /consolidateEpisodicWord\\(current\\.item/",
+          "detail": "src/client/components/DeepReadingSummaryModal.tsx:141 coincide con /consolidateEpisodicWord\\(current\\.item/",
           "observed": {
             "file": "src/client/components/DeepReadingSummaryModal.tsx",
-            "line": 138,
+            "line": 141,
             "text": "void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"
           }
         },
@@ -858,7 +858,7 @@
         "motivo": "La velocidad como proxy de dominio se eliminó en vez de conectarse, y el doble registro de repasos en el Cuaderno se corrigió: un ejercicio, un evento.",
         "evidencia": [
           "src/client/lib/practice.ts:535-555",
-          "src/client/hooks/useReaderNavigation.ts:201-270"
+          "src/client/hooks/useReaderNavigation.ts:225-295"
         ]
       },
       "codeStatus": "PASS",
@@ -879,10 +879,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderNavigation.ts:217 coincide con /const completeChapterTo/",
+          "detail": "src/client/hooks/useReaderNavigation.ts:241 coincide con /const completeChapterTo/",
           "observed": {
             "file": "src/client/hooks/useReaderNavigation.ts",
-            "line": 217,
+            "line": 241,
             "text": "const completeChapterTo = useCallback("
           }
         },

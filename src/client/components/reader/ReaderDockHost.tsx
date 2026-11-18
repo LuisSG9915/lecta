@@ -9,6 +9,7 @@ import type { ReaderSettingsTab } from "../Reader";
 import SmartReaderDock, { type FocusSuggestion } from "../SmartReaderDock";
 import type { CompanionState } from "../../lib/companion-state";
 import { triggerHaptic } from "../../lib/deep-reading";
+import { dockProgressText } from "../../lib/progress";
 import type { FocusAidType } from "../../lib/focus-telemetry";
 import type { SectionPrediction } from "../../lib/knowledge";
 import {
@@ -28,6 +29,7 @@ export interface ReaderDockHostProps {
   sectionIndex: number;
   sectionTotal: number;
   minutes: number;
+  chapterOrdinal: { n: number; total: number } | null;
   prediction: SectionPrediction | null;
   scrollRatio: number;
   barsShown: boolean;
@@ -87,6 +89,7 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
   sectionIndex,
   sectionTotal,
   minutes,
+  chapterOrdinal,
   prediction,
   scrollRatio,
   barsShown,
@@ -138,11 +141,15 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
 
   return (
     <SmartReaderDock
-      progressText={
-        settings.layout === "pages"
-          ? `Pág. ${page + 1} de ${pageCount || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
-          : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
-      }
+      progressText={dockProgressText({
+        layout: settings.layout,
+        page,
+        pageCount,
+        sectionIndex,
+        sectionTotal,
+        minutes,
+        ordinal: chapterOrdinal,
+      })}
       errorText={errorText ?? undefined}
       coveragePct={prediction?.coveragePct ?? null}
       onOpenGlossary={() => setGlossaryOpen(true)}

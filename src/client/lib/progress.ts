@@ -34,6 +34,50 @@ export function minutesLeft(totalWords: number, scrollRatio: number, wpm: number
   return Math.ceil(remaining / Math.max(wpm, 1));
 }
 
+// Minutos que faltan para terminar el capítulo real (varias secciones EPUB).
+// `sizes` está en bytes (tamaño del XHTML), no en palabras: las palabras
+// solo se conocen de la sección abierta (`sectionWords`), así que las
+// secciones siguientes se estiman con la razón palabras/byte medida en la
+// actual (aproximación; sin muestra creíble solo cuenta la sección actual).
+// Los capítulos que comparten archivo comparten rango y esto sobreestima
+// un poco: cuenta lo que resta de la sección entera.
+export function chapterMinutesLeft(
+  sizes: number[],
+  sectionIndex: number,
+  range: { startSection: number; endSection: number } | null,
+  sectionWords: number,
+  scrollRatio: number,
+  wpm: number,
+): number {
+  const ratio = Math.min(1, Math.max(0, scrollRatio));
+  let words = Math.max(0, sectionWords * (1 - ratio));
+  const currentSize = sizes[sectionIndex] ?? 0;
+  if (range && sectionWords >= MIN_SAMPLE_WORDS && currentSize > 0) {
+    const wordsPerByte = sectionWords / currentSize;
+    for (let i = sectionIndex + 1; i < range.endSection; i += 1) {
+      words += Math.max(0, sizes[i] ?? 0) * wordsPerByte;
+    }
+  }
+  return Math.ceil(words / Math.max(wpm, 1));
+}
+
+// Texto de progreso del dock. En scroll, con catálogo, cuenta capítulos
+// reales; sin él cae a secciones EPUB.
+export function dockProgressText(opts: {
+  layout: string;
+  page: number;
+  pageCount: number;
+  sectionIndex: number;
+  sectionTotal: number;
+  minutes: number;
+  ordinal: { n: number; total: number } | null;
+}): string {
+  const mins = opts.minutes > 0 ? ` · ~${opts.minutes} min` : "";
+  if (opts.layout === "pages") return `Pág. ${opts.page + 1} de ${opts.pageCount || 1}${mins}`;
+  if (opts.ordinal) return `Cap. ${opts.ordinal.n} de ${opts.ordinal.total}${mins}`;
+  return `Cap. ${opts.sectionIndex + 1} de ${opts.sectionTotal || 1}${mins}`;
+}
+
 // Media móvil acotada de la velocidad de lectura medida.
 // Devuelve null si la muestra no es confiable (muy poco texto o tiempo).
 export function updateWpm(
