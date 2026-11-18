@@ -231,7 +231,9 @@ import { useReaderResizeRemeasure } from "../hooks/useReaderResizeRemeasure";
 import { useReaderUiState } from "../hooks/useReaderUiState";
 import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
+import { ChapterEndCard } from "./reader/ChapterEndCard";
 import {
+  buildChapterQueue,
   useReaderNavigation,
   useReaderPagination,
 } from "../hooks/useReaderNavigation";
@@ -3324,14 +3326,62 @@ export default function Reader({
     summary: ChapterSummary;
   } | null>(null);
   // Resumen de capítulo al final del tramo — extraído a useReaderChapterSummary (B7).
+  // La cola de palabras se congela aquí, junto con el resumen:
+  // `currentChapterLookups` se reinicia al cambiar de capítulo y el chip
+  // de «Fijar palabras» debe usarla aunque el scroll baje del umbral.
+  const [endWordQueue, setEndWordQueue] = useState<ReturnType<typeof buildChapterQueue>>([]);
+  const freezeEndSummary = useCallback(
+    (value: { targetId: string; summary: ChapterSummary } | null) => {
+      setEndSummary(value);
+      if (!value) {
+        setEndWordQueue([]);
+        return;
+      }
+      const lang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+      setEndWordQueue(
+        buildChapterQueue({
+          lookups: currentChapterLookups.current,
+          primed: currentChapterPrimedWordsRef.current,
+          isL2: lang !== loadNativeLanguage(),
+          bookId: bookHash,
+          savedWords: savedWordsRef.current,
+        }),
+      );
+    },
+    [language, bookHash],
+  );
   useReaderChapterSummary({
     atChapterEnd,
     endTarget,
     endRange,
     bookHash,
     visitIdRef,
-    setEndSummary,
+    setEndSummary: freezeEndSummary,
   });
+
+  // Cola de palabras del capítulo, congelada cuando se calcula la tarjeta de
+  // cierre (`endSummary` queda fijo): `currentChapterLookups` se reinicia al
+  // cambiar de capítulo y el chip debe poder usarla aunque el scroll baje.
+  // Fijar palabras: abre el repaso del capítulo directo en el runner; al
+  // cerrar, sigue al capítulo siguiente (si lo hay).
+  const handleFixChapterWords = () => {
+    if (endWordQueue.length === 0 || !endRange) return;
+    setPostChapterQueue(endWordQueue);
+    pendingNextChapterRef.current =
+      endRange.endSection < sectionTotal ? endRange.endSection : null;
+    setDeepSummary({
+      durationMinutes: Math.max(
+        1,
+        Math.round((Date.now() - chapterStartedAtRef.current) / 60000),
+      ),
+      targetMinutes: 15,
+      sectionsRead: 1,
+      completedNaturally: true,
+      source: "chapter",
+      startInRunner: true,
+      wordsAssimilated: sectionWords,
+    });
+  };
 
   const summaryParts = endSummary
     ? [
@@ -3357,19 +3407,13 @@ export default function Reader({
     endRange != null &&
     sectionIndex === endRange.endSection - 1 &&
     endTarget ? (
-      <div className="chapter-summary" role="status">
-        <p className="chapter-summary-text">
-          Cerraste «{endTarget.label}»
-          {summaryParts ? ` — ${summaryParts}` : ""}
-        </p>
-        <button
-          type="button"
-          className="btn--quiet"
-          onClick={onOpenNotebook}
-        >
-          Ver Cuaderno
-        </button>
-      </div>
+      <ChapterEndCard
+        label={endTarget.label}
+        summaryParts={summaryParts}
+        wordCount={endWordQueue.length}
+        onFixWords={handleFixChapterWords}
+        onOpenNotebook={onOpenNotebook}
+      />
     ) : null;
 
   // Variables calculadas para el JSX (R3h Fase 1): estabilizar identidades.

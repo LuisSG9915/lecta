@@ -99,8 +99,8 @@ describe("DeepReadingSummaryModal", () => {
       );
     });
 
-    const continueBtn = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent?.includes("Continuar"),
+    const continueBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Continuar"),
     )!;
     expect(continueBtn).toBeTruthy();
 
@@ -177,9 +177,7 @@ describe("DeepReadingSummaryModal", () => {
     expect(consolidateBtn).toBeTruthy();
 
     act(() => {
-      consolidateBtn.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
+      consolidateBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(onStartConsolidation).toHaveBeenCalledTimes(1);
   });
@@ -376,9 +374,13 @@ describe("DeepReadingSummaryModal", () => {
       },
     ];
     act(() => {
-      root.render(h(DeepReadingSummaryModal, { summary: baseSummary, consolidationQueue, onClose: vi.fn() }));
+      root.render(
+        h(DeepReadingSummaryModal, { summary: baseSummary, consolidationQueue, onClose: vi.fn() }),
+      );
     });
-    const startBtn = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Fijar en memoria"))!;
+    const startBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Fijar en memoria"),
+    )!;
     act(() => {
       startBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
@@ -667,5 +669,67 @@ describe("DeepReadingSummaryModal", () => {
     expect(scrims.length).toBe(1);
     expect(host.querySelector(".quote-modal")).toBeNull();
   });
-});
 
+  describe("cierre natural de capítulo (source: chapter)", () => {
+    const queue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Ilusión o fantasía",
+          chapterSentence: "Perseguía una quimera inalcanzable.",
+          chapterTitle: "Capítulo 1",
+          source: "in-chapter-lookup" as const,
+          options: ["linterna", "quimera", "montaña", "sombra"],
+        },
+        modality: "sentence-cloze" as const,
+      },
+    ];
+
+    it("startInRunner abre directo la primera palabra, sin pasar por el resumen", () => {
+      act(() => {
+        root.render(
+          h(DeepReadingSummaryModal, {
+            summary: { ...baseSummary, source: "chapter", startInRunner: true },
+            consolidationQueue: queue,
+            onClose: vi.fn(),
+          }),
+        );
+      });
+      expect(host.textContent).toContain("Palabra 1 de 1");
+      expect(host.textContent).not.toContain("Retiro completado");
+    });
+
+    it("con source chapter el resumen habla de capítulo y de lectura", () => {
+      act(() => {
+        root.render(
+          h(DeepReadingSummaryModal, {
+            summary: { ...baseSummary, source: "chapter" },
+            onClose: vi.fn(),
+          }),
+        );
+      });
+      const text = host.textContent ?? "";
+      expect(text).toContain("Cerraste el capítulo");
+      expect(text).toContain("de lectura");
+      expect(text).toContain("Tiempo de lectura");
+      expect(text).not.toContain("Retiro completado");
+      expect(text).not.toContain("inmersión profunda");
+    });
+
+    it("el Retiro real (completedNaturally true) conserva sus textos", () => {
+      act(() => {
+        root.render(
+          h(DeepReadingSummaryModal, {
+            summary: { ...baseSummary, source: "retreat" },
+            onClose: vi.fn(),
+          }),
+        );
+      });
+      const text = host.textContent ?? "";
+      expect(text).toContain("Retiro completado");
+      expect(text).toContain("Tiempo en retiro");
+    });
+  });
+});
