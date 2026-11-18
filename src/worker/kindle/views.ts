@@ -1736,7 +1736,10 @@ export function renderReaderView(options: {
       var action = form.getAttribute('action') || '/k/vocab/add';
       try {
         var fd = new FormData(form);
-        fetch(action, { method: 'POST', body: fd }).then(function() {
+        fetch(action, { method: 'POST', body: fd }).then(function(res) {
+          // Sesión expirada u otro fallo: /k/vocab/add redirige a /k/login y el
+          // fetch la sigue; no dar por guardado si no es ok o hubo redirect.
+          if (!res || !res.ok || res.redirected) { form.submit(); return; }
           if (btn) btn.textContent = 'Guardada';
         }).catch(function() { form.submit(); });
       } catch (err) {

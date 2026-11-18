@@ -1858,6 +1858,110 @@ describe("Kindle Routes (/k and /kindle)", () => {
       }
     });
 
+    it("si la DB falla al construir el glosario no envenena la caché y reintenta en la siguiente petición", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const hash = "abababababababababababababababababababababababababababababababab";
+      const kcacheKey = `kcache/ch/${hash}/0.json`;
+      // La consulta del glosario (lexicon_forms) falla; el resto responde vacío.
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lexicon_forms")) {
+          throw new Error("DB caída");
+        }
+        return { rows: [] };
+      });
+      const getChapterSpy = vi.spyOn(epubReader, "getEpubChapter").mockResolvedValue({
+        bookTitle: "Test Book",
+        bookAuthor: "Author",
+        chapterTitle: "Chapter One",
+        contentHtml: "<p>The ephemeral beauty of morning light upon the river.</p>",
+        totalSections: 2,
+        sectionIndex: 0,
+        language: "en",
+      });
+      try {
+        const res1 = await app.request(`/k/read/${hash}?section=0&page=0&primed=1`, {}, env);
+        expect(res1.status).toBe(200);
+        // No se cachea el capítulo con un glosario vacío permanente (sin TTL).
+        const poisonedPut = mockBooksBucket.put.mock.calls.find((call) => call[0] === kcacheKey);
+        expect(poisonedPut).toBeUndefined();
+
+        // La DB se recupera: la siguiente petición reintenta y sí cachea el glosario.
+        dbQueryMock.mockImplementation(async (sql: string) => {
+          if (typeof sql === "string" && sql.includes("lexicon_forms")) {
+            return {
+              rows: [
+                {
+                  queried_form: "ephemeral", entry_id: "1", lemma: "ephemeral", pos: "adjetivo",
+                  freq_rank: 100, zipf: 5, ipa: null, definition: "Que dura poco tiempo.",
+                  example: null, sense_order: 1,
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+        resetKindleCacheMemory();
+        const res2 = await app.request(`/k/read/${hash}?section=0&page=0&primed=1`, {}, env);
+        expect(res2.status).toBe(200);
+        expect(await res2.text()).toContain('id="dict-ephemeral"');
+        const retryPut = mockBooksBucket.put.mock.calls.find((call) => call[0] === kcacheKey);
+        expect(retryPut).toBeDefined();
+      } finally {
+        getChapterSpy.mockRestore();
+      }
+    });
+
+    it("un capítulo denso (>2000 candidatas) conserva la frecuente más allá de la posición 2000 (troceado)", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const hash = "abababababababababababababababababababababababababababababababab";
+      // 2000 formas de relleno + «ephemeral» al final (posición 2000 → segundo lote).
+      const filler = Array.from({ length: 2000 }, (_, i) => `relleno${i}`);
+      const prepSpy = vi
+        .spyOn(epubReader, "extractChapterPrepCandidates")
+        .mockReturnValue([...filler, "ephemeral"]);
+      // Solo devuelve «ephemeral» cuando el lote consultado la incluye: sin
+      // troceado, el slice(0,2000) de findEntriesForForms la dejaría fuera.
+      dbQueryMock.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (typeof sql === "string" && sql.includes("lexicon_forms")) {
+          const forms = Array.isArray(params?.[1]) ? (params![1] as string[]) : [];
+          if (forms.includes("ephemeral")) {
+            return {
+              rows: [
+                {
+                  queried_form: "ephemeral", entry_id: "1", lemma: "ephemeral", pos: "adjetivo",
+                  freq_rank: 100, zipf: 5, ipa: null, definition: "Que dura poco tiempo.",
+                  example: null, sense_order: 1,
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        }
+        return { rows: [] };
+      });
+      const getChapterSpy = vi.spyOn(epubReader, "getEpubChapter").mockResolvedValue({
+        bookTitle: "Test Book",
+        bookAuthor: "Author",
+        chapterTitle: "Chapter One",
+        contentHtml: "<p>The ephemeral beauty of morning light upon the river.</p>",
+        totalSections: 2,
+        sectionIndex: 0,
+        language: "en",
+      });
+      try {
+        const res = await app.request(`/k/read/${hash}?section=0&page=0&primed=1`, {}, env);
+        expect(res.status).toBe(200);
+        expect(await res.text()).toContain('id="dict-ephemeral"');
+      } finally {
+        prepSpy.mockRestore();
+        getChapterSpy.mockRestore();
+      }
+    });
+
     it("sirve recursos desde kcache/res sin volver a descargar el EPUB", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },

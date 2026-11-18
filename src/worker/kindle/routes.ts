@@ -20,6 +20,10 @@ import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "t
 const KINDLE_REQUEST_RETENTION = 0.9;
 // Glosario del artefacto kcache: pista de una línea por lema frecuente.
 const KINDLE_GLOSS_MAX_CHARS = 90;
+// Lote de formas por llamada a findEntriesForForms (que corta a 2000 internamente).
+// Debe ser <= ese tope: en capítulos densos, pasar todo de una vez dejaría fuera
+// las palabras frecuentes más allá de la posición 2000 (revisión 2026-11-17).
+const KINDLE_GLOSS_BATCH_SIZE = 2000;
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
@@ -1642,32 +1646,54 @@ async function loadKindleChapterForRead(
     const bookLang = chapter.language || "es";
     const candidates = extractChapterPrepCandidates(chapter.contentHtml, bookLang);
     const glossary: Record<string, import("./cache").KindleGlossaryEntry> = {};
+    let glossaryDbFailed = false;
     if (candidates.length > 0 && getConnectionString(c.env)) {
-      const entriesMap = (await withClient(c.env, (client) =>
-        findEntriesForForms(client, bookLang, candidates),
-      ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
-      for (const [form, entries] of Object.entries(entriesMap)) {
-        if (!Array.isArray(entries) || entries.length === 0) continue;
-        // Solo lemas frecuentes con glosa recortada: el glosario viaja en el
-        // artefacto del capítulo y sin acotar lo triplicaba (revisión
-        // 2026-11-17: zipf≥3 + glosa≤90 deja el capítulo denso en +36 KB gzip
-        // en vez de +52). Mismo umbral que el pack IPA; las raras caen al
-        // fallback ?lookup=.
-        const entry = entries.find(
-          (e) => e.zipf != null && e.zipf >= 3 && e.senses?.[0]?.definition?.trim(),
-        );
-        if (!entry) continue;
-        let gloss = entry.senses[0].definition.trim();
-        if (gloss.length > KINDLE_GLOSS_MAX_CHARS) {
-          gloss = gloss.slice(0, KINDLE_GLOSS_MAX_CHARS).trimEnd() + "…";
+      // Trocear en lotes: findEntriesForForms corta a 2000 formas por llamada,
+      // así que un capítulo denso (>2000 candidatas) perdería las frecuentes
+      // más allá de la posición 2000 si se pasara todo de una vez.
+      const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> = {};
+      try {
+        for (let i = 0; i < candidates.length; i += KINDLE_GLOSS_BATCH_SIZE) {
+          const batch = candidates.slice(i, i + KINDLE_GLOSS_BATCH_SIZE);
+          const part = await withClient(c.env, (client) =>
+            findEntriesForForms(client, bookLang, batch),
+          );
+          Object.assign(entriesMap, part);
         }
-        glossary[form.toLowerCase()] = {
-          lemma: (entry.lemma || form).toLowerCase(),
-          pos: entry.pos ?? null,
-          gloss,
-          ipa: entry.ipa ?? null,
-        };
+      } catch {
+        // DB caída/timeout: no envenenar la caché con un glosario vacío
+        // permanente (el artefacto R2 no tiene TTL). Marcamos el fallo para
+        // servir el capítulo sin cachear y reintentar en la próxima petición.
+        glossaryDbFailed = true;
       }
+      if (!glossaryDbFailed) {
+        for (const [form, entries] of Object.entries(entriesMap)) {
+          if (!Array.isArray(entries) || entries.length === 0) continue;
+          // Solo lemas frecuentes con glosa recortada: el glosario viaja en el
+          // artefacto del capítulo y sin acotar lo triplicaba (revisión
+          // 2026-11-17: zipf≥3 + glosa≤90 deja el capítulo denso en +36 KB gzip
+          // en vez de +52). Mismo umbral que el pack IPA; las raras caen al
+          // fallback ?lookup=.
+          const entry = entries.find(
+            (e) => e.zipf != null && e.zipf >= 3 && e.senses?.[0]?.definition?.trim(),
+          );
+          if (!entry) continue;
+          let gloss = entry.senses[0].definition.trim();
+          if (gloss.length > KINDLE_GLOSS_MAX_CHARS) {
+            gloss = gloss.slice(0, KINDLE_GLOSS_MAX_CHARS).trimEnd() + "…";
+          }
+          glossary[form.toLowerCase()] = {
+            lemma: (entry.lemma || form).toLowerCase(),
+            pos: entry.pos ?? null,
+            gloss,
+            ipa: entry.ipa ?? null,
+          };
+        }
+      }
+    }
+    if (glossaryDbFailed) {
+      // Sin caché: la próxima petición vuelve a parsear y reintenta el glosario.
+      return { chapter };
     }
     const cachedChapter = { ...chapter, glossary };
     const cacheWrite = putCachedChapter(bucket, hash, cachedChapter);
