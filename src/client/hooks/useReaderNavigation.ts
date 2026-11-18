@@ -204,6 +204,30 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   return { navigate };
 }
 
+/**
+ * Cola de palabras para fijar al cerrar un capítulo (hasta ~25 s). Vacía si
+ * los minijuegos o la consolidación del libro están apagados. Se congela
+ * antes de navegar: `currentChapterLookups` se reinicia al cambiar de capítulo.
+ */
+export function buildChapterQueue(input: {
+  lookups: EpisodicWordItem[];
+  primed: EpisodicWordItem[];
+  isL2: boolean;
+  bookId: string;
+  savedWords: Parameters<typeof attachClozeOptions>[1];
+}) {
+  if (!isFeatureFlagEnabled("vocabGames") || !isConsolidationActive(input.bookId)) return [];
+  const queue = buildPostChapterConsolidationQueue(
+    [...input.lookups, ...input.primed],
+    loadPostChapterConsolidationPrefs(),
+    input.isL2,
+    { bookId: input.bookId },
+  );
+  // Opciones del hueco con palabras reales del cuaderno; sin ellas el
+  // cloze pasa a ordenar letras o sale (nunca no-palabras).
+  return attachClozeOptions(queue, input.savedWords);
+}
+
 export function useReaderPagination(options: UseReaderPaginationOptions) {
   const optionsRef = useRef(options);
   useEffect(() => {
@@ -216,24 +240,10 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
   // los dos modos de lectura.
   const completeChapterTo = useCallback(
     (nextIndex: number, fragment?: string): Promise<unknown> => {
-      const {
-        navigate,
-        checkPassiveExposure,
-        signalCompanion,
-        setDeepSummary,
-        setPostChapterQueue,
-        bookHash,
-        language,
-        sectionWords,
-        bookRef,
-        chapterStartedAtRef,
-        pendingNextChapterRef,
-        currentChapterLookups,
-        currentChapterPrimedWordsRef,
-      } = optionsRef.current;
+      const { navigate, checkPassiveExposure, signalCompanion, language, bookRef } =
+        optionsRef.current;
       const currentLang =
         language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-      const isL2 = currentLang !== loadNativeLanguage();
       try {
         recordChapterCompleted(currentLang);
       } catch {
@@ -241,36 +251,10 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
       }
       signalCompanion({ kind: "goal_completed", at: Date.now() });
 
-      // Fin de Capítulo: Aprendizaje Pasivo + Consolidación Episódica
+      // Fin de Capítulo: Aprendizaje Pasivo. La cola de palabras ya no
+      // frena el cambio de capítulo: el chip de la tarjeta de fin la
+      // congela antes (ver `buildChapterQueue`).
       checkPassiveExposure();
-      const prefs = loadPostChapterConsolidationPrefs();
-      const candidates: EpisodicWordItem[] = [
-        ...currentChapterLookups.current,
-        ...currentChapterPrimedWordsRef.current,
-      ];
-      const queue = isFeatureFlagEnabled("vocabGames")
-        ? buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash })
-        : [];
-      // Opciones del hueco con palabras reales del cuaderno; sin ellas el
-      // cloze pasa a ordenar letras o sale (nunca no-palabras).
-      const withOptions = attachClozeOptions(queue, optionsRef.current.savedWordsRef?.current ?? []);
-
-      if (withOptions.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
-        setPostChapterQueue(withOptions);
-        pendingNextChapterRef.current = nextIndex;
-        const durationMinutes = Math.max(
-          1,
-          Math.round((Date.now() - chapterStartedAtRef.current) / 60000),
-        );
-        setDeepSummary({
-          durationMinutes,
-          targetMinutes: 15,
-          sectionsRead: 1,
-          completedNaturally: true,
-          wordsAssimilated: sectionWords,
-        });
-        return Promise.resolve();
-      }
 
       return navigate("chapter", { index: nextIndex, fragment });
     },

@@ -433,7 +433,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/hooks/useReaderNavigation.ts",
-          "line": 217,
+          "line": 241,
           "window": 1,
           "expect": "const completeChapterTo",
           "why": "el cierre de capítulo es compartido por scroll y páginas"
@@ -454,7 +454,7 @@
         "motivo": "La velocidad como proxy de dominio se eliminó en vez de conectarse, y el doble registro de repasos en el Cuaderno se corrigió: un ejercicio, un evento.",
         "evidencia": [
           "src/client/lib/practice.ts:535-555",
-          "src/client/hooks/useReaderNavigation.ts:201-270"
+          "src/client/hooks/useReaderNavigation.ts:225-295"
         ]
       }
     },

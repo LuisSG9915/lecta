@@ -5,6 +5,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildChapterQueue,
   useReaderNavigation,
   useReaderPagination,
   type UseReaderNavigationOptions,
@@ -170,7 +171,10 @@ describe("useReaderNavigation", () => {
 
   it("en modo páginas lleva la misma sección a la página del fragmento", async () => {
     mocks.pageForFragment.mockReturnValue(4);
-    const opts = navOptions({ layoutRef: { current: "pages" }, metricsRef: { current: {} as never } });
+    const opts = navOptions({
+      layoutRef: { current: "pages" },
+      metricsRef: { current: {} as never },
+    });
     render(opts);
     await act(async () => {
       await api.navigate("initial", { index: 2, fragment: "f1" });
@@ -182,7 +186,10 @@ describe("useReaderNavigation", () => {
   it("carga la sección y evalúa la preparación al terminar", async () => {
     let resolveLoad: () => void = () => {};
     const loadSection = vi.fn(
-      () => new Promise<void>((res) => { resolveLoad = () => res(); }),
+      () =>
+        new Promise<void>((res) => {
+          resolveLoad = () => res();
+        }),
     );
     const opts = navOptions({ loadSection });
     opts.sectionIndexRef = { current: 2 };
@@ -328,7 +335,7 @@ describe("useReaderPagination", () => {
     expect(opts.navigate).toHaveBeenCalledWith("chapter", { index: 2 });
   });
 
-  it("si hay cola de consolidación, la abre en vez de navegar", async () => {
+  it("aunque haya cola de palabras, goPage navega sin abrir modal", async () => {
     mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
     mocks.buildPostChapterConsolidationQueue.mockReturnValue([
       { item: episodic("casa"), modality: "word-scramble" },
@@ -339,15 +346,12 @@ describe("useReaderPagination", () => {
     await act(async () => {
       await api.goPage(1);
     });
-    expect(opts.setPostChapterQueue).toHaveBeenCalled();
-    expect(opts.pendingNextChapterRef.current).toBe(2);
-    expect(opts.setDeepSummary).toHaveBeenCalledWith(
-      expect.objectContaining({ completedNaturally: true, sectionsRead: 1 }),
-    );
-    expect(opts.navigate).not.toHaveBeenCalled();
+    expect(opts.setPostChapterQueue).not.toHaveBeenCalled();
+    expect(opts.setDeepSummary).not.toHaveBeenCalled();
+    expect(opts.navigate).toHaveBeenCalledWith("chapter", { index: 2 });
   });
 
-  it("completeChapterTo cierra el capítulo también fuera del paso de página", async () => {
+  it("completeChapterTo cierra el capítulo y siempre navega", async () => {
     mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
     mocks.buildPostChapterConsolidationQueue.mockReturnValue([
       { item: episodic("casa"), modality: "word-scramble" },
@@ -365,44 +369,52 @@ describe("useReaderPagination", () => {
     expect(opts.signalCompanion).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "goal_completed" }),
     );
-    expect(opts.setPostChapterQueue).toHaveBeenCalled();
-    expect(opts.pendingNextChapterRef.current).toBe(3);
-    expect(opts.navigate).not.toHaveBeenCalled();
+    expect(opts.setPostChapterQueue).not.toHaveBeenCalled();
+    expect(opts.navigate).toHaveBeenCalledWith("chapter", { index: 3, fragment: "#final" });
   });
 
-  it("el hueco del cierre trae opciones reales del cuaderno (savedWordsRef)", async () => {
-    mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
-    mocks.buildPostChapterConsolidationQueue.mockReturnValue([
-      { item: episodic("quimera"), modality: "sentence-cloze" },
-    ]);
-    mocks.isConsolidationActive.mockReturnValue(true);
-    const savedWordsRef = {
-      current: ["montaña", "linterna", "sombra"].map((form) => ({ key: `es:${form}`, form, language: "es", savedAt: 1 })),
-    };
-    const opts = pageOptions({ sectionIndexRef: { current: 2 }, savedWordsRef });
-    render(opts);
-    await act(async () => {
-      await api.completeChapterTo(3);
+  describe("buildChapterQueue", () => {
+    const input = (savedWords: Parameters<typeof buildChapterQueue>[0]["savedWords"]) => ({
+      lookups: [episodic("quimera")],
+      primed: [],
+      isL2: false,
+      bookId: "libro",
+      savedWords,
     });
-    const [[queue]] = (opts.setPostChapterQueue as ReturnType<typeof vi.fn>).mock.calls;
-    expect(queue[0].modality).toBe("sentence-cloze");
-    expect(queue[0].item.options).toHaveLength(4);
-  });
 
-  it("sin palabras guardadas el hueco pasa a ordenar letras", async () => {
-    mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
-    mocks.buildPostChapterConsolidationQueue.mockReturnValue([
-      { item: episodic("quimera"), modality: "sentence-cloze" },
-    ]);
-    mocks.isConsolidationActive.mockReturnValue(true);
-    const opts = pageOptions({ sectionIndexRef: { current: 2 }, savedWordsRef: { current: [] } });
-    render(opts);
-    await act(async () => {
-      await api.completeChapterTo(3);
+    beforeEach(() => {
+      mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
+      mocks.isConsolidationActive.mockReturnValue(true);
+      mocks.buildPostChapterConsolidationQueue.mockReturnValue([
+        { item: episodic("quimera"), modality: "sentence-cloze" },
+      ]);
     });
-    const [[queue]] = (opts.setPostChapterQueue as ReturnType<typeof vi.fn>).mock.calls;
-    expect(queue[0].modality).toBe("word-scramble");
-    expect(queue[0].item.options).toBeUndefined();
+
+    it("el hueco trae opciones reales del cuaderno", () => {
+      const saved = ["montaña", "linterna", "sombra"].map((form) => ({
+        key: `es:${form}`,
+        form,
+        language: "es",
+        savedAt: 1,
+      }));
+      const queue = buildChapterQueue(input(saved));
+      expect(queue[0].modality).toBe("sentence-cloze");
+      expect(queue[0].item.options).toHaveLength(4);
+    });
+
+    it("sin palabras guardadas el hueco pasa a ordenar letras", () => {
+      const queue = buildChapterQueue(input([]));
+      expect(queue[0].modality).toBe("word-scramble");
+      expect(queue[0].item.options).toBeUndefined();
+    });
+
+    it("vacía si los minijuegos o la consolidación están apagados", () => {
+      mocks.isConsolidationActive.mockReturnValue(false);
+      expect(buildChapterQueue(input([]))).toEqual([]);
+      mocks.isConsolidationActive.mockReturnValue(true);
+      mocks.isFeatureFlagEnabled.mockReturnValue(false);
+      expect(buildChapterQueue(input([]))).toEqual([]);
+    });
   });
 
   it("completeChapterTo navega al destino cuando no hay nada que consolidar", async () => {
