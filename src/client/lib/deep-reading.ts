@@ -22,6 +22,10 @@ export interface DeepReadingSummary {
   targetMinutes: DeepReadingDuration;
   sectionsRead: number;
   completedNaturally: boolean;
+  /** Quién abrió el resumen: cierre natural de capítulo o Retiro real. */
+  source?: "chapter" | "retreat";
+  /** Abre directo el repaso de palabras (cola congelada). */
+  startInRunner?: boolean;
   wordsAssimilated?: number;
   coverageDeltaPercent?: number;
   bookCoveragePercent?: number;

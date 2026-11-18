@@ -71,6 +71,7 @@ export function useReaderDeepReadingCycle({
             targetMinutes: current.targetMinutes,
             sectionsRead,
             completedNaturally: natural,
+            source: "retreat",
           };
           setDeepSummary(summary);
         }

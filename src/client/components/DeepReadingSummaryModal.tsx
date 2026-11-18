@@ -60,10 +60,13 @@ export default function DeepReadingSummaryModal({
       ? "1 minuto"
       : `${summary.durationMinutes} minutos`;
   const handleContinue = onContinue ?? onClose;
+  const isChapter = summary.source === "chapter";
 
   const [isMuted, setIsMuted] = useState(() => !isConsolidationActive(bookId));
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
-  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
+  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(
+    summary.startInRunner ? 0 : null,
+  );
   const [consolidationCompleted, setConsolidationCompleted] = useState(false);
   const [followAnswer, setFollowAnswer] = useState<ChapterFollowLevel | null>(null);
 
@@ -273,9 +276,11 @@ export default function DeepReadingSummaryModal({
   const postalAttribution = [bookTitle, author, chapterTitle].filter(Boolean).join(" · ");
 
   return (
-    <Dialog label="Retiro de lectura completado" onClose={onClose}>
+    <Dialog label={isChapter ? "Capítulo cerrado" : "Retiro de lectura completado"} onClose={onClose}>
       <div className="sheet-head">
-        <h2 className="sheet-title">Retiro completado</h2>
+        <h2 className="sheet-title">
+          {isChapter ? "Cerraste el capítulo" : "Retiro completado"}
+        </h2>
         <button
           type="button"
           className="btn--quiet"
@@ -306,7 +311,7 @@ export default function DeepReadingSummaryModal({
 
       <div className="deep-summary-lead">
         <p className="card-context deep-summary-headline">
-          {durationText} de inmersión profunda
+          {durationText} {isChapter ? "de lectura" : "de inmersión profunda"}
         </p>
         <p className="meta deep-summary-subquote">
           «{companion?.name ?? "Michi"} celebra tu lectura{wordsRead ? `: ${wordsRead.toLocaleString("es")} palabras leídas` : ""}.»
@@ -319,7 +324,7 @@ export default function DeepReadingSummaryModal({
             {summary.durationMinutes} min
           </strong>
           <span className="meta deep-summary-stat-label">
-            Tiempo en retiro
+            {isChapter ? "Tiempo de lectura" : "Tiempo en retiro"}
           </span>
         </div>
         <div>

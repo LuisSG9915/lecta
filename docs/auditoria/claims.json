@@ -392,7 +392,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/DeepReadingSummaryModal.tsx",
-          "line": 138,
+          "line": 141,
           "window": 1,
           "expect": "consolidateEpisodicWord\\(current\\.item",
           "why": "el reto de cierre llama a la consolidación real"
@@ -413,7 +413,7 @@
         "evidencia": [
           "src/client/lib/fsrs.ts:1-28",
           "src/client/lib/reviews.ts:86-160",
-          "src/client/components/DeepReadingSummaryModal.tsx:122-145"
+          "src/client/components/DeepReadingSummaryModal.tsx:125-148"
         ]
       }
     },
