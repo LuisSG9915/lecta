@@ -53,6 +53,7 @@ vi.mock("../lib/idb", () => ({
     knowledge: { ...input.knowledge, key: `es:${input.knowledge.lemma}`, updatedAt: Date.now() },
   })),
   updateSavedWord: vi.fn(),
+  fillSavedWordMeaning: vi.fn(async () => null),
   wordKey: (lang: string, form: string) => `${lang}:${form}`,
 }));
 
@@ -89,7 +90,7 @@ vi.mock("../lib/speech", () => ({
 }));
 
 vi.mock("../lib/translate", () => ({
-  translateParagraph: vi.fn(async (text: string) => `[ES] ${text}`),
+  translateParagraphResult: vi.fn(async (text: string) => ({ ok: true, translation: `[ES] ${text}` })),
 }));
 
 let host: HTMLDivElement;
@@ -916,6 +917,205 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       expect(synonyms).toEqual(["sin1", "sin2"]);
     });
 
+    it("no pinta familia léxica sin validar cuando el pack no la confirma", async () => {
+      const lexicon = await import("../lib/lexicon");
+      vi.mocked(lexicon.lookupWordInMemory).mockReturnValueOnce({
+        ok: true,
+        found: true,
+        entries: [
+          {
+            lemma: "hermoso",
+            pos: "adjetivo",
+            zipf: 3,
+            ipa: null,
+            senses: [{ definition: "Bello.", example: null, senseOrder: 1 }],
+          },
+        ],
+      } as never);
+
+      render(
+        h(WordPanel, {
+          word: "hermoso",
+          sentenceContext: "Un paisaje hermoso.",
+          bookLanguage: "es",
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+      await flush(20);
+
+      expect(host.querySelector(".word-card-short-def")).not.toBeNull();
+      expect(host.querySelector(".word-synonym-pill")).toBeNull();
+    });
+
+    it("si se guarda antes de que llegue la IA, completa el significado con fillSavedWordMeaning", async () => {
+      const { fillSavedWordMeaning } = await import("../lib/idb");
+      const { scheduleReadingSyncPush } = await import("../lib/reading-sync");
+      vi.mocked(fillSavedWordMeaning).mockClear();
+      vi.mocked(fillSavedWordMeaning).mockResolvedValueOnce({
+        key: "es:zozobra",
+        form: "zozobra",
+        language: "es",
+        meaning: "Ilusión imposible.",
+        savedAt: 1,
+      });
+      let resolveContextual: (res: ContextualMeaningResult) => void = () => {};
+      const fetchContextualMeaning = vi.fn(
+        () =>
+          new Promise<ContextualMeaningResult>((resolve) => {
+            resolveContextual = resolve;
+          }),
+      );
+
+      render(
+        h(WordPanel, {
+          word: "zozobra",
+          sentenceContext: "La zozobra del barco inquietó a todos.",
+          bookLanguage: "es",
+          lookupLocalLexicon: vi.fn(async () => null),
+          fetchContextualMeaning,
+          onSpeakWord: vi.fn(),
+          onSaveToNotebook: vi.fn(),
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+      await flush();
+
+      await act(async () => {
+        click(host.querySelector<HTMLButtonElement>(".word-card-save-btn")!);
+      });
+      await flush();
+      expect(fillSavedWordMeaning).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveContextual({ inPassageMeaning: "Ilusión imposible." });
+      });
+      await flush(16);
+
+      expect(fillSavedWordMeaning).toHaveBeenCalledTimes(1);
+      expect(fillSavedWordMeaning).toHaveBeenCalledWith(
+        "es:zozobra",
+        undefined,
+        expect.objectContaining({ meaning: "Ilusión imposible." }),
+        expect.anything(),
+      );
+      expect(scheduleReadingSyncPush).toHaveBeenCalledWith("words");
+    });
+
+    it("«Ver más» no aparece con sólo acciones de pasaje y sinónimos, y la familia se pinta una vez", async () => {
+      render(
+        h(WordPanel, {
+          word: "alborada",
+          sentenceContext: "Despertaron con la suave alborada.",
+          bookLanguage: "es",
+          passageActions: { onQuoteCard: vi.fn(), onAsk: vi.fn(), onDeepRead: vi.fn() },
+          lookupLocalLexicon: vi.fn(async (w: string) => ({
+            lemma: w,
+            shortDefinition: "Amanecer.",
+            synonyms: ["sin1", "sin2"],
+          })),
+          fetchContextualMeaning: vi.fn(async () => ({ inPassageMeaning: "Amanecer.", toneOrNuance: "Lírico" })),
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+      await flush();
+      await act(async () => {
+        click(host.querySelector<HTMLButtonElement>(".btn--explain-passage")!);
+      });
+      await flush();
+
+      expect(host.querySelector(".btn--expand-all")).toBeNull();
+      expect(host.querySelectorAll(".word-synonym-pill").length).toBe(2);
+      expect(host.querySelector(".lexical-chip")).toBeNull();
+      expect(host.querySelector(".word-panel__known-btn")).not.toBeNull();
+    });
+
+    it("muestra «forma de lema» clicable cuando la forma consultada no es el lema", async () => {
+      const onSelectWord = vi.fn();
+      render(
+        h(WordPanel, {
+          word: "caminaba",
+          sentenceContext: "Caminaba despacio por la orilla.",
+          bookLanguage: "es",
+          onSelectWord,
+          lookupLocalLexicon: vi.fn(async () => ({
+            lemma: "caminar",
+            shortDefinition: "Andar.",
+            synonyms: [],
+          })),
+          fetchContextualMeaning: vi.fn(),
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+      await flush();
+
+      const note = host.querySelector(".word-panel__lemma-note");
+      expect(note?.textContent).toContain("forma de");
+      const link = host.querySelector<HTMLButtonElement>(".word-panel__lemma-link")!;
+      expect(link.textContent).toBe("«caminar»");
+      await act(async () => {
+        click(link);
+      });
+      expect(onSelectWord).toHaveBeenCalledWith("caminar");
+    });
+
+    it("pinta las acepciones extra en «Otras acepciones (n)»", async () => {
+      render(
+        h(WordPanel, {
+          word: "banco",
+          sentenceContext: "Se sentó en el banco del parque.",
+          bookLanguage: "es",
+          lookupLocalLexicon: vi.fn(async (w: string) => ({
+            lemma: w,
+            shortDefinition: "Asiento alargado.",
+            synonyms: [],
+            senses: ["Asiento alargado.", "Entidad financiera.", "Conjunto de peces."],
+          })),
+          fetchContextualMeaning: vi.fn(),
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+      await flush();
+
+      const details = host.querySelector(".word-card-more-senses");
+      expect(details?.tagName).toBe("DETAILS");
+      expect(details?.querySelector("summary")?.textContent).toBe("Otras acepciones (2)");
+      expect([...details!.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+        "Entidad financiera.",
+        "Conjunto de peces.",
+      ]);
+    });
+
+    it("la pulsación larga del altavoz llama onSpeakWord con rate 0.6", async () => {
+      const onSpeakWord = vi.fn();
+      render(
+        h(WordPanel, {
+          word: "alborada",
+          sentenceContext: "Despertaron con la suave alborada.",
+          bookLanguage: "es",
+          lookupLocalLexicon: vi.fn(async () => null),
+          fetchContextualMeaning: vi.fn(),
+          onSpeakWord,
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+      await flush();
+
+      const btn = host.querySelector<HTMLButtonElement>(".btn--pronounce")!;
+      act(() => {
+        btn.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(onSpeakWord).toHaveBeenCalledWith("alborada", "es", 0.6);
+    });
+
     it("resuelve el significado con la consulta de contexto y deja el matiz listo al tocarla", async () => {
       let resolveContextual: (res: ContextualMeaningResult) => void = () => {};
       const fetchContextualMeaning = vi.fn(
@@ -1147,7 +1347,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     });
 
     it("en libros L2 ofrece botón de traducción de citas al idioma materno", async () => {
-      const { translateParagraph } = await import("../lib/translate");
+      const { translateParagraphResult } = await import("../lib/translate");
 
       const sections = [
         {
@@ -1193,7 +1393,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
         await Promise.resolve();
       });
 
-      expect(translateParagraph).toHaveBeenCalledWith(
+      expect(translateParagraphResult).toHaveBeenCalledWith(
         expect.stringContaining("Watson"),
         "en",
         "es",
@@ -1202,6 +1402,77 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       expect(host.querySelector(".character-first-mention")?.textContent).toContain(
         "[ES] Dr. Watson met Sherlock Holmes",
       );
+    });
+
+    it("traducir citas con 402 muestra PlanNote y no pinta la cita como traducción", async () => {
+      const { translateParagraphResult } = await import("../lib/translate");
+      vi.mocked(translateParagraphResult)
+        .mockResolvedValueOnce({ ok: false, reason: "plan" })
+        .mockResolvedValueOnce({ ok: false, reason: "plan" });
+      const sections = [
+        {
+          createDocument: async () =>
+            new DOMParser().parseFromString(
+              "<body><p>Dr. Watson met Sherlock Holmes in the laboratory.</p></body>",
+              "text/html",
+            ),
+        },
+      ];
+      render(
+        h(WordPanel, {
+          word: "Watson",
+          sentenceContext: "Dr. Watson stepped forward quietly.",
+          language: "en",
+          bookLanguage: "en",
+          sections,
+          currentSectionIndex: 0,
+          currentChapterTitle: "Chapter 1",
+          initialViewMode: "character",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+      await flush();
+
+      await act(async () => {
+        click(host.querySelector<HTMLButtonElement>(".btn--translate-character-quotes")!);
+      });
+      await flush();
+
+      expect(host.querySelector(".plan-note")).not.toBeNull();
+      expect(host.querySelector(".character-quote-translation")).toBeNull();
+      expect(host.querySelector(".btn--translate-character-quotes")).toBeNull();
+      expect(host.querySelector(".character-first-mention")?.textContent).toContain("Dr. Watson met");
+    });
+
+    it("con planLocked oculta el botón de traducir citas", async () => {
+      const sections = [
+        {
+          createDocument: async () =>
+            new DOMParser().parseFromString(
+              "<body><p>Dr. Watson met Sherlock Holmes in the laboratory.</p></body>",
+              "text/html",
+            ),
+        },
+      ];
+      render(
+        h(WordPanel, {
+          word: "Watson",
+          sentenceContext: "Dr. Watson stepped forward quietly.",
+          language: "en",
+          bookLanguage: "en",
+          planLocked: true,
+          sections,
+          currentSectionIndex: 0,
+          currentChapterTitle: "Chapter 1",
+          initialViewMode: "character",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+      await flush();
+      expect(host.querySelector(".character-memory-card")).not.toBeNull();
+      expect(host.querySelector(".btn--translate-character-quotes")).toBeNull();
     });
 
     it("no escanea capítulos del EPUB ni muestra pestaña Personaje al consultar una palabra común en minúscula", async () => {

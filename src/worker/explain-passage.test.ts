@@ -413,6 +413,30 @@ describe("POST /api/ai/explain-in-passage (FASE 3: Latencia, Caché y Anti-Dupli
     expect(json.error).toBeDefined();
     expect(json.error).not.toContain("Provider Network Timeout"); // No filtra stacktraces
   });
+
+  it("caché: mismo pasaje con otra lengua materna (variante completa) no da acierto", async () => {
+    const post = (extra: Record<string, string>) =>
+      app.request(
+        "/api/ai/explain-in-passage",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ word: "ataraxia", passage: "Buscaba la ataraxia del alma.", language: "es", ...extra }),
+        },
+        fakeEnv,
+      );
+    const r1 = await post({ nativeLanguage: "es" });
+    expect(((await r1.json()) as ExplainInPassageResponse).cached).toBeUndefined();
+    expect(capturedFetchCalls.length).toBe(1);
+
+    const r2 = await post({ nativeLanguage: "en" });
+    expect(((await r2.json()) as ExplainInPassageResponse).cached).toBeUndefined();
+    expect(capturedFetchCalls.length).toBe(2);
+
+    const r3 = await post({ nativeLanguage: "en" });
+    expect(((await r3.json()) as ExplainInPassageResponse).cached).toBe(true);
+    expect(capturedFetchCalls.length).toBe(2);
+  });
 });
 
 describe("normalizePassage & buildCompactExplainPrompt", () => {

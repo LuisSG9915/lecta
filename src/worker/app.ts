@@ -1339,7 +1339,13 @@ app.post("/api/ai/explain-in-passage", requireLectaPlus, async (context) => {
   // mismos datos.
   const keyWord = (lemma || word || "passage").toLowerCase().trim();
   const normalizedPass = normalizePassage(sentence);
-  const cacheKey = `${isCompact ? "c" : "f"}:${keyWord}:${normalizedPass}`;
+  // La variante completa también depende de idioma, lengua materna, libro y
+  // autor (entran al prompt): sin ellos dos lectores con otra lengua materna
+  // recibirían la misma respuesta. El prompt compacto sólo usa palabra,
+  // definición y pasaje.
+  const cacheKey = isCompact
+    ? `c:${keyWord}:${normalizedPass}`
+    : `f:${keyWord}:${normalizedPass}:${JSON.stringify([language, nativeLanguage, bookTitle ?? "", author ?? ""])}`;
 
   const cached = explainPassageCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });

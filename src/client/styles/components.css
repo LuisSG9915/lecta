@@ -2660,9 +2660,38 @@ mark.saved-word[data-level="settled"] {
 }
 
 .word-card-save-btn.is-saved {
-  background: color-mix(in srgb, var(--success) 18%, transparent);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
   color: var(--success);
   cursor: default;
+}
+
+.word-card-audio-btn {
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+}
+
+.word-card-close-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+.word-card-close-btn:hover {
+  opacity: 1;
+}
+
+.word-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .word-card-synonyms {
@@ -2676,7 +2705,13 @@ mark.saved-word[data-level="settled"] {
   font-size: 0.74rem;
   padding: 0.15rem 0.55rem;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.07);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.word-card-short-def {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .word-card-context-box {
@@ -2712,6 +2747,65 @@ mark.saved-word[data-level="settled"] {
   margin-top: 0.5rem;
   display: flex;
   justify-content: flex-start;
+}
+
+.word-card-context-nuance {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.word-card-context-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.2rem 0;
+}
+
+.word-card-context-skeleton .skeleton-line {
+  height: 0.8rem;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 4px;
+  animation: pulse-skeleton 1.5s infinite ease-in-out;
+}
+
+.word-card-context-skeleton .skeleton-line.is-short {
+  width: 60%;
+}
+
+@keyframes pulse-skeleton {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.word-panel__known-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 44px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--action-tint-border);
+  border-radius: var(--r-pill);
+  background: var(--action-tint-bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.word-panel__known-btn[aria-pressed="true"] {
+  background: var(--chip-active-bg);
+  border-color: var(--chip-active-border);
+  color: var(--chip-active-ink);
+}
+/* `.btn--quick-action` fija min-block-size con !important: a igual
+   importancia gana la mayor especificidad. */
+.btn--quick-action.word-panel__known-btn {
+  min-block-size: 44px !important;
 }
 
 /* Fila secundaria: acciones de pasaje disponibles también con una

@@ -15,6 +15,7 @@ import { lookupDictionaryPack } from "../lib/dictionaryPack";
 import { recordBookConsultedWord } from "../lib/book-glossary";
 import {
   captureDbScope,
+  fillSavedWordMeaning,
   loadSavedWord,
   loadSessionValue,
   removeSavedWord,
@@ -46,7 +47,7 @@ import {
   buildZeroSpoilerCharacterCard,
   type CharacterMemoryCard,
 } from "../lib/character-helper";
-import { translateParagraph } from "../lib/translate";
+import { translateParagraphResult } from "../lib/translate";
 import { saveCharacterMemoryEnabled } from "../lib/page-recap";
 import Icon from "./Icon";
 import PlanNote from "./PlanNote";
@@ -57,6 +58,8 @@ export interface LocalLexiconEntry {
   shortDefinition: string;
   synonyms: string[];
   ipa?: string;
+  /** Hasta 3 definiciones (la primera es el significado principal). */
+  senses?: string[];
 }
 
 export interface ContextualMeaningResult {
@@ -73,6 +76,14 @@ type PassageStatus = "idle" | "loading" | "ready" | "error";
 
 // Niveles de disclosure progresivo
 type DisclosureLevel = 1 | 2 | 3;
+
+const senseDefinitions = (senses: ReadonlyArray<{ definition?: string | null }>): string[] =>
+  senses
+    .map((x) => x.definition?.trim() ?? "")
+    .filter(Boolean)
+    .slice(0, 3);
+
+const NATIVE_LABELS: Record<string, string> = { es: "al español", en: "al inglés" };
 
 const normalizeForCompare = (s: string) =>
   s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -111,7 +122,7 @@ export interface UnifiedWordPanelProps {
     lang: "es" | "en",
     signal: AbortSignal,
   ) => Promise<ContextualMeaningResult>;
-  onSpeakWord?: (word: string, lang: "es" | "en") => void;
+  onSpeakWord?: (word: string, lang: "es" | "en", rate?: number) => void;
   onSaveToNotebook?: (payload: {
     word: string;
     lemma: string;
@@ -192,6 +203,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     recentMention?: string;
   } | null>(null);
   const [isTranslatingQuotes, setIsTranslatingQuotes] = useState<boolean>(false);
+  // 402 al traducir citas: la vista de personaje pinta PlanNote.
+  const [quotesPlanShown, setQuotesPlanShown] = useState(false);
 
   // NUEVO: Nivel de disclosure progresivo (1 = significado + guardar, 2 = matiz + tono, 3 = todo)
   const [disclosureLevel, setDisclosureLevel] = useState<DisclosureLevel>(1);
@@ -200,13 +213,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     if (mem?.ok && mem.found && mem.entries && mem.entries.length > 0) {
       const primary = mem.entries[0];
       const sense = primary.senses[0];
-      const family = findLexicalFamily(cleanWord, effectiveLang);
+      // La familia léxica llega validada contra el pack por la ruta async:
+      // pintarla sin validar mostraba formas inventadas.
       return {
         lemma: primary.lemma || cleanWord.toLowerCase(),
         partOfSpeech: primary.pos ?? undefined,
         shortDefinition: sense?.definition ?? "",
-        synonyms: family.slice(0, 4),
+        synonyms: [],
         ipa: primary.ipa ?? undefined,
+        senses: senseDefinitions(primary.senses),
       };
     }
     return null;
@@ -467,6 +482,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 shortDefinition: sense?.definition ?? "",
                 synonyms: validFamily.slice(0, 4),
                 ipa: primary.ipa ?? undefined,
+                senses: senseDefinitions(primary.senses),
               };
             }
             return {
@@ -557,22 +573,64 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     };
   }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, canBeCharacter, initialViewMode, charOffsetInChapter, bookLanguage, language]);
 
+  // Carrera ★ vs IA: si se guardó antes de que llegara el significado, la
+  // fila quedó con meaning vacío; se completa con CAS por sello (nunca pisa
+  // un repaso ni un significado ya escrito).
+  const readyMeaningText = meaningStatus === "ready" ? meaning?.text?.trim() ?? "" : "";
+  useEffect(() => {
+    if (!readyMeaningText || !savedEntry || savedEntry.meaning?.trim()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const inFlight = saveInFlightRef.current;
+        if (inFlight) await inFlight.catch(() => null);
+        if (cancelled) return;
+        const filled = await fillSavedWordMeaning(
+          savedEntry.key,
+          savedEntry.updatedAt,
+          {
+            meaning: readyMeaningText,
+            lemma: localEntry?.lemma ?? cleanWord.toLowerCase(),
+            pos: localEntry?.partOfSpeech ?? undefined,
+          },
+          captureDbScope(),
+        );
+        if (!filled || cancelled) return;
+        setSavedEntry(filled);
+        scheduleReadingSyncPush("words");
+      } catch {
+        /* el significado queda para el backfill del Cuaderno */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readyMeaningText, savedEntry, localEntry?.lemma, localEntry?.partOfSpeech, cleanWord]);
+
   const handleTranslateQuotes = async () => {
     if (!characterCard || isTranslatingQuotes) return;
     setIsTranslatingQuotes(true);
     triggerHaptic(8);
     try {
       const scope = captureDbScope();
-      const firstTrans = characterCard.firstMention
-        ? await translateParagraph(characterCard.firstMention.sentence, effectiveLang, userNativeLang, scope)
-        : undefined;
-      const recentTrans = characterCard.recentMention
-        ? await translateParagraph(characterCard.recentMention.sentence, effectiveLang, userNativeLang, scope)
-        : undefined;
+      const [firstTrans, recentTrans] = await Promise.all([
+        characterCard.firstMention
+          ? translateParagraphResult(characterCard.firstMention.sentence, effectiveLang, userNativeLang, scope)
+          : undefined,
+        characterCard.recentMention
+          ? translateParagraphResult(characterCard.recentMention.sentence, effectiveLang, userNativeLang, scope)
+          : undefined,
+      ]);
+      const results = [firstTrans, recentTrans];
+      if (results.some((r) => r && !r.ok && r.reason === "plan")) {
+        setQuotesPlanShown(true);
+      } else if (results.some((r) => r && !r.ok && r.reason === "auth")) {
+        onNotice?.("Inicia sesión para traducir las citas.");
+      }
 
       setTranslatedQuotes({
-        firstMention: firstTrans,
-        recentMention: recentTrans,
+        firstMention: firstTrans?.ok ? firstTrans.translation : undefined,
+        recentMention: recentTrans?.ok ? recentTrans.translation : undefined,
       });
     } finally {
       setIsTranslatingQuotes(false);
@@ -601,7 +659,11 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       longPressTimerRef.current = null;
       pressConsumedRef.current = true;
       triggerHaptic(12);
-      speakWord(cleanWord, effectiveLang, 0.6);
+      if (onSpeakWord) {
+        onSpeakWord(cleanWord, effectiveLang, 0.6);
+      } else {
+        speakWord(cleanWord, effectiveLang, 0.6);
+      }
     }, 450);
   };
 
@@ -839,12 +901,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     );
   };
 
+  const extraSenses =
+    meaning?.source === "dictionary"
+      ? (localEntry?.senses ?? []).slice(1).filter((def) => def !== meaning.text)
+      : [];
+
   // Determinar si mostrar botón "Más" (nivel 3)
   const showMoreButton = 
     (isCandidateProperNoun && characterCard) ||
-    (isForeignBook && characterCard) ||
-    passageActions ||
-    (localEntry?.synonyms && localEntry.synonyms.length > 0);
+    (isForeignBook && characterCard);
 
   return (
     <aside
@@ -888,6 +953,20 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
           </button>
         </div>
 
+        {localEntry?.lemma && localEntry.lemma.toLowerCase() !== cleanWord.toLowerCase() && (
+          <p className="word-panel__lemma-note">
+            forma de{" "}
+            <button
+              type="button"
+              className="word-panel__lemma-link"
+              onClick={() => onSelectWord?.(localEntry.lemma)}
+              title={`Explorar ${localEntry.lemma}`}
+            >
+              «{localEntry.lemma}»
+            </button>
+          </p>
+        )}
+
         <div className="word-panel__status-row word-card-actions">
           {isSaved ? (
             <div className="word-panel__saved-bar">
@@ -918,10 +997,9 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
               </button>
               <button
                 type="button"
-                className="btn--quick-known word-card-pos"
+                className="btn--quick-known word-panel__known-btn"
                 onClick={handleQuickKnown}
                 title="Marcar como ya conocida para ajustar tu nivel sin exámenes"
-                style={{ cursor: "pointer", border: "none" }}
               >
                 ✓ Ya la sé
               </button>
@@ -984,9 +1062,14 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   Primera vez que apareció {characterCard.firstMention ? `(${characterCard.firstMention.chapterTitle})` : ""}:
                 </div>
                 {characterCard.firstMention ? (
-                  <blockquote className="character-quote-text">
-                    «{translatedQuotes?.firstMention || characterCard.firstMention.sentence}»
-                  </blockquote>
+                  <>
+                    <blockquote className="character-quote-text">
+                      «{characterCard.firstMention.sentence}»
+                    </blockquote>
+                    {translatedQuotes?.firstMention && (
+                      <p className="character-quote-translation">{translatedQuotes.firstMention}</p>
+                    )}
+                  </>
                 ) : (
                   <p className="character-quote-empty">
                     No se registran apariciones previas.
@@ -999,9 +1082,14 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   Última vez visto antes de aquí {characterCard.recentMention ? `(${characterCard.recentMention.chapterTitle})` : ""}:
                 </div>
                 {characterCard.recentMention ? (
-                  <blockquote className="character-quote-text">
-                    «{translatedQuotes?.recentMention || characterCard.recentMention.sentence}»
-                  </blockquote>
+                  <>
+                    <blockquote className="character-quote-text">
+                      «{characterCard.recentMention.sentence}»
+                    </blockquote>
+                    {translatedQuotes?.recentMention && (
+                      <p className="character-quote-translation">{translatedQuotes.recentMention}</p>
+                    )}
+                  </>
                 ) : (
                   <p className="character-quote-empty">
                     {characterCard.firstMention
@@ -1032,7 +1120,14 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 </div>
               )}
 
-              {isForeignBook && (characterCard.firstMention || characterCard.recentMention) && (
+              {quotesPlanShown && (
+                <PlanNote
+                  title="Traducir las citas es de Lecta+."
+                  detail="Las citas originales siguen disponibles."
+                />
+              )}
+
+              {isForeignBook && !planLocked && !quotesPlanShown && (characterCard.firstMention || characterCard.recentMention) && (
                 <div className="character-translate-action">
                   <button
                     type="button"
@@ -1040,7 +1135,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                     onClick={handleTranslateQuotes}
                     disabled={isTranslatingQuotes}
                   >
-                    {isTranslatingQuotes ? "Traduciendo citas..." : "Traducir citas al español"}
+                    {isTranslatingQuotes ? "Traduciendo citas..." : `Traducir citas ${NATIVE_LABELS[userNativeLang] ?? "a tu idioma"}`}
                   </button>
                 </div>
               )}
@@ -1083,6 +1178,16 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 {meaning.source === "ai" ? (
                   <p className="word-card-ai-source">Significado sugerido por IA</p>
                 ) : null}
+                {extraSenses.length > 0 && (
+                  <details className="word-card-more-senses">
+                    <summary>Otras acepciones ({extraSenses.length})</summary>
+                    <ol className="word-card-more-senses-list">
+                      {extraSenses.map((def) => (
+                        <li key={def}>{def}</li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
               </>
             ) : planLocked ? (
               <p className="word-card-context-fallback">
@@ -1238,25 +1343,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                       {toneLabel ? (
                         <p className="word-card-tone">Tono: {toneLabel}</p>
                       ) : null}
-                    </div>
-                  )}
-
-                  {localEntry && localEntry.synonyms.length > 0 && disclosureLevel === 3 && (
-                    <div className="word-panel-lexical-family">
-                      <span className="lexical-family-label">Familia léxica:</span>
-                      <div className="lexical-family-chips">
-                        {localEntry.synonyms.slice(0, 6).map((syn) => (
-                          <button
-                            key={syn}
-                            type="button"
-                            className="lexical-chip"
-                            onClick={() => onSelectWord?.(syn)}
-                            title={`Explorar ${syn}`}
-                          >
-                            {syn}
-                          </button>
-                        ))}
-                      </div>
                     </div>
                   )}
 
