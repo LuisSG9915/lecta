@@ -3,6 +3,8 @@
 // palabra y abre este menú (con «Significado» primero) en vez de la
 // ficha: así los tiradores quedan libres para ampliar la cita. Con ratón
 // el clic sobre una palabra sigue abriendo la ficha directa.
+// Con una sola palabra el menú es compacto (Significado, Tinta y Copiar):
+// Reflexión, Postal y Preguntar viven en la ficha (`wordPassageActions`).
 import { useEffect, useState, memo, type RefObject } from "react";
 import Icon from "../Icon";
 import type { WordHit } from "../../lib/words";
@@ -190,35 +192,84 @@ export const ReaderSelectionBar = memo(function ReaderSelectionBar(props: Reader
 
   if (!selButton) return null;
 
+  const wordMode = Boolean(selButton.word && onDefine);
+
+  // Significado: solo cuando la selección es una palabra.
+  const defineBtn =
+    selButton.word && onDefine ? (
+      <button
+        type="button"
+        className="selection-menu-btn selection-define"
+        title="Ver qué significa"
+        aria-label="Ver qué significa"
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => {
+          const hit = selButton.word!;
+          window.getSelection()?.removeAllRanges();
+          setSelButton(null);
+          onDefine(hit);
+        }}
+      >
+        <Icon name="book" size={14} />
+        <span>Significado</span>
+      </button>
+    ) : null;
+
+  // Copiar: sustituye a la barra del sistema, que se oculta en táctil.
+  const copyBtn = (
+    <button
+      type="button"
+      className="selection-menu-btn selection-copy"
+      title="Copiar"
+      aria-label="Copiar"
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={() => {
+        const text = window.getSelection()?.toString() ?? "";
+        if (text) void navigator.clipboard?.writeText(text).catch(() => {});
+        window.getSelection()?.removeAllRanges();
+        setSelButton(null);
+      }}
+    >
+      <Icon name="text" size={14} />
+      <span>Copiar</span>
+    </button>
+  );
+
   return (
     <>
     {selButton.touch ? <SelectionHandles containerRef={containerRef} /> : null}
     <div
-      className="selection-menu reader__passage-bar"
+      className={
+        wordMode
+          ? "selection-menu reader__passage-bar selection-menu--word"
+          : "selection-menu reader__passage-bar"
+      }
+      role="toolbar"
+      aria-label={wordMode ? "Acciones de la palabra" : "Acciones del pasaje"}
       data-placement={selButton.placement}
       style={{ left: selButton.x, top: selButton.y }}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      {/* 0. Significado: solo cuando la selección es una palabra */}
-      {selButton.word && onDefine ? (
-        <button
-          type="button"
-          className="selection-menu-btn selection-define"
-          title="Ver qué significa"
-          aria-label="Ver qué significa"
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={() => {
-            const hit = selButton.word!;
-            window.getSelection()?.removeAllRanges();
-            setSelButton(null);
-            onDefine(hit);
-          }}
-        >
-          <Icon name="book" size={14} />
-          <span>Significado</span>
-        </button>
-      ) : null}
+      {wordMode ? (
+        <>
+          {defineBtn}
+          <button
+            type="button"
+            className="selection-menu-btn selection-save"
+            title="Resaltar con tinta ámbar"
+            aria-label="Resaltar con tinta ámbar"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => void savePassageSelection("amber")}
+          >
+            <Icon name="highlight" size={14} />
+            <span>Tinta</span>
+          </button>
+          {copyBtn}
+        </>
+      ) : (
+      <>
+      {defineBtn}
 
       {/* 1. Resaltar con tinta (3 tonos: Ámbar, Salvia, Azul Darío) */}
       <div className="selection-highlight-group" role="group" aria-label="Resaltar con tinta">
@@ -304,23 +355,10 @@ export const ReaderSelectionBar = memo(function ReaderSelectionBar(props: Reader
         <span>Preguntar</span>
       </button>
 
-      {/* 5. Copiar: sustituye a la barra del sistema, que se oculta en táctil */}
-      <button
-        type="button"
-        className="selection-menu-btn selection-copy"
-        title="Copiar"
-        aria-label="Copiar"
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={() => {
-          const text = window.getSelection()?.toString() ?? "";
-          if (text) void navigator.clipboard?.writeText(text).catch(() => {});
-          window.getSelection()?.removeAllRanges();
-          setSelButton(null);
-        }}
-      >
-        <Icon name="text" size={14} />
-        <span>Copiar</span>
-      </button>
+      {/* 5. Copiar */}
+      {copyBtn}
+      </>
+      )}
     </div>
     </>
   );

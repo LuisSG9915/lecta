@@ -105,13 +105,14 @@ test("presión larga → mini menú; ampliar la selección → tinta en el libro
   // oculta al reaplicar la selección) y «Copiar» en el menú.
   await expect(page.locator(".selection-handle")).toHaveCount(2);
   await expect(bar.locator(".selection-copy")).toHaveCount(1);
-  // Deslizar la fila del menú no lo cierra.
-  await bar.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth;
-    el.dispatchEvent(new Event("scroll"));
-  });
-  await page.waitForTimeout(200);
-  await expect(define).toBeVisible();
+  // Menú compacto de una palabra: 3 objetivos ≥44 px, sin deslizar.
+  await expect(bar.locator("button")).toHaveCount(3);
+  await expect(bar.locator(".selection-deep")).toHaveCount(0);
+  for (const btn of await bar.locator("button").all()) {
+    const box = await btn.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await bar.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
   // 2. Se amplía la selección a 4 palabras (como al arrastrar el tirador):
   //    el menú pasa a modo pasaje, sin «Significado».
@@ -120,6 +121,14 @@ test("presión larga → mini menú; ampliar la selección → tinta en el libro
   await page.waitForTimeout(400);
   await expect(bar).toBeVisible();
   await expect(define).toHaveCount(0);
+  await expect(bar.locator(".selection-deep")).toHaveCount(1);
+  // En modo pasaje la fila se desliza y deslizarla no cierra el menú.
+  await bar.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+    el.dispatchEvent(new Event("scroll"));
+  });
+  await page.waitForTimeout(200);
+  await expect(bar).toBeVisible();
 
   // 3. «Tinta» guarda el pasaje y lo pinta en el texto.
   await bar.locator(".selection-save").click();

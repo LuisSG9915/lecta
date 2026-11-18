@@ -52,6 +52,7 @@ describe("ReaderSelectionBar", () => {
       });
 
       expect(host.querySelector(".reader__passage-bar")).not.toBeNull();
+      expect(host.querySelector(".selection-menu--word")).toBeNull();
       expect(host.textContent).toContain("Tinta");
       expect(host.textContent).toContain("Reflexión");
       expect(host.textContent).toContain("Postal");
@@ -117,6 +118,80 @@ describe("ReaderSelectionBar", () => {
       });
 
       expect(defaultProps.savePassageSelection).toHaveBeenCalledWith("salvia");
+    });
+  });
+
+  describe("Mini menú de una palabra (táctil)", () => {
+    const hit = { word: "perenne" } as unknown as ReaderSelectionButton["word"];
+    const wordButton: ReaderSelectionButton = {
+      x: 200,
+      y: 300,
+      placement: "bottom",
+      word: hit,
+    };
+
+    it("pinta solo Significado, Tinta y Copiar", async () => {
+      await act(async () => {
+        root.render(
+          h(ReaderSelectionBar, {
+            ...defaultProps,
+            selButton: wordButton,
+            onDefine: vi.fn(),
+          }),
+        );
+      });
+
+      expect(host.querySelector(".selection-menu--word")).not.toBeNull();
+      expect(host.querySelectorAll(".selection-menu button")).toHaveLength(3);
+      expect(host.querySelector(".selection-define")).not.toBeNull();
+      expect(host.querySelector(".selection-save")).not.toBeNull();
+      expect(host.querySelector(".selection-copy")).not.toBeNull();
+      for (const sel of [".tone-dot", ".selection-deep", ".selection-card", ".selection-ask-cat"]) {
+        expect(host.querySelector(sel)).toBeNull();
+      }
+    });
+
+    it("Tinta guarda en ámbar", async () => {
+      await act(async () => {
+        root.render(
+          h(ReaderSelectionBar, {
+            ...defaultProps,
+            selButton: wordButton,
+            onDefine: vi.fn(),
+          }),
+        );
+      });
+
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>(".selection-save")?.click();
+      });
+
+      expect(defaultProps.savePassageSelection).toHaveBeenCalledWith("amber");
+    });
+
+    it("Significado cierra el menú y llama a onDefine con la palabra", async () => {
+      const onDefine = vi.fn();
+      await act(async () => {
+        root.render(
+          h(ReaderSelectionBar, { ...defaultProps, selButton: wordButton, onDefine }),
+        );
+      });
+
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>(".selection-define")?.click();
+      });
+
+      expect(defaultProps.setSelButton).toHaveBeenCalledWith(null);
+      expect(onDefine).toHaveBeenCalledWith(hit);
+    });
+
+    it("sin onDefine cae a la barra completa", async () => {
+      await act(async () => {
+        root.render(h(ReaderSelectionBar, { ...defaultProps, selButton: wordButton }));
+      });
+
+      expect(host.querySelector(".selection-menu--word")).toBeNull();
+      expect(host.querySelector(".tone-dot--salvia")).not.toBeNull();
     });
   });
 });
