@@ -10,6 +10,8 @@ export interface ReaderTopBarProps {
   isZenFaded?: boolean;
   barsShown?: boolean;
   onOpenToc: () => void;
+  hasRibbonHere?: boolean;
+  onToggleRibbon?: () => void;
   onOpenAppearance: () => void;
   onOpenMore: () => void;
 }
@@ -22,6 +24,8 @@ function ReaderTopBarImpl({
   isZenFaded = false,
   barsShown = true,
   onOpenToc,
+  hasRibbonHere = false,
+  onToggleRibbon,
   onOpenAppearance,
   onOpenMore,
 }: ReaderTopBarProps) {
@@ -47,6 +51,20 @@ function ReaderTopBarImpl({
         {author ? <span className="reader-bar-author"> · {author}</span> : null}
       </p>
       <div className="reader-bar-actions">
+        {onToggleRibbon ? (
+          <button
+            type="button"
+            className="btn--quiet reader-bar-btn reader-bar-btn--ribbon"
+            onClick={onToggleRibbon}
+            aria-pressed={hasRibbonHere}
+            data-active={hasRibbonHere || undefined}
+            aria-label={hasRibbonHere ? "Quitar cinta" : "Guardar cinta aquí"}
+            title={hasRibbonHere ? "Quitar cinta" : "Guardar cinta aquí"}
+          >
+            <Icon name="bookmark" size={20} />
+            <span className="reader-btn-text">Cinta</span>
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn--quiet reader-bar-btn"

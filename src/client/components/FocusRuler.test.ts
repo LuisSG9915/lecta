@@ -75,7 +75,7 @@ describe('FocusRuler — Componente y desambiguación de eventos', () => {
     });
 
     expect(ruler.classList.contains('is-pinned')).toBe(true);
-    expect(grip.textContent).toBe('📌');
+    expect(grip.querySelector('svg')).not.toBeNull();
     expect(onPinnedChange).toHaveBeenCalledWith(true, 220);
 
     act(() => {

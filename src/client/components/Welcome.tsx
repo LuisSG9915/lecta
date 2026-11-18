@@ -53,7 +53,7 @@ export default function Welcome({
           </p>
         ) : (
           <AuthForms
-            initialMode={resetToken ? "reset" : "signup"}
+            initialMode={resetToken ? "reset" : "magic"}
             resetToken={resetToken}
             onSuccess={() => undefined}
             onResetDone={onResetDone}

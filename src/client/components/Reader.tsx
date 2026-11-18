@@ -162,7 +162,8 @@ import {
   refreshProfile,
 } from "../lib/reader-evidence";
 import { useReaderBookSections } from "../hooks/useReaderBookSections";
-import { translateParagraph } from "../lib/translate";
+import { translateParagraphResult } from "../lib/translate";
+import { useReaderTranslateHint } from "../hooks/useReaderTranslateHint";
 import {
   type EpisodicWordItem,
   type ConsolidationModality,
@@ -1069,6 +1070,8 @@ export default function Reader({
     setCatPassageExplanation,
     sectionLabel,
     saveBookmarkHere,
+    toggleRibbonHere,
+    ribbonHere,
     removeMark,
     saveNote,
     savePassageSelection,
@@ -1446,11 +1449,23 @@ export default function Reader({
     p.appendChild(indicator);
 
     try {
-      const translation = await translateParagraph(originalText, "en", "es", captureDbScope());
+      const result = await translateParagraphResult(originalText, "en", "es", captureDbScope());
       indicator.remove();
+      if (!result.ok) {
+        setToastMessage(
+          result.reason === "plan"
+            ? "Traducir párrafos es de Lecta+. Toca una palabra para ver su significado."
+            : result.reason === "auth"
+              ? "Inicia sesión para traducir párrafos."
+              : "No se pudo traducir ahora.",
+        );
+        return;
+      }
+      const translation = result.translation;
       if (translation && translation !== originalText) {
         const span = document.createElement("span");
         span.className = "paragraph-inline-translation";
+        span.lang = "es";
         const em = document.createElement("em");
         em.textContent = translation;
         span.appendChild(em);
@@ -2526,6 +2541,7 @@ export default function Reader({
   // Aviso único de descubrimiento para la pulsación larga en táctil — extraído a
   // useReaderLongPressHint (B7).
   useReaderLongPressHint({ state, setShowLongPressHint });
+  useReaderTranslateHint({ state, language, bookHash, setToastMessage });
 
   // Barras que se retiran al bajar y guardado por ocultar — extraído a
   // useReaderScrollBars (B7).
@@ -3531,6 +3547,8 @@ export default function Reader({
         isZenFaded={isZenFaded}
         barsShown={barsShown}
         onOpenToc={() => openSheet("toc")}
+        hasRibbonHere={ribbonHere}
+        onToggleRibbon={toggleRibbonHere}
         onOpenAppearance={() => openSettings("appearance")}
         onOpenMore={() => openSettings("book")}
       />

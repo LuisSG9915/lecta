@@ -94,6 +94,18 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(defaultProps.onRecap).toHaveBeenCalledTimes(1);
   });
 
+  it("el popover ofrece el segmentado de maquetación sin cerrarse", () => {
+    const onSelectLayout = vi.fn();
+    render({ layout: "scroll", onSelectLayout });
+    act(() => (container.querySelector(".dock-mode-trigger") as HTMLButtonElement).click());
+    const btns = container.querySelectorAll<HTMLButtonElement>(".reader-mode-layout .segmented button");
+    expect(btns).toHaveLength(2);
+    expect(btns[0].getAttribute("aria-pressed")).toBe("true");
+    act(() => btns[1].click());
+    expect(onSelectLayout).toHaveBeenCalledWith("pages");
+    expect(container.querySelector(".reader-mode-popover")).not.toBeNull();
+  });
+
   it("abre el popover con los 3 Modos Humanos de 1 Clic y permite seleccionarlos", () => {
     const onSelectPreset = vi.fn();
     const onOpenAdvancedSettings = vi.fn();
@@ -109,6 +121,9 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(popover?.textContent).toContain("Lectura Limpia");
     expect(popover?.textContent).toContain("Enfoque TDAH");
     expect(popover?.textContent).toContain("Ritmo Guiado");
+
+    // Sin onSelectLayout no hay segmentado
+    expect(container.querySelector(".reader-mode-layout")).toBeNull();
 
     // Seleccionar Enfoque TDAH
     const adhdCard = container.querySelectorAll(".reader-mode-card")[1] as HTMLButtonElement;

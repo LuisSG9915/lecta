@@ -110,6 +110,45 @@ describe("ReaderSearchAndTocSheet", () => {
     author: "Cervantes",
   };
 
+  it("centra el capítulo actual al abrir el índice", () => {
+    const spy = vi.fn();
+    const orig = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      act(() => {
+        root.render(h(ReaderSearchAndTocSheet, { ...defaultProps, sheet: "toc" }));
+      });
+      const current = container.querySelector("[data-current]");
+      if (current) expect(spy).toHaveBeenCalledWith({ block: "center", behavior: "smooth" });
+      else expect(spy).not.toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = orig;
+    }
+  });
+
+  it("muestra «Tu cinta» arriba del índice y «Ir» salta al ancla", () => {
+    const jumpTo = vi.fn();
+    const bookmark = {
+      key: "k",
+      id: "ribbon",
+      bookHash: "hash-1",
+      kind: "bookmark",
+      sectionIndex: 1,
+      anchor: "Texto ancla",
+      createdAt: 1,
+      updatedAt: 1,
+    } as SavedAnnotation;
+    act(() => {
+      root.render(h(ReaderSearchAndTocSheet, { ...defaultProps, sheet: "toc", bookmark, jumpTo }));
+    });
+    const row = container.querySelector(".toc-ribbon");
+    expect(row?.textContent).toContain("Tu cinta");
+    act(() => {
+      (row?.querySelector("button") as HTMLButtonElement).click();
+    });
+    expect(jumpTo).toHaveBeenCalledWith(1, { anchor: "Texto ancla" }, "resume");
+  });
+
   it("renderiza la lámina de Índice (TOC) y llama a jumpTo al hacer clic en un capítulo", () => {
     act(() => {
       root.render(h(ReaderSearchAndTocSheet, { ...defaultProps, sheet: "toc" }));

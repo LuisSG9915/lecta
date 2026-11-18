@@ -128,7 +128,8 @@ export default function AuthForms({
     }
     void run(async () => {
       const result = await authClient.signIn.magicLink({ email: cleanEmail, callbackURL: "/" });
-      if (!result?.error) setMessage("Si el correo está registrado, enviamos un enlace de acceso.");
+      if (!result?.error)
+        setMessage("Te enviamos un enlace para entrar. Si es tu primera vez, al abrirlo creamos tu cuenta.");
       return result;
     });
   };
@@ -204,7 +205,7 @@ export default function AuthForms({
       ) : null}
     </div>
 
-    {authMode === "signin" || authMode === "signup" ? (
+    {authMode === "signin" || authMode === "signup" || authMode === "magic" ? (
       <div className="auth-tabs" role="tablist">
         <button
           type="button"
@@ -231,6 +232,19 @@ export default function AuthForms({
           }}
         >
           Crear cuenta
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="auth-tab-btn"
+          aria-selected={authMode === "magic"}
+          onClick={() => {
+            setError("");
+            setMessage("");
+            setAuthMode("magic");
+          }}
+        >
+          Enlace por correo
         </button>
       </div>
     ) : null}
@@ -290,17 +304,6 @@ export default function AuthForms({
             }}
           >
             ¿Olvidaste tu contraseña?
-          </button>
-          <button
-            type="button"
-            className="btn--quiet"
-            onClick={() => {
-              setError("");
-              setMessage("");
-              setAuthMode("magic");
-            }}
-          >
-            Entrar con enlace por correo
           </button>
         </div>
       </form>
@@ -365,7 +368,8 @@ export default function AuthForms({
         }}
       >
         <p className="meta">
-          Acceso sin contraseña. Te enviaremos un enlace a tu correo para entrar directamente.
+          Acceso sin contraseña. Te enviaremos un enlace a tu correo: al abrirlo entras, y si es
+          tu primera vez creamos tu cuenta. El enlace vence en 10 minutos.
         </p>
         <label htmlFor="modal-magic-email">Correo</label>
         <input
@@ -384,19 +388,6 @@ export default function AuthForms({
             style={{ width: "100%" }}
           >
             Enviar enlace de acceso
-          </button>
-        </div>
-        <div className="auth-aux-actions">
-          <button
-            type="button"
-            className="btn--quiet"
-            onClick={() => {
-              setError("");
-              setMessage("");
-              setAuthMode("signin");
-            }}
-          >
-            Volver a entrar con contraseña
           </button>
         </div>
       </form>

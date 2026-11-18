@@ -8,6 +8,16 @@ import { triggerHaptic } from "../../lib/deep-reading";
 import { downloadBookMarkdown } from "../../lib/export";
 import type { QuoteCardState } from "../../hooks/useReaderAnnotationsAndSearch";
 
+// Centra el capítulo actual al abrir el índice (libros de 50+ capítulos).
+function centerCurrentToc(list: HTMLUListElement | null): void {
+  const el = list?.querySelector<HTMLElement>("[data-current]");
+  if (!el || typeof el.scrollIntoView !== "function") return;
+  const reduce =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+}
+
 export type SheetKind = "toc" | "settings" | "search" | "marks";
 
 export interface TocRow {
@@ -99,8 +109,22 @@ export function ReaderSearchAndTocSheet({
             Cerrar
           </button>
         </div>
+        {bookmark ? (
+          <div className="toc-ribbon">
+            <span>
+              Tu cinta: <strong>{sectionLabel(bookmark.sectionIndex)}</strong>
+            </span>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => jumpTo(bookmark.sectionIndex, { anchor: bookmark.anchor }, "resume")}
+            >
+              Ir
+            </button>
+          </div>
+        ) : null}
         {tocRows.length ? (
-          <ul className="toc-list">
+          <ul className="toc-list" ref={centerCurrentToc}>
             {tocRows.map((row, i) => {
               const isCurrent =
                 (currentChapterTarget?.id ??

@@ -66,6 +66,7 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
 - El migrador exige que `current_database()` coincida con `LECTA_MIGRATE_TARGET` (default `lecta_dev`). Para producción: `LECTA_MIGRATE_TARGET=lecta` + `DATABASE_URL` con el nombre cambiado a `lecta` — solo con autorización expresa.
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden (registra lo aplicado en `lecta_schema_migrations`; idempotente).
 - `pnpm db:migrate` falla rápido si una tabla destino tiene `schema_locked=true`; no espera indefinidamente. Desbloquéala solo para esa migración (`ALTER TABLE ... SET (schema_locked = false)`), migra y vuelve a bloquearla. `LECTA_MIGRATE_TIMEOUT_MS` ajusta el límite de sentencia (default 120000 ms).
+- **030/031/032 aplicadas en `lecta` (prod) el 2026-11-17, con autorización de Luis**: `gutenberg_books`, `lecta_user_plan` y `lexicon_entries` desbloqueadas y re-bloqueadas; sin jobs de GC en cola antes ni durante. El `ADD COLUMN` de 030 sobre 28 052 filas excedió el timeout por sentencia de 120 s (en dev el mismo statement tardó ~122 s): reintento con `LECTA_MIGRATE_TIMEOUT_MS=600000`. Verificado tras migrar: columnas (`search_tokens`, `digest_opt_in`, `digest_unsubscribe_token`, `ipa`), índice invertido, backfill con 0 filas sin tokens y cerrojos en `true`.
 - `pnpm build` elimina `dist/lecta/.dev.vars` (secretos) al terminar. Para probar
   auth, sync o IA en local con `vite preview`, usa `pnpm preview:local`
   (`LECTA_KEEP_DEV_VARS=1`): conserva ese archivo solo en tu máquina.
@@ -1059,8 +1060,9 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
 - **Búsqueda Gutenberg**: migración 030 (2026-11-17) añade `search_tokens STRING[]`
   con índice invertido (`idx_gutenberg_books_search_tokens`) y el worker usa
   `search_tokens @> $terms` en vez de `LIKE '%…%'` (sin full scan; pierde
-  coincidencia por prefijo). Aplicada en `lecta_dev` (28 052 filas, tokens
-  dedupados). Pendiente en `lecta` (prod): unlock `gutenberg_books` →
-  `LECTA_MIGRATE_TARGET=lecta LECTA_MIGRATE_TIMEOUT_MS=300000 pnpm db:migrate`
-  → re-lock; y re-cargar el índice con `--load --gate-ok --remote` cuando
-  gutenberg.org reviva. El script ya escribe `search_tokens` (dedup) en el UPSERT.
+  coincidencia por prefijo). Aplicada en `lecta_dev` y en `lecta` el
+  2026-11-17 (28 052 filas con backfill completo en ambas, tokens dedupados,
+  cerrojos restaurados; el `ADD COLUMN` de prod necesitó
+  `LECTA_MIGRATE_TIMEOUT_MS=600000`). Pendiente solo re-cargar el índice con
+  `--load --gate-ok --remote` cuando gutenberg.org reviva. El script ya
+  escribe `search_tokens` (dedup) en el UPSERT.

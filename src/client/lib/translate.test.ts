@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   translateParagraph,
+  translateParagraphResult,
   translateClause,
   extractParagraphClauses,
   selectMostComplexClause,
@@ -18,6 +19,30 @@ import { accountFetch } from "./account-fetch";
 describe("translate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("translateParagraphResult", () => {
+    it.each([
+      [401, "auth"],
+      [402, "plan"],
+      [500, "error"],
+    ])("status %i → %s", async (status, reason) => {
+      vi.mocked(accountFetch).mockResolvedValueOnce({ ok: false, status } as Response);
+      expect(await translateParagraphResult("Hello there.")).toEqual({ ok: false, reason });
+    });
+
+    it("ok devuelve la traducción", async () => {
+      vi.mocked(accountFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ translation: "Hola." }),
+      } as Response);
+      expect(await translateParagraphResult("Hello.")).toEqual({ ok: true, translation: "Hola." });
+    });
+
+    it("fallo de red → error", async () => {
+      vi.mocked(accountFetch).mockRejectedValueOnce(new Error("net"));
+      expect(await translateParagraphResult("Hello.")).toEqual({ ok: false, reason: "error" });
+    });
   });
 
   describe("translateParagraph", () => {

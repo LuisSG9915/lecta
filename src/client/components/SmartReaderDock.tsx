@@ -66,6 +66,9 @@ export function getCoverageBandClass(pct: number): string {
 }
 
 export interface SmartReaderDockProps {
+  /** Maquetación actual; con `onSelectLayout` el popover ofrece el segmentado. */
+  layout?: "scroll" | "pages";
+  onSelectLayout?: (layout: "scroll" | "pages") => void;
   /** Texto legible de progreso (ej. "Pág. 12 de 45 · ~3 min" o "Cap. 2 de 8 · ~15 min") */
   progressText: string;
   errorText?: string;
@@ -134,6 +137,8 @@ export default function SmartReaderDock({
   onExitPureCanvas,
   activePreset,
   onSelectPreset,
+  layout,
+  onSelectLayout,
   onOpenAdvancedSettings,
   onStartAudio,
   onRecap,
@@ -505,6 +510,29 @@ export default function SmartReaderDock({
                 );
               })}
             </div>
+            {onSelectLayout ? (
+              <div className="reader-mode-layout">
+                <div className="segmented" role="group" aria-label="Maquetación">
+                  {(["scroll", "pages"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      data-active={layout === value || undefined}
+                      aria-pressed={layout === value}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectLayout(value);
+                      }}
+                    >
+                      {value === "scroll" ? "Desplazamiento" : "Por páginas"}
+                    </button>
+                  ))}
+                </div>
+                <p className="meta">
+                  Si algo se corta, apaga páginas sin perder tu lugar.
+                </p>
+              </div>
+            ) : null}
             <div className="dock-mode-popover-footer reader-mode-popover-footer">
               <button
                 type="button"

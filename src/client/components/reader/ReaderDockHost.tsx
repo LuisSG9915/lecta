@@ -155,6 +155,11 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
       onOpenGlossary={() => setGlossaryOpen(true)}
       isPureCanvas={!barsShown}
       onExitPureCanvas={() => setBarsVisible(true)}
+      layout={settings.layout}
+      onSelectLayout={(layout) => {
+        triggerHaptic("selection");
+        updateSettings({ layout });
+      }}
       activePreset={detectActiveReadingPreset(settings)}
       onSelectPreset={(preset) => {
         triggerHaptic("selection");

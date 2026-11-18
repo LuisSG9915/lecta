@@ -1,5 +1,6 @@
 // Archivo: src/client/components/FocusRuler.tsx
 import React, { useState, useEffect, useCallback } from 'react';
+import Icon from './Icon';
 import type { RulerSize } from '../lib/settings';
 
 export const RULER_PARAGRAPH_LINES = 6;
@@ -174,7 +175,7 @@ export function FocusRuler({
         onKeyDown={handleKeyDown}
       >
         <span className="focus-ruler__grip" aria-hidden="true">
-          {pinned ? '📌' : '⋮'}
+          {pinned ? <Icon name="pin" size={14} /> : '⋮'}
         </span>
       </button>
     </div>

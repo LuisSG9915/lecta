@@ -93,6 +93,31 @@ describe("useReaderShortcutsAndGestures", () => {
     expect(onTurnPage).toHaveBeenCalledWith(-1);
   });
 
+  it("C alterna los controles y Tab no", () => {
+    const onCenterTap = vi.fn();
+    renderHook({ onCenterTap });
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
+    });
+    expect(onCenterTap).not.toHaveBeenCalled();
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
+    });
+    expect(onCenterTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("C dentro de un input no alterna los controles", () => {
+    const onCenterTap = vi.fn();
+    renderHook({ onCenterTap });
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
+    });
+    expect(onCenterTap).not.toHaveBeenCalled();
+    input.remove();
+  });
+
   it("finaliza lectura profunda con Escape", () => {
     const onFinishDeepReading = vi.fn();
     renderHook({ deepReadingActive: true, onFinishDeepReading });

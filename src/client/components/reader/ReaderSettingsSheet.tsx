@@ -377,7 +377,7 @@ export default function ReaderSettingsSheet({
             </div>
             <div className="shortcut-row">
               <span>Mostrar controles</span>
-              <div><kbd>Tab</kbd></div>
+              <div><kbd>C</kbd></div>
             </div>
           </div>
         </details>

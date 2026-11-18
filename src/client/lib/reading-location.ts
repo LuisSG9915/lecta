@@ -67,6 +67,13 @@ export function showResumeAnchor(el: Element): void {
   }, 6000);
 }
 
+// Bloque que corresponde a un ancla guardada (o null).
+export function findAnchorElement(container: HTMLElement, anchor: string): HTMLElement | null {
+  const needle = normalizeBlockText(anchor).slice(0, 40);
+  if (!needle) return null;
+  return findAnchorBlock(container, needle);
+}
+
 // Busca el bloque que corresponde al ancla guardada. Prefiere el que
 // empieza con el texto del ancla (el caso normal: el ancla es un prefijo
 // del bloque) y solo si no hay ninguno acepta un bloque entero que el

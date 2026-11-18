@@ -263,9 +263,6 @@ export function ReaderContent(props: ReaderContentProps) {
       data-strategy-contrast={settings.strategyContrast}
       data-strategy-paused={strategyPaused || undefined}
       data-has-floating-bar={ttsSnap.status !== "idle" || (settings.visualPacer && !strategyPaused) ? "true" : undefined}
-      data-hide-indicators={
-        settings.hideSecondaryIndicators || settings.strategyPreset === "immersive" || undefined
-      }
       style={
         settings.layout === "pages" && pageMetrics
           ? ({

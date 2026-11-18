@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-18T13:07:26.229Z",
+  "generatedAt": "2026-11-18T13:49:00.995Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "3e392168ae6922dc7d673356ecf5e87936f56658",
+  "commit": "255282b348dd75be74d1f3498ef5a49b9498db79",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -518,12 +518,18 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:3961 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "FAIL",
+          "detail": "src/client/components/Reader.tsx:3959-3963 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 3961,
-            "text": "applyPreviewKnownSignal(currentLang, beta);"
+            "asked": 3961,
+            "excerpt": [
+              "3959:         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}",
+              "3960:         charOffsetInChapter={charOffsetInChapter}",
+              "3961:         currentChapterId={currentChapterId}",
+              "3962:         currentChapterTitle={currentChapterTitle}",
+              "3963:         prep={prep}"
+            ]
           }
         },
         {
@@ -539,10 +545,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:717 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:779 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 717,
+            "line": 779,
             "text": "{ award: false },"
           }
         },
@@ -1719,5 +1725,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

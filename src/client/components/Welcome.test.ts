@@ -39,7 +39,7 @@ describe("Welcome", () => {
     localStorage.setItem("lecta:gato", "calico");
     act(() => root.render(h(Welcome, { offline: false })));
     expect(host.textContent).toContain("Calicó Literario");
-    expect(host.querySelector("#modal-signup-email")).toBeTruthy();
+    expect(host.querySelector("#modal-magic-email")).toBeTruthy();
   });
 
   it("sin pelaje pendiente usa el naranja", () => {

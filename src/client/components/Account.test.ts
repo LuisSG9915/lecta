@@ -160,9 +160,10 @@ describe("Account componente Tú y Login", () => {
 
     // Pestañas Iniciar sesión / Crear cuenta
     const tabs = modal?.querySelectorAll(".auth-tab-btn");
-    expect(tabs?.length).toBe(2);
+    expect(tabs?.length).toBe(3);
     expect(tabs?.[0].textContent).toBe("Iniciar sesión");
     expect(tabs?.[1].textContent).toBe("Crear cuenta");
+    expect(tabs?.[2].textContent).toBe("Enlace por correo");
     expect(tabs?.[0].getAttribute("aria-selected")).toBe("true");
 
     // Formulario de entrar
@@ -173,7 +174,6 @@ describe("Account componente Tú y Login", () => {
 
     // Enlaces auxiliares
     expect(modal?.textContent).toContain("¿Olvidaste tu contraseña?");
-    expect(modal?.textContent).toContain("Entrar con enlace por correo");
   });
 
   it("permite alternar entre pestañas y modos de acceso en el modal", async () => {
@@ -203,15 +203,8 @@ describe("Account componente Tú y Login", () => {
     expect(modal.textContent).toContain("Mínimo 8 caracteres");
 
     // Cambiar a Enlace por correo (magic link)
-    const signinTab = modal.querySelectorAll<HTMLButtonElement>(".auth-tab-btn")[0];
-    await act(async () => signinTab.click());
-    await flush();
-
-    const magicBtn = Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
-      (b) => b.textContent?.includes("enlace por correo"),
-    );
-    expect(magicBtn).toBeTruthy();
-    await act(async () => magicBtn!.click());
+    const magicTab = modal.querySelectorAll<HTMLButtonElement>(".auth-tab-btn")[2];
+    await act(async () => magicTab.click());
     await flush();
 
     expect(modal.querySelector('button[type="submit"]')?.textContent).toBe("Enviar enlace de acceso");
@@ -219,10 +212,8 @@ describe("Account componente Tú y Login", () => {
     expect(modal.querySelector('input[type="password"]')).toBeNull();
 
     // Volver a contraseña
-    const backBtn = Array.from(modal.querySelectorAll<HTMLButtonElement>("button")).find(
-      (b) => b.textContent?.includes("contraseña"),
-    );
-    await act(async () => backBtn!.click());
+    const backBtn = modal.querySelectorAll<HTMLButtonElement>(".auth-tab-btn")[0];
+    await act(async () => backBtn.click());
     await flush();
 
     expect(modal.querySelector('button[type="submit"]')?.textContent).toBe("Entrar");

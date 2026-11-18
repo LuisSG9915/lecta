@@ -72,6 +72,44 @@ export async function translateParagraph(
   return trimmed;
 }
 
+export type TranslateResult =
+  | { ok: true; translation: string }
+  | { ok: false; reason: "auth" | "plan" | "error" };
+
+/** Como translateParagraph, pero distingue sesión caducada (401), plan (402) y fallo. */
+export async function translateParagraphResult(
+  text: string,
+  from = "en",
+  to = "es",
+  scope?: DbScope,
+): Promise<TranslateResult> {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, reason: "error" };
+  try {
+    const res = await accountFetch(
+      "/api/ai/translate",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: trimmed, from, to }),
+      },
+      scope,
+    );
+    if (res.ok) {
+      const data = (await res.json()) as { translation?: string };
+      if (typeof data.translation === "string" && data.translation.trim()) {
+        return { ok: true, translation: data.translation.trim() };
+      }
+      return { ok: false, reason: "error" };
+    }
+    if (res.status === 401) return { ok: false, reason: "auth" };
+    if (res.status === 402) return { ok: false, reason: "plan" };
+  } catch {
+    // Red caída o sin conexión
+  }
+  return { ok: false, reason: "error" };
+}
+
 /**
  * Traduce una cláusula compleja de forma natural para el Nivel 2 de andamiaje bilingüe.
  */

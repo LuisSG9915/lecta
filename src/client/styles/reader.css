@@ -6099,13 +6099,24 @@ b.lecta-anchor {
   margin-top: 0.65rem;
   padding-top: 0.55rem;
   padding-left: 0.75rem;
-  border-top: 1px dashed var(--border-color);
+  border-top: 1px solid var(--border-color);
   border-left: 2px solid var(--accent-primary, var(--vermilion));
   color: color-mix(in srgb, var(--ink) 86%, transparent);
   font-size: 0.95em;
   opacity: 0.88;
   line-height: 1.6;
   font-family: inherit;
+}
+
+.paragraph-inline-translation::before {
+  content: "Traducción";
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.72em;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 
 .lecta-bilingue__translation em,
@@ -7249,4 +7260,31 @@ b.lecta-anchor {
   border: 1px solid var(--rule);
   color: var(--ink-soft);
   font-size: 0.8125rem;
+}
+
+/* Cinta del libro: tira en el margen del bloque ancla */
+[data-ribbon] {
+  position: relative;
+}
+[data-ribbon]::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -0.9rem;
+  width: 0.35rem;
+  background: var(--vermilion);
+  border-radius: 0 0 0.2rem 0.2rem;
+  pointer-events: none;
+}
+.toc-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3, 0.75rem);
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--vermilion-wash);
+  color: var(--ink);
+}
+.reader-bar-btn[data-active] {
+  color: var(--vermilion);
 }

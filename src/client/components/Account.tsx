@@ -176,13 +176,21 @@ function vocabStatusView(
   }
   return {
     text: summary?.levelLabel
-      ? `Nivel estimado: ${summary.levelLabel}${evidenceSuffix}`
+      ? `Nivel estimado: ${summary.levelLabel}`
       : evidenceCount
         ? `${evidenceCount} palabras registradas · aún sin calibrar`
         : "Sin calibrar · Toma 15 segundos ajustar las ayudas a tu nivel.",
     action: "Calibrar",
   };
 }
+
+/**
+ * Aviso al pedir el borrado de cuenta: el enlace de confirmación valida la
+ * sesión que lo pidió (better-auth), así que solo completa en el navegador
+ * donde se solicitó.
+ */
+export const DELETE_CONFIRM_NOTICE =
+  "Te enviamos un correo para confirmar el borrado. Tu cuenta se elimina al abrir ese enlace, desde el mismo navegador o dispositivo donde lo pediste: el enlace solo funciona ahí.";
 
 
 export default function Account({
@@ -492,9 +500,7 @@ export default function Account({
       if (!result?.error) {
         if (session?.user?.id) localStorage.setItem(PENDING_DELETE_KEY, session.user.id);
         setConfirmDelete(false);
-        setMessage(
-          "Te enviamos un correo para confirmar el borrado. Tu cuenta se elimina al abrir ese enlace.",
-        );
+        setMessage(DELETE_CONFIRM_NOTICE);
       }
       return result;
     });

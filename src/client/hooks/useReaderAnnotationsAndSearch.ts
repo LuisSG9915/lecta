@@ -3,7 +3,8 @@ import type { EpubBook } from "../lib/epub";
 import type { ChapterTarget } from "../lib/chapters";
 import type { PageLayout } from "../lib/pagination";
 import { anchorAtPage } from "../lib/pagination";
-import { anchorAtViewTop } from "../lib/reading-location";
+import { anchorAtViewTop, findAnchorElement } from "../lib/reading-location";
+import { triggerHaptic } from "../lib/deep-reading";
 import { searchBookSections, type SearchHit } from "../lib/book-search";
 import {
   listAnnotations,
@@ -175,15 +176,35 @@ export function useReaderAnnotationsAndSearch({
   }, [containerRef, metricsRef, layoutRef, pageRef, captureDbScope, pushAnnotation, bookHash, sectionIndex, onStatus]);
 
   const removeMark = useCallback(
-    async (key: string) => {
+    async (key: string, message = "Marcado eliminado.") => {
       const scope = captureDbScope();
       const tombstone = await removeAnnotation(key, scope);
       if (tombstone) void pushAnnotationsToServer([tombstone], scope);
       await refreshAnnotations(scope);
-      onStatus("Marcado eliminado.");
+      onStatus(message);
     },
     [captureDbScope, refreshAnnotations, onStatus],
   );
+
+  const ribbonHere = bookmark?.sectionIndex === sectionIndex;
+  const toggleRibbonHere = useCallback(async () => {
+    triggerHaptic("selection");
+    if (bookmark && bookmark.sectionIndex === sectionIndex) {
+      await removeMark(bookmark.key, "Cinta quitada.");
+    } else {
+      await saveBookmarkHere();
+    }
+  }, [bookmark, sectionIndex, removeMark, saveBookmarkHere]);
+
+  // Cinta visible en el margen del bloque ancla de la sección actual
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || state !== "ready") return;
+    container.querySelectorAll("[data-ribbon]").forEach((n) => n.removeAttribute("data-ribbon"));
+    if (bookmark?.sectionIndex === sectionIndex && bookmark.anchor) {
+      findAnchorElement(container, bookmark.anchor)?.setAttribute("data-ribbon", "");
+    }
+  }, [containerRef, bookmark, sectionIndex, state, vocabVersion, prediction]);
 
   const saveNote = useCallback(
     async (annotation: SavedAnnotation) => {
@@ -481,6 +502,8 @@ export function useReaderAnnotationsAndSearch({
     refreshAnnotations,
     pushAnnotation,
     saveBookmarkHere,
+    toggleRibbonHere,
+    ribbonHere,
     removeMark,
     saveNote,
     savePassageSelection,

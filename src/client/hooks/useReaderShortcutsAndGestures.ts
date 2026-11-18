@@ -148,7 +148,6 @@ export function useReaderShortcutsAndGestures({
   // 4. Atajos de teclado para lectura
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Tab") onCenterTap();
       const target = event.target;
       const inInput =
         target instanceof HTMLElement &&
@@ -180,6 +179,11 @@ export function useReaderShortcutsAndGestures({
         if ((event.key === "m" || event.key === "M") && onOpenSheet) {
           event.preventDefault();
           onOpenSheet("marks");
+          return;
+        }
+        if (event.key === "c" || event.key === "C") {
+          event.preventDefault();
+          onCenterTap();
           return;
         }
         if (event.key === "f" || event.key === "F") {
