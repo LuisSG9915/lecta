@@ -34,7 +34,9 @@ describe("LegalNotice", () => {
     expect(host.textContent).toContain("local primero (local-first)");
     expect(host.textContent).toContain("Consultas de Inteligencia Artificial");
     expect(host.textContent).toContain("LFPDPPP");
-    expect(host.textContent).toContain("[PENDIENTE DE REVISIÓN POR TITULAR: Nombre/Razón Social, Domicilio y Correo Legal]");
+    expect(host.textContent).toContain("Luis Alberto Santos Gaona");
+    expect(host.textContent).toContain("contacto@lectal.app");
+    expect(host.textContent).not.toContain("PENDIENTE");
     expect(host.textContent).toContain("derechos ARCO");
   });
 

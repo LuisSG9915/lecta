@@ -141,24 +141,22 @@ export async function runSmokeTests(baseUrl = BASE) {
   ]);
   const HASH_A = createHash("sha256").update(fakeEpub).digest("hex");
 
+  // Las cuentas nuevas son «free» (corte 2026-11-13): subir y descargar
+  // binarios propios es de Lecta+ y debe responder 402, nunca 200.
   const upA = await api(`/api/books/${HASH_A}?name=libro-a.epub`, {
     method: "PUT", body: fakeEpub, cookie: cookieA, json: false, baseUrl,
   });
-  check("A puede subir su libro", upA.status === 200, `status ${upA.status}`);
+  check(
+    "Cuenta free no puede subir libro → 402 LECTA_PLUS_REQUIRED",
+    upA.status === 402 && upA.data?.code === "LECTA_PLUS_REQUIRED",
+    `status ${upA.status}`,
+  );
 
   const listB = await api("/api/books", { cookie: cookieB, baseUrl });
   check("B no ve libros de A", listB.status === 200 && listB.data?.books?.length === 0);
 
   const getB = await api(`/api/books/${HASH_A}`, { cookie: cookieB, baseUrl });
-  check("B no puede descargar el libro de A", getB.status === 404, `status ${getB.status}`);
-
-  const delB = await api(`/api/books/${HASH_A}`, { method: "DELETE", cookie: cookieB, baseUrl });
-  const getAAfter = await api(`/api/books/${HASH_A}`, { cookie: cookieA, baseUrl });
-  check(
-    "DELETE de B no borra el libro de A",
-    delB.status === 200 && getAAfter.status === 200,
-    `B:${delB.status} A:${getAAfter.status}`,
-  );
+  check("Cuenta free no puede descargar libros → 402", getB.status === 402, `status ${getB.status}`);
 
   // --- vocabulario ---
   const putA = await api("/api/vocab", {
@@ -293,8 +291,12 @@ export async function runSmokeTests(baseUrl = BASE) {
     `status ${sampleLang.status}`,
   );
 
-  // --- vinculación Kindle instantánea por código de 4 letras ---
-  await verifyKindleLinkSmokeTest(baseUrl, cookieA);
+  // --- vinculación Kindle: es de Lecta+, la cuenta free recibe 402 ---
+  // (verifyKindleLinkSmokeTest sigue disponible para una sesión con Lecta+).
+  const kindleLink = await api("/api/kindle/link", {
+    method: "POST", body: { code: "ABCD" }, cookie: cookieA, baseUrl,
+  });
+  check("Cuenta free no puede vincular Kindle → 402", kindleLink.status === 402, `status ${kindleLink.status}`);
 
   // --- sin sesión ---
   for (const [name, path, method] of [

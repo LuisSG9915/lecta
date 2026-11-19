@@ -95,15 +95,18 @@ export default function LegalNotice({
             <p>
               En cumplimiento con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP), se informa la identidad y domicilio del Responsable del Tratamiento:
             </p>
-            <p style={{ fontStyle: "italic", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--radius-sm)" }}>
-              [PENDIENTE DE REVISIÓN POR TITULAR: Nombre/Razón Social, Domicilio y Correo Legal]
+            <p style={{ background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--radius-sm)" }}>
+              Responsable: Luis Alberto Santos Gaona (persona física), que opera Lecta (lectal.app). Correo de
+              contacto para datos personales y derechos ARCO:{" "}
+              <a href="mailto:contacto@lectal.app">contacto@lectal.app</a>. Las notificaciones formales se reciben
+              en ese mismo correo mientras se publica en este aviso el domicilio para oír y recibir notificaciones.
             </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Derechos ARCO y procedimiento de revocación</h4>
             <p>
               Conforme a la LFPDPPP, tienes derecho a ejercer tus derechos de Acceso, Rectificación, Cancelación y Oposición (derechos ARCO), así como revocar en cualquier momento el consentimiento otorgado para el tratamiento de tus datos personales.
             </p>
             <p>
-              Puedes ejercer estos derechos enviando una solicitud al correo de contacto legal o directamente desde los controles de la aplicación mediante la descarga íntegra de tu respaldo en formato JSON y el borrado irreversible de tu cuenta (el cual ejecuta una purga en cascada de tus palabras, posiciones y archivos en la nube). Las solicitudes dirigidas al Responsable serán atendidas en los términos y plazos fijados por la LFPDPPP.
+              Puedes ejercer estos derechos enviando una solicitud a contacto@lectal.app o directamente desde los controles de la aplicación mediante la descarga íntegra de tu respaldo en formato JSON y el borrado irreversible de tu cuenta (el cual ejecuta una purga en cascada de tus palabras, posiciones y archivos en la nube). Las solicitudes dirigidas al Responsable serán atendidas en los términos y plazos fijados por la LFPDPPP.
             </p>
           </article>
         ) : (
@@ -145,6 +148,25 @@ export default function LegalNotice({
                 <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0</a>, sin modificaciones.
               </li>
             </ul>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Edad mínima</h4>
+            <p>
+              Lecta es para personas de 13 años o más. Si tienes menos de 18 años, necesitas el consentimiento de tu
+              madre, padre o tutor para crear una cuenta, y solo una persona adulta puede contratar Lecta+.
+            </p>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Lecta+: cobro, cancelación y reembolsos</h4>
+            <p>
+              Lecta+ es una suscripción mensual o anual que se cobra por adelantado a través de Stripe y se renueva
+              sola al final de cada periodo. Puedes cancelarla cuando quieras desde «Tú» → «Administrar suscripción»;
+              conservas Lecta+ hasta el final del periodo ya pagado y no se vuelve a cobrar. Los cobros ya realizados
+              no se reembolsan, salvo en los casos que exija la Ley Federal de Protección al Consumidor. Si tu cuenta
+              incluye una prueba gratuita de 7 días y cancelas antes de que termine, no se te cobra nada.
+            </p>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Avisos de derechos de autor</h4>
+            <p>
+              Si crees que algún contenido compartido en Lecta (por ejemplo, una guía de la comunidad) infringe tus
+              derechos, escribe a <a href="mailto:contacto@lectal.app">contacto@lectal.app</a> indicando la obra, el
+              contenido y un medio de contacto. Revisaremos el aviso y, si procede, retiraremos el contenido.
+            </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Disponibilidad del servicio</h4>
             <p>
               El servicio se ofrece tal como está. Dado el diseño local-first, tus datos permanecen disponibles en

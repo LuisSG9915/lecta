@@ -55,7 +55,7 @@ las imágenes de la landing con el gato real de la app.
 
 | Script | Comando | Qué hace |
 | --- | --- | --- |
-| `smoke-auth.mjs` | `pnpm smoke:auth` | Dos cuentas temporales; verifica aislamiento de libros/vocab y 401 sin sesión. `SMOKE_URL` (default `http://127.0.0.1:5174`). Exporta [`waitForHealth`], [`verifyKindleLinkSmokeTest`], [`runSmokeTests`]. |
+| `smoke-auth.mjs` | `pnpm smoke:auth` | Dos cuentas temporales (plan free); verifica aislamiento de vocab y sync, 402 `LECTA_PLUS_REQUIRED` al subir/descargar libros y vincular Kindle, y 401 sin sesión. `SMOKE_URL` (default `http://127.0.0.1:5174`). Exporta [`waitForHealth`], [`verifyKindleLinkSmokeTest`], [`runSmokeTests`]. |
 | `smoke-sync.mjs` | `pnpm smoke:sync` | Contrato de sync incremental (`syncedAt`, cursor). Cuenta canónica `SMOKE_SYNC_EMAIL`. |
 | `measure-open-latency.mjs` | `pnpm measure:open` | Apertura de libro con `/api/positions` frenado. |
 | `bench-kindle.mjs` | `pnpm bench:kindle` | CPU del pipeline Kindle; `--save` → `artifacts/kindle-bench/baseline.txt`. |
