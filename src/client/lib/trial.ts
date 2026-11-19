@@ -30,9 +30,18 @@ export const TRIAL_BOOKS: Record<string, TrialBook> = {
   },
 };
 
+const TRIAL_ID = /^[a-z0-9-]{1,64}$/;
+
+/**
+ * Síncrono (se llama en el useState inicial de App): solo valida el formato
+ * y descarta los `pg-*` de Gutenberg. La existencia real del id se comprueba
+ * al abrir contra el índice del catálogo (`/api/catalog`); un id que no
+ * existe falla con 404 y cae a la bienvenida normal. Los de la allowlist
+ * llevan título y autor; los demás, el id como título provisional.
+ */
 export function parseTrialBook(value: string | null): TrialBook | null {
-  if (!value) return null;
+  if (!value || !TRIAL_ID.test(value) || value.startsWith("pg-")) return null;
   return Object.prototype.hasOwnProperty.call(TRIAL_BOOKS, value)
     ? TRIAL_BOOKS[value]!
-    : null;
+    : { id: value, title: value, author: "" };
 }

@@ -9,11 +9,17 @@ describe("parseTrialBook", () => {
     expect(parseTrialBook("christmas-carol")?.author).toBe("Charles Dickens");
   });
 
-  it("descarta lo demás, incluidas claves heredadas del prototipo", () => {
+  it("acepta cualquier id con formato válido del catálogo (se valida al abrir)", () => {
+    expect(parseTrialBook("quijote")).toEqual({ id: "quijote", title: "quijote", author: "" });
+  });
+
+  it("rechaza formato inválido y los pg-* de Gutenberg", () => {
     expect(parseTrialBook(null)).toBeNull();
     expect(parseTrialBook("")).toBeNull();
-    expect(parseTrialBook("quijote")).toBeNull();
-    expect(parseTrialBook("constructor")).toBeNull();
+    expect(parseTrialBook("pg-1342")).toBeNull();
     expect(parseTrialBook("__proto__")).toBeNull();
+    expect(parseTrialBook("../etc")).toBeNull();
+    expect(parseTrialBook("Marianela")).toBeNull();
+    expect(parseTrialBook("a".repeat(65))).toBeNull();
   });
 });

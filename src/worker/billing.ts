@@ -143,10 +143,13 @@ billing.post("/api/billing/checkout", async (c) => {
     "line_items[0][quantity]": "1",
     client_reference_id: session.user.id,
     "subscription_data[metadata][user_id]": session.user.id,
-    success_url: `${origin}/?carne=1`,
-    cancel_url: `${origin}/?carne=1`,
+    success_url: `${origin}/?carne=gracias`,
+    cancel_url: `${origin}/?carne=cancelado`,
   };
   if (plan.stripeCustomerId) form.customer = plan.stripeCustomerId;
+  // Prueba de 7 días solo para quien nunca fue cliente (mismo criterio que
+  // `trialEligible` en /api/account/state): free y sin stripe_customer_id.
+  else form["subscription_data[trial_period_days]"] = "7";
   const result = await stripeRequest(c.env, "POST", "/checkout/sessions", form);
   const url = typeof result.body.url === "string" ? result.body.url : null;
   if (!result.ok || !url) {

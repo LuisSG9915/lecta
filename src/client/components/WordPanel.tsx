@@ -2,6 +2,7 @@ import "../styles/reader.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { memo } from "react";
 import {
+  enrichWord,
   explainInPassage,
   lookupWordInMemory,
   lookupWord,
@@ -32,6 +33,7 @@ import { incrementCollectionPendingCount } from "../lib/sync-state";
 import { recordLookupLapse, recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
 import { loadNativeLanguage } from "../lib/settings";
+import { setFreeAiRemaining } from "../lib/account-plan";
 import { triggerHaptic } from "../lib/haptics";
 import { speakWord } from "../lib/speech";
 import { betaFromZipf } from "../lib/profile-models";
@@ -131,6 +133,8 @@ export interface UnifiedWordPanelProps {
   canExplain?: boolean;
   /** Cuenta free: la IA en contexto es de Lecta+ y se muestra PlanNote. */
   planLocked?: boolean;
+  /** Usos de IA de cortesía restantes del mes (solo cuentas free). */
+  freeAiRemaining?: number;
   isSavedInitial?: boolean;
   sections?: SearchSection[];
   toc?: SearchTocRow[];
@@ -186,6 +190,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   author,
   canExplain = true,
   planLocked = false,
+  freeAiRemaining,
   isSavedInitial = false,
   sections,
   toc,
@@ -375,33 +380,33 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     [cleanWord, effectiveContext, effectiveLang, cacheKey, bookTitle, author, fetchContextualMeaning],
   );
 
-  const requestAiMeaning = useCallback(
-    (lemma?: string) => {
-      setMeaningStatus("loading");
-      passageAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      passageAbortRef.current = ctrl;
-      runPassageFetch({
-        lemma,
-        signal: ctrl.signal,
-        onResult: (res) => {
-          setMeaning({ text: res.directMeaning || res.inPassageMeaning, source: "ai" });
+  // Sin definición local: /api/ai/enrich (gratis para todos), sin pasaje —
+  // enviar el contexto podría envenenar el catálogo compartido.
+  const requestAiMeaning = useCallback(() => {
+    setMeaningStatus("loading");
+    passageAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    passageAbortRef.current = ctrl;
+    void enrichWord(cleanWord, effectiveLang, undefined, captureDbScope(), loadNativeLanguage())
+      .then((res) => {
+        if (ctrl.signal.aborted) return;
+        const def = res.ok ? res.entries[0]?.senses?.[0]?.definition?.trim() : "";
+        if (def) {
+          setMeaning({ text: def, source: "ai" });
           setMeaningStatus("ready");
-          setPassageResult(res);
-        },
-        onError: (_message, code) => {
-          if (code) setPlanNoteShown(true);
-          setMeaningStatus(code ? "unavailable" : "error");
-        },
+        } else {
+          setMeaningStatus("error");
+        }
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setMeaningStatus("error");
       });
-    },
-    [runPassageFetch],
-  );
+  }, [cleanWord, effectiveLang]);
 
   // NUEVO: Handler para revelar nivel 2 (matiz contextual)
   const handleRevealPassage = () => {
     triggerHaptic(8);
-    if (planLocked) {
+    if (planLocked && freeAiRemaining === 0) {
       setPlanNoteShown(true);
       return;
     }
@@ -425,12 +430,14 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       localDefinition: localDef,
       signal: ctrl.signal,
       onResult: (res) => {
+        if (planLocked) setFreeAiRemaining(null);
         setPassageResult(res);
         setPassageState("ready");
         setDisclosureLevel(2);
       },
       onError: (message, code) => {
         if (code) {
+          if (planLocked) setFreeAiRemaining(0);
           setPlanNoteShown(true);
           setPassageState("idle");
           return;
@@ -530,15 +537,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       if (entry?.shortDefinition?.trim()) {
         setMeaning({ text: entry.shortDefinition, source: "dictionary" });
         setMeaningStatus("ready");
-      } else if (canExplain && !planLocked && aiOn) {
-        requestAiMeaning(entry?.lemma);
+      } else if (canExplain && aiOn) {
+        requestAiMeaning();
       } else {
         setMeaningStatus("unavailable");
       }
     });
 
     return () => abortCtrl.abort();
-  }, [cleanWord, effectiveLang, lookupLocalLexicon, onRecordSilentCalibration, bookHash, canExplain, planLocked, requestAiMeaning]);
+  }, [cleanWord, effectiveLang, lookupLocalLexicon, onRecordSilentCalibration, bookHash, canExplain, requestAiMeaning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1191,7 +1198,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 />
               )}
 
-              {isForeignBook && !planLocked && !quotesPlanShown && (characterCard.firstMention || characterCard.recentMention) && (
+              {isForeignBook && !quotesPlanShown && (characterCard.firstMention || characterCard.recentMention) && (
                 <div className="character-translate-action">
                   <button
                     type="button"
@@ -1282,18 +1289,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   </details>
                 )}
               </>
-            ) : planLocked ? (
-              <p className="word-card-context-fallback">
-                Esta palabra no está en el diccionario.{" "}
-                <a
-                  className="word-card-retry-link"
-                  href={`https://es.wiktionary.org/wiki/${encodeURIComponent(cleanWord)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Buscar en Wiktionary
-                </a>
-              </p>
             ) : !canExplain ? (
               <p className="word-card-context-fallback">
                 Esta palabra no está en el diccionario. Inicia sesión para que la
@@ -1313,7 +1308,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 <button
                   type="button"
                   className="word-card-retry-link"
-                  onClick={() => requestAiMeaning(localEntry?.lemma)}
+                  onClick={() => requestAiMeaning()}
                 >
                   Reintentar
                 </button>
@@ -1333,7 +1328,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 <button
                   type="button"
                   className="word-card-retry-link"
-                  onClick={() => requestAiMeaning(localEntry?.lemma)}
+                  onClick={() => requestAiMeaning()}
                 >
                   Definir con IA
                 </button>
@@ -1373,10 +1368,10 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 {renderContextQuote()}
               </blockquote>
 
-              {planNoteShown ? (
+              {planNoteShown || (planLocked && freeAiRemaining === 0) ? (
                 <PlanNote
-                  title="La explicación en contexto es de Lecta+."
-                  detail="El significado de arriba siempre es tuyo."
+                  title="Se acabaron tus usos de IA de cortesía este mes."
+                  detail="El significado de arriba siempre es tuyo; la explicación en contexto es de Lecta+."
                 />
               ) : !aiAllowed ? (
                 !canExplain ? (
@@ -1403,6 +1398,11 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                         ? "Reintentar"
                         : "¿Qué significa aquí?"}
                   </button>
+                  {planLocked && typeof freeAiRemaining === "number" && freeAiRemaining > 0 ? (
+                    <p className="word-card-context-fallback">
+                      Te quedan {freeAiRemaining} {freeAiRemaining === 1 ? "uso" : "usos"} de IA de cortesía.
+                    </p>
+                  ) : null}
                 </div>
               ) : disclosureLevel === 2 ? (
                 <div className="word-card-passage-meaning" aria-live="polite">

@@ -94,7 +94,7 @@ describe("ReaderNotices: palabras previstas en plan free (Lecta+)", () => {
       );
     });
     expect(container.querySelector(".plan-note")?.textContent).toContain(
-      "Las palabras previstas son de Lecta+.",
+      "La lista completa de palabras previstas es de Lecta+.",
     );
     act(() => {
       container.querySelector<HTMLButtonElement>("[aria-label='Cerrar aviso']")!.click();

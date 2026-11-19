@@ -10,6 +10,9 @@ import type { MarkLevel } from "./word-level";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import type { IconName } from "../components/Icon";
 
+/** `verifyError` cuando la revisión IA pide Lecta+ (la tarjeta pinta PlanNote). */
+export const VERIFY_PLAN_REQUIRED = "plan-required";
+
 export type PracticeMode =
   | "meaning"
   | "form"
@@ -73,6 +76,14 @@ export const MATCH_TANDA = 4;
 // Modos de práctica ya construidos que no caben en la fila principal
 // de «Elegir modo libre»: se despliegan con «Más formas de practicar». Todos
 // salen de reviewWords — nunca de palabras sin exponer.
+/**
+ * Modos que gastan IA o catálogo de pago: en free quedan apagados con
+ * PlanNote. El resto (hueco, descifrar, ordenar, parejas, significado,
+ * palabra, elegir, categoría) es local y libre.
+ */
+export const PLUS_ONLY_MODES: readonly PracticeMode[] = ["sense", "context", "clozeNew"];
+export const isPlusOnlyMode = (mode: PracticeMode): boolean => PLUS_ONLY_MODES.includes(mode);
+
 export const EXTRA_MODES: {
   id: PracticeMode;
   name: string;

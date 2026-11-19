@@ -14,9 +14,12 @@ export async function consumeRateUnits(
   units: number,
   limit = ENRICH_UNITS_PER_HOUR,
   scope = "enrich",
+  // Cuota con ventana propia (p. ej. el mes de la cortesía de IA): por
+  // defecto la hora natural.
+  bucketOverride?: number,
 ): Promise<boolean> {
   const now = Date.now();
-  const bucketHour = Math.floor(now / HOUR_MS);
+  const bucketHour = bucketOverride ?? Math.floor(now / HOUR_MS);
   const result = await withClient(env, (client) =>
     client.query<{ units_used: number | string }>(
       `INSERT INTO lecta_ai_quota (user_id, scope, bucket_hour, units_used, updated_at)

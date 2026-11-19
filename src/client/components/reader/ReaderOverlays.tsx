@@ -5,6 +5,7 @@ import type { DeepReadingSummary, DeepReadingConfig } from "../../lib/deep-readi
 import type { ConsolidationModality, EpisodicWordItem } from "../../lib/practice";
 import { isFeatureFlagEnabled, type StrategyPreset } from "../../lib/settings";
 import type { TtsEngineMode, TtsSnapshot } from "../../lib/ttsTypes";
+import PlanNote from "../PlanNote";
 import type { PageRecapResult } from "../../lib/page-recap";
 import type { ChapterTarget } from "../../lib/chapters";
 import type { PreparationAnswers } from "../../lib/preparation";
@@ -64,6 +65,9 @@ export interface CatPassageExplanationState {
   } | null;
   error: string | null;
 }
+
+/** Cuenta free: palabras visibles de la hoja «Antes de leer» (el resto es de Lecta+). */
+const FREE_PREP_WORDS = 3;
 
 export interface ReaderOverlaysProps {
   bookHash: string;
@@ -275,9 +279,14 @@ export function ReaderOverlays({
           bookId={bookHash}
           bookLang={language}
           analysis={prep.analysis}
-          rows={prep.rows}
-          uncertainRows={prep.uncertain}
-          deferredRows={prep.deferred}
+          rows={planLocked ? prep.rows.slice(0, FREE_PREP_WORDS) : prep.rows}
+          uncertainRows={planLocked ? [] : prep.uncertain}
+          deferredRows={planLocked ? [] : prep.deferred}
+          planHiddenCount={
+            planLocked
+              ? Math.max(0, prep.rows.length + prep.uncertain.length + prep.deferred.length - FREE_PREP_WORDS)
+              : undefined
+          }
           onRowsPresented={onRowsPresented ?? (() => {})}
           answers={prep.answers}
           saving={prep.saving}
@@ -305,6 +314,7 @@ export function ReaderOverlays({
           phrase={selection.phrase}
           canExplain={signedIn}
           planLocked={planLocked}
+          freeAiRemaining={planLocked ? userPlan?.freeAiRemaining : undefined}
           language={language}
           bookHash={bookHash}
           bookTitle={bookTitle}
@@ -356,6 +366,12 @@ export function ReaderOverlays({
             </div>
           ) : pageRecap.data ? (
             <div className="page-recap-content">
+              {pageRecap.data.planRequired ? (
+                <PlanNote
+                  title="El resumen con IA es de Lecta+."
+                  detail="Mientras tanto, este es un resumen básico del pasaje."
+                />
+              ) : null}
               <ul className="page-recap-bullets">
                 {pageRecap.data.bullets.map((b, idx) => (
                   <li key={idx} className="page-recap-bullet">

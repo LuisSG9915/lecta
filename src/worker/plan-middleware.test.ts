@@ -5,6 +5,8 @@ import {
   LECTA_PLUS_REQUIRED,
   createRequireKindlePlan,
   requireLectaPlus,
+  requireSessionWithPlan,
+  type CourtesyVariables,
   type PlanVariables,
 } from "./plan-middleware";
 
@@ -114,5 +116,38 @@ describe("requireKindlePlan", () => {
     loadUserPlanMock.mockResolvedValue(snapshot("founder_lifetime"));
     const res = await kindleApp().request("/k");
     expect(res.status).toBe(200);
+  });
+});
+
+describe("requireSessionWithPlan", () => {
+  function courtesyApp() {
+    const app = new Hono<{ Bindings: WorkerEnv; Variables: CourtesyVariables }>();
+    app.get("/ai", requireSessionWithPlan, (c) =>
+      c.json({ user: c.get("session").user.id, lectaPlus: c.get("lectaPlus") }),
+    );
+    return app;
+  }
+
+  it("sin sesión 401; sin base 503; error de base 503", async () => {
+    getSessionMock.mockResolvedValue(null);
+    expect((await courtesyApp().request("/ai")).status).toBe(401);
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(undefined);
+    expect((await courtesyApp().request("/ai")).status).toBe(503);
+    loadUserPlanMock.mockRejectedValue(new Error("pg"));
+    expect((await courtesyApp().request("/ai")).status).toBe(503);
+  });
+
+  it("free pasa (no 402) con lectaPlus=false; Lecta+ y fundador con true", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(snapshot("free"));
+    let res = await courtesyApp().request("/ai");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ user: "u1", lectaPlus: false });
+    for (const plan of ["lecta_plus", "founder_lifetime"]) {
+      loadUserPlanMock.mockResolvedValue(snapshot(plan));
+      res = await courtesyApp().request("/ai");
+      expect(await res.json()).toEqual({ user: "u1", lectaPlus: true });
+    }
   });
 });

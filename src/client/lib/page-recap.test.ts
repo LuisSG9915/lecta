@@ -73,6 +73,20 @@ describe("page-recap", () => {
     expect(res.hookQuestion).toBe("¿Cómo continúa el hilo de este pasaje?");
   });
 
+  it("402 devuelve el resumen determinista marcado planRequired; 401 authRequired", async () => {
+    const text = "Una oración lo suficientemente larga para generar una viñeta clara. Otra oración que complementa el pasaje.";
+    const spy = vi.spyOn(accountFetchModule, "accountFetch");
+    spy.mockResolvedValueOnce({ ok: false, status: 402, json: async () => ({ code: "LECTA_PLUS_REQUIRED" }) } as unknown as Response);
+    const plan = await requestPageRecap({ text });
+    expect(plan.planRequired).toBe(true);
+    expect(plan.fallback).toBe(true);
+    expect(plan.bullets.length).toBeGreaterThanOrEqual(1);
+    spy.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) } as unknown as Response);
+    const auth = await requestPageRecap({ text });
+    expect(auth.authRequired).toBe(true);
+    expect(auth.planRequired).toBeUndefined();
+  });
+
   it("requestLastPagesRecap strictly limits analysis to the last 3 pages", async () => {
     let capturedBody = "";
     vi.spyOn(accountFetchModule, "accountFetch").mockImplementationOnce(async (_url, init) => {

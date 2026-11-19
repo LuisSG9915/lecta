@@ -15,10 +15,16 @@ import {
   recordLandingEvent,
 } from "./landing-events";
 import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
-import { requireLectaPlus, type PlanVariables } from "./plan-middleware";
+import {
+  LECTA_PLUS_REQUIRED,
+  requireLectaPlus,
+  requireSessionWithPlan,
+  type PlanVariables,
+} from "./plan-middleware";
+import { consumeFreeAiCourtesy, readFreeAiRemaining, refundFreeAiCourtesy } from "./free-courtesy";
 import { billing } from "./billing";
 import { weeklyDigest } from "./weekly-digest";
-import { isStarterCoat } from "../shared/plan";
+import { hasLectaPlus, isStarterCoat } from "../shared/plan";
 import {
   CATALOG,
   findEntries,
@@ -573,7 +579,10 @@ const handleEnrich = async (context: Context<{ Bindings: WorkerEnv }>) => {
     })),
   };
 
-  if (getConnectionString(context.env)) {
+  // El catálogo es compartido por todas las cuentas: una ficha generada con
+  // `context` (texto libre del cliente que entra al prompt) nunca se persiste.
+  // Es lo más simple que protege a cualquier cuenta, también a las sin Lecta+.
+  if (!contextText && getConnectionString(context.env)) {
     try {
       const entries = await withClient(context.env, async (client) => {
         await insertEnrichment(client, language, ai.enrichment, form);
@@ -1296,6 +1305,34 @@ export interface ExplainInPassageResponse extends PassageExplanation {
   cached?: boolean;
 }
 
+// Cortesía de IA free (5 al mes, free-courtesy.ts): se descuenta DENTRO del
+// handler, solo cuando de verdad se va a llamar a la IA (tras el caché), y se
+// devuelve si la IA falla. Lecta+/fundador no consumen nada.
+const COURTESY_EXHAUSTED = {
+  error: "Agotaste tus consultas de IA gratuitas de este mes. Lecta+ las desbloquea.",
+  code: LECTA_PLUS_REQUIRED,
+} as const;
+
+type CourtesyGuard =
+  | { deny: { body: Record<string, string>; status: 402 | 503 } }
+  | { deny?: undefined; refund: () => Promise<void> };
+
+async function guardAiCourtesy(
+  env: WorkerEnv,
+  userId: string,
+  lectaPlus: boolean,
+): Promise<CourtesyGuard> {
+  if (lectaPlus) return { refund: async () => undefined };
+  let ok: boolean;
+  try {
+    ok = await consumeFreeAiCourtesy(env, userId);
+  } catch {
+    return { deny: { body: { error: "Servicio temporalmente no disponible" }, status: 503 } };
+  }
+  if (!ok) return { deny: { body: { ...COURTESY_EXHAUSTED }, status: 402 } };
+  return { refund: () => refundFreeAiCourtesy(env, userId) };
+}
+
 const explainPassageCache = createTtlCache<ExplainInPassageResponse>({
   maxEntries: 200,
   ttlMs: 15 * 60_000,
@@ -1305,7 +1342,7 @@ export function clearExplainPassageCache(): void {
   explainPassageCache.clear();
 }
 
-app.post("/api/ai/explain-in-passage", requireLectaPlus, async (context) => {
+app.post("/api/ai/explain-in-passage", requireSessionWithPlan, async (context) => {
   const body = await context.req.json().catch(() => null);
   const word = typeof body?.word === "string" ? body.word.trim().slice(0, 100) : undefined;
   const sentence =
@@ -1369,6 +1406,9 @@ app.post("/api/ai/explain-in-passage", requireLectaPlus, async (context) => {
     );
   }
 
+  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"));
+  if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
+
   const systemPrompt = isCompact
     ? buildCompactExplainPrompt({
         word: word!,
@@ -1411,6 +1451,7 @@ app.post("/api/ai/explain-in-passage", requireLectaPlus, async (context) => {
   );
 
   if (!ai.ok) {
+    await courtesy.refund();
     return context.json(
       {
         error:
@@ -1425,6 +1466,7 @@ app.post("/api/ai/explain-in-passage", requireLectaPlus, async (context) => {
   }
 
   if (!parsed) {
+    await courtesy.refund();
     return context.json({ error: "La IA no devolvió una explicación estructurada correctamente." }, 502);
   }
 
@@ -1517,7 +1559,7 @@ app.post("/api/ai/companion-note", requireLectaPlus, async (context) => {
   return context.json(parsed);
 });
 
-app.post("/api/ai/page-recap", requireLectaPlus, async (context) => {
+app.post("/api/ai/page-recap", requireSessionWithPlan, async (context) => {
   const body = await context.req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
@@ -1560,6 +1602,9 @@ app.post("/api/ai/page-recap", requireLectaPlus, async (context) => {
     );
   }
 
+  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"));
+  if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
+
   const budget = AI_TASK_BUDGETS.page_recap;
   const ai = await callDeepSeek(
     context.env,
@@ -1576,6 +1621,7 @@ app.post("/api/ai/page-recap", requireLectaPlus, async (context) => {
 
   const parsed = ai.ok ? parsePageRecap(ai.content) : null;
   if (!parsed) {
+    await courtesy.refund();
     return context.json(deterministicPageRecapFallback(text));
   }
 
@@ -1584,7 +1630,7 @@ app.post("/api/ai/page-recap", requireLectaPlus, async (context) => {
   return context.json(parsed);
 });
 
-app.post("/api/ai/translate", requireLectaPlus, async (context) => {
+app.post("/api/ai/translate", requireSessionWithPlan, async (context) => {
   const body = await context.req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   const from = typeof body?.from === "string" ? body.from : "en";
@@ -1623,6 +1669,9 @@ app.post("/api/ai/translate", requireLectaPlus, async (context) => {
     );
   }
 
+  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"));
+  if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
+
   const { prompt, budget } = buildParagraphTranslationPrompt(text);
 
   const ai = await callDeepSeek(
@@ -1642,6 +1691,8 @@ app.post("/api/ai/translate", requireLectaPlus, async (context) => {
   const translation = ai.ok && ai.content ? ai.content.trim() : text;
   if (ai.ok && ai.content) {
     setCachedAiText(cacheKey, translation);
+  } else {
+    await courtesy.refund();
   }
   return context.json({ translation });
 });
@@ -1978,7 +2029,17 @@ app.get("/api/books", async (context) => {
   // a la comunidad y `paper_only` las copias comunitarias que solo abren
   // el modo papel. Columnas 024 ausentes → mapa vacío, nada cambia.
   try {
-    const flags = await listUserBookFlags(context.env, session.user.id);
+    // Una sola consulta a user_books para flags, guías paper_only, filas de
+    // la era user-books/ y libros solo-metadatos (antes eran cuatro).
+    const summary = await listUserBooksSummary(context.env, session.user.id);
+    const flags = new Map<string, BookFlags>();
+    for (const row of summary) {
+      flags.set(String(row.book_id), {
+        shared: row.shared === true || row.shared === 1,
+        paperOnly: row.paper_only === true || row.paper_only === 1,
+        genre: String(row.genre ?? ""),
+      });
+    }
     for (const book of books) {
       const flag = flags.get(book.hash);
       if (flag?.shared) (book as { shared?: boolean }).shared = true;
@@ -1989,7 +2050,7 @@ app.get("/api/books", async (context) => {
     // en `books/{userId}/`, así que la lista de R2 no las trae. Se
     // agregan desde la fila para que la estantería las vea remotas.
     const listed = new Set(books.map((book) => book.hash));
-    for (const row of await listPaperOnlyRows(context.env, session.user.id)) {
+    for (const row of summary.filter((r) => r.paper_only === true || r.paper_only === 1)) {
       if (listed.has(row.book_id)) continue;
       books.push({
         hash: row.book_id,
@@ -2008,9 +2069,8 @@ app.get("/api/books", async (context) => {
     // Era `user-books/` (sync BYO-EPUB anterior): esas filas apuntan
     // fuera del prefijo books/{userId}/ y la lista de R2 no las trae.
     // Sin ellas la estantería se ve vacía aunque la cuenta tenga libros.
-    for (const row of await listUserBooksOutsidePrefix(
-      context.env,
-      session.user.id,
+    for (const row of summary.filter(
+      (r) => !String(r.r2_key ?? "").startsWith("books/") && r.has_file !== false,
     )) {
       if (listed.has(row.book_id)) continue;
       if (flags.get(row.book_id)?.paperOnly) continue;
@@ -2032,7 +2092,7 @@ app.get("/api/books", async (context) => {
     }
     // 027: libros propios de cuentas free (solo metadatos). Se listan con
     // hasFile: false para que el cliente pida adjuntar el archivo.
-    for (const row of await listMetaOnlyRows(context.env, session.user.id)) {
+    for (const row of summary.filter((r) => r.has_file === false)) {
       if (listed.has(row.book_id)) continue;
       const title = isHashLikeIdentifier(row.title) ? "" : row.title;
       books.push({
@@ -2561,41 +2621,55 @@ async function listUserBookFlags(
   return flags;
 }
 
-// Filas cuyo EPUB vive fuera del prefijo `books/{userId}/`: la era
-// `user-books/` del sync BYO-EPUB viejo. La lista de R2 no las alcanza,
-// así que GET /api/books las agrega como entradas remotas — sin esto la
-// cuenta se ve vacía aunque tenga libros en la nube. Las filas
-// paper_only se filtran después por flags (su r2_key es la guía).
-type UserBookRow = {
+// Fila de user_books para GET /api/books. Las columnas opcionales llegan
+// según las migraciones aplicadas (024 shared/paper_only, 025 genre, 027
+// has_file); sin ellas el campo es undefined y se trata como antes (flag
+// apagado / con archivo).
+type UserBookSummaryRow = {
   book_id: string;
   title: string;
   author: string;
   language: string;
+  r2_key: string;
+  created_at: unknown;
   updated_at: unknown;
+  shared?: unknown;
+  paper_only?: unknown;
+  genre?: unknown;
+  has_file?: unknown;
 };
 
-async function listUserBooksOutsidePrefix(
+// Reparto en JS (GET /api/books): paper_only = guías de la comunidad (la fila
+// ES la entrada remota); r2_key fuera de `books/` = la era `user-books/` del
+// sync BYO-EPUB viejo, que la lista de R2 no alcanza (sus paper_only se
+// filtran por flags); has_file = false = libros propios solo con metadatos
+// (027, plan free).
+async function listUserBooksSummary(
   env: WorkerEnv,
   userId: string,
-): Promise<UserBookRow[]> {
-  const sqlPg = `SELECT book_id, title, author, language, updated_at
-     FROM user_books WHERE user_id = $1 AND r2_key NOT LIKE 'books/%'`;
-  // 027: las filas solo de metadatos (has_file = false) no tienen archivo;
-  // sin la columna (worker antes de migrar) se reintenta sin el filtro.
-  const sqlPgFile = `${sqlPg} AND has_file = true`;
-  if (getConnectionString(env)) {
-    const res = await withClient(env, (client) =>
-      client
-        .query<UserBookRow>(sqlPgFile, [userId])
-        .catch((err: unknown) =>
-          isMissingColumnError(err)
-            ? client.query<UserBookRow>(sqlPg, [userId])
-            : Promise.reject(err),
+): Promise<UserBookSummaryRow[]> {
+  if (!getConnectionString(env)) return [];
+  const base = "book_id, title, author, language, r2_key, created_at, updated_at";
+  // De la más completa a la más antigua: una columna ausente (42703) baja un
+  // escalón. Sin ni siquiera la base → lista vacía, como antes.
+  const tiers = [
+    `${base}, shared, paper_only, genre, has_file`,
+    `${base}, shared, paper_only, genre`,
+    `${base}, shared, paper_only`,
+    base,
+  ];
+  for (const columns of tiers) {
+    try {
+      const res = await withClient(env, (client) =>
+        client.query<UserBookSummaryRow>(
+          `SELECT ${columns} FROM user_books WHERE user_id = $1`,
+          [userId],
         ),
-    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
-    // res === undefined → sin conexión pg configurada: lista vacía.
-    if (res) return res.rows;
-    if (res === null) return [];
+      );
+      return res?.rows ?? [];
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+    }
   }
   return [];
 }
@@ -2617,46 +2691,6 @@ async function readUserBookR2Key(
     if (res === null) return null;
   }
   return null;
-}
-
-// Filas paper_only del usuario: guías adjuntadas desde la comunidad.
-// No hay EPUB en su espacio R2 — la fila ES la entrada remota.
-type PaperOnlyRow = {
-  book_id: string;
-  title: string;
-  author: string;
-  language: string;
-  created_at: unknown;
-};
-
-async function listPaperOnlyRows(
-  env: WorkerEnv,
-  userId: string,
-): Promise<PaperOnlyRow[]> {
-  const sqlPg = `SELECT book_id, title, author, language, created_at
-     FROM user_books WHERE user_id = $1 AND paper_only = true`;
-  if (getConnectionString(env)) {
-    const res = await withClient(env, (client) =>
-      client.query<PaperOnlyRow>(sqlPg, [userId]),
-    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
-    return res?.rows ?? [];
-  }
-  return [];
-}
-
-// Libros propios registrados solo con metadatos (027, plan free): la fila
-// existe para que la estantería de otro dispositivo los vea, pero no hay
-// archivo. Sin la columna has_file → [].
-async function listMetaOnlyRows(env: WorkerEnv, userId: string): Promise<PaperOnlyRow[]> {
-  if (!getConnectionString(env)) return [];
-  const res = await withClient(env, (client) =>
-    client.query<PaperOnlyRow>(
-      `SELECT book_id, title, author, language, created_at
-       FROM user_books WHERE user_id = $1 AND has_file = false`,
-      [userId],
-    ),
-  ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
-  return res?.rows ?? [];
 }
 
 // Fila donante del catálogo: cualquier copia compartida del mismo
@@ -3522,6 +3556,7 @@ app.get("/api/account/state", async (context) => {
   // cliente conserva su caché; sin tabla, getUserPlan ya devuelve el
   // fail-open founder_lifetime.
   let plan: UserPlanSnapshot | null = null;
+  let freeAiLeft: number | null = null;
   try {
     if (getConnectionString(context.env)) {
       resetAt =
@@ -3529,6 +3564,9 @@ app.get("/api/account/state", async (context) => {
           const stamp = await readAccountResetAt(client, userId);
           try {
             plan = await getUserPlan(client, userId);
+            if (plan && !plan.degraded && !hasLectaPlus(plan.plan)) {
+              freeAiLeft = await readFreeAiRemaining(client, userId).catch(() => 0);
+            }
           } catch (error) {
             console.error("Error al leer el plan de la cuenta:", error);
           }
@@ -3548,6 +3586,10 @@ app.get("/api/account/state", async (context) => {
           plan: snapshot.plan,
           starterCoat: snapshot.starterCoat,
           planExpiresAt: snapshot.expiresAt,
+          // Cortesía de IA de este mes (UTC); null = sin tope (Lecta+/fundador).
+          freeAiRemaining: freeAiLeft,
+          // Prueba de 7 días disponible: plan free y nunca fue cliente en Stripe.
+          trialEligible: snapshot.plan === "free" && !snapshot.stripeCustomerId,
         }
       : {}),
   });

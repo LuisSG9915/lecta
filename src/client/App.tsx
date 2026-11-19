@@ -44,7 +44,7 @@ import { decidePendingDelete, PENDING_DELETE_KEY, clearSyncCursors } from "./lib
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { loadTtsLandingPosition } from "./lib/tts-landing";
-import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
+import { downloadCatalogEpub, listCatalog, type CatalogBook } from "./lib/catalog";
 import { parseTrialBook, type TrialBook } from "./lib/trial";
 import { isReviewDueWord } from "./lib/fsrs";
 import {
@@ -169,12 +169,18 @@ export default function App() {
     const deleted = params.get("cuenta") === "eliminada";
     const gato = params.get("gato");
     const src = params.get("src");
-    const carne = params.get("carne") === "1";
+    // 1 = abrir el Carné; gracias / cancelado = vuelta de Checkout.
+    const carneParam = params.get("carne");
+    const carne =
+      carneParam === "1" || carneParam === "gracias" || carneParam === "cancelado"
+        ? carneParam
+        : null;
+    const carneRaw = carneParam !== null;
     const probar = params.get("probar");
     if (gato) rememberStarterCoat(gato);
     rememberLandingSource(src);
     if (
-      token || urlError || deleted || gato !== null || src !== null || carne || probar !== null
+      token || urlError || deleted || gato !== null || src !== null || carneRaw || probar !== null
     ) {
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -618,6 +624,17 @@ export default function App() {
     };
   }, [library, lastReadBook, sessionUserId, dbUserId]);
 
+  // «Ver Lecta+» de PlanNote: abre Cuenta (Carné) sin desmontar el lector.
+  useEffect(() => {
+    const open = () => {
+      setShowVocabulary(false);
+      setShowJourney(false);
+      setShowAccount(true);
+    };
+    window.addEventListener("lecta:open-carne", open);
+    return () => window.removeEventListener("lecta:open-carne", open);
+  }, []);
+
   const activeNav: NavDestination = showJourney
     ? "journey"
     : showVocabulary
@@ -1043,7 +1060,7 @@ export default function App() {
       // sola vez. Al volver de Stripe Checkout (?carne=1) el webhook puede
       // llegar tarde: se consulta el plan unos segundos.
       void claimStarterCoat(sessionUserId, scope);
-      if (authLink.carne) void pollPlanUntilPlus(sessionUserId, scope);
+      if (authLink.carne === "gracias") void pollPlanUntilPlus(sessionUserId, scope);
 
       const pulled = await syncSavedWords(scope)
         .then((res) => {
@@ -1467,7 +1484,19 @@ export default function App() {
   // cuenta no hay modo prueba: el libro queda en su estantería.
   const trialBook = authLink.trial;
   const trialStarted = useRef(false);
-  const openTrialBook = useEffectEvent((item: TrialBook) => getCatalogBook(item));
+  // Título real del índice (el de la allowlist o el id solo son provisionales).
+  const [trialTitle, setTrialTitle] = useState<string | null>(null);
+  const openTrialBook = useEffectEvent(async (item: TrialBook) => {
+    // La validez del id se comprueba aquí contra el índice del catálogo
+    // (nunca contra el seed local); sin índice (offline) se intenta igual y
+    // getCatalogBook falla con 404 si no existe.
+    const index = await listCatalog(captureDbScope()).catch(() => null);
+    if (!index) return getCatalogBook(item);
+    const found = index.books.find((b) => b.id === item.id);
+    if (!found) throw new Error("trial book not in catalog");
+    setTrialTitle(found.title);
+    return getCatalogBook(found);
+  });
   useEffect(() => {
     if (trial !== "loading" || !sessionDbReady || !trialBook) return;
     if (trialStarted.current) return;
@@ -1627,6 +1656,22 @@ export default function App() {
     }
   };
 
+  // Un libro de la estantería sin archivo cuyo hash es el de un EPUB del
+  // catálogo se obtiene gratis de ahí; si no, se adjunta a mano.
+  const openCatalogOrAttach = async (item: ShelfItem) => {
+    try {
+      const index = await listCatalog(captureDbScope());
+      const match = index?.books.find((b) => b.epubSha256 === item.hash);
+      if (match) {
+        await getCatalogBook(match);
+        return;
+      }
+    } catch {
+      /* sin índice o descarga fallida: cae a adjuntar */
+    }
+    setAttachFor(item);
+  };
+
   const openShelfItem = (item: ShelfItem) => {
     // Copia comunitaria «solo papel»: el toque abre el índice del modo
     // papel — jamás el lector, aunque el archivo se descargue para el
@@ -1637,7 +1682,7 @@ export default function App() {
     }
     // Libro propio sin archivo en la nube (free, 027): se adjunta aquí.
     if (item.remoteOnly && (item.hasFile === false || planStore.get()?.plan === "free")) {
-      setAttachFor(item);
+      void openCatalogOrAttach(item);
       return;
     }
     if (item.remoteOnly) void openRemoteBook(item);
@@ -2117,7 +2162,7 @@ export default function App() {
   if (showWelcome) {
     const trialNotice =
       trial === "ended" && trialBook && !error
-        ? `Crea tu cuenta gratis para seguir leyendo «${trialBook.title}» donde te quedaste. Lo que guardaste en esta prueba pasa a tu cuenta.`
+        ? `Crea tu cuenta gratis para seguir leyendo «${trialTitle ?? trialBook.title}» donde te quedaste. Lo que guardaste en esta prueba pasa a tu cuenta.`
         : undefined;
     return (
       <>
@@ -2369,6 +2414,11 @@ export default function App() {
                       showCalibration(words, null, lang);
                     }}
                     onRestored={refreshLibrary}
+                    carneNotice={
+                      authLink.carne === "gracias" || authLink.carne === "cancelado"
+                        ? authLink.carne
+                        : undefined
+                    }
                   />
                 </Suspense>
               ) : null}

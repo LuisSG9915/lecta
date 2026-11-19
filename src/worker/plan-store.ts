@@ -1,8 +1,9 @@
 // Lectura y escritura del plan de cuenta (lecta_user_plan, migración 027).
 // Los middlewares viven aparte (plan-middleware.ts) para que las pruebas
 // puedan mockear `loadUserPlan` sin que la consulta pase por `withClient`.
-import { effectivePlan, normalizePlan, type UserPlan } from "../shared/plan";
+import { effectivePlan, hasLectaPlus, normalizePlan, type UserPlan } from "../shared/plan";
 import type { CompanionCoatId } from "../shared/companion-data";
+import { createTtlCache } from "./ai";
 import { isMissingTableError, withClient, type WorkerEnv } from "./db";
 
 type QueryClient = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
@@ -82,6 +83,21 @@ export async function getUserPlan(
   };
 }
 
+// Caché por isolate (30 s) SOLO de resultados positivos: lecta_plus o
+// founder_lifetime reales. Nunca `free` ni `degraded`: así quien acaba de
+// pagar jamás ve un 402 por una copia vieja (el único retraso posible es el
+// inverso: una baja tarda hasta 30 s en notarse). Se invalida al escribir
+// plan (Stripe), pelaje o borrar la cuenta; otros isolates caducan solos.
+const planCache = createTtlCache<UserPlanSnapshot>({ maxEntries: 500, ttlMs: 30_000 });
+
+export function invalidateUserPlan(userId: string): void {
+  planCache.delete(userId);
+}
+
+export function clearUserPlanCache(): void {
+  planCache.clear();
+}
+
 /**
  * Única puerta para middlewares y rutas. `undefined` si no hay cadena de
  * conexión (withClient no abre nada): quien llama responde 503.
@@ -90,7 +106,13 @@ export async function loadUserPlan(
   env: WorkerEnv,
   userId: string,
 ): Promise<UserPlanSnapshot | undefined> {
-  return withClient(env, (client) => getUserPlan(client, userId));
+  const hit = planCache.get(userId);
+  if (hit) return { ...hit };
+  const snapshot = await withClient(env, (client) => getUserPlan(client, userId));
+  if (snapshot && !snapshot.degraded && hasLectaPlus(snapshot.plan)) {
+    planCache.set(userId, { ...snapshot });
+  }
+  return snapshot;
 }
 
 export type StarterCoatResult = "written" | "exists" | "unavailable";
@@ -112,6 +134,7 @@ export async function setStarterCoat(
        RETURNING starter_coat`,
       [userId, coat, now],
     )) as { rows?: unknown[] };
+    invalidateUserPlan(userId);
     return (res.rows?.length ?? 0) > 0 ? "written" : "exists";
   } catch (err) {
     if (isMissingTableError(err)) return "unavailable";
@@ -155,4 +178,5 @@ export async function upsertPlanFromStripe(
       now,
     ],
   );
+  invalidateUserPlan(userId);
 }

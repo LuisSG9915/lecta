@@ -93,6 +93,20 @@ function pgQuery(sql: string, params: unknown[] = []): { rows: Record<string, un
         })),
     };
   }
+  if (text.includes("FROM user_books WHERE user_id = $1") && text.startsWith("SELECT book_id, title, author, language, r2_key")) {
+    return {
+      rows: rowsOf(params[0]).map((row) => ({
+        ...row,
+        language: row.language ?? "",
+        r2_key: row.r2_key ?? "",
+        created_at: row.created_at ?? 0,
+        updated_at: row.updated_at ?? 0,
+        shared: row.shared ?? false,
+        paper_only: row.paper_only ?? false,
+        genre: row.genre ?? "",
+      })),
+    };
+  }
   if (text.includes("r2_key NOT LIKE")) {
     return {
       rows: rowsOf(params[0])

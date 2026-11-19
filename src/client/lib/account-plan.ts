@@ -12,6 +12,10 @@ export type PlanSnapshot = {
   plan: UserPlan;
   starterCoat: CompanionCoatId | null;
   expiresAt: number | null;
+  /** Usos de IA de cortesía que le quedan este mes a una cuenta gratis. */
+  freeAiRemaining?: number;
+  /** La cuenta aún puede estrenar la prueba de 7 días de Lecta+. */
+  trialEligible?: boolean;
 };
 
 const planKey = (userId: string) => `account:plan:v1:${userId}`;
@@ -52,13 +56,23 @@ export function useUserPlan(): PlanSnapshot | null {
  */
 export function planFromAccountState(body: unknown): PlanSnapshot | null {
   if (!body || typeof body !== "object") return null;
-  const data = body as { plan?: unknown; starterCoat?: unknown; planExpiresAt?: unknown };
+  const data = body as {
+    plan?: unknown;
+    starterCoat?: unknown;
+    planExpiresAt?: unknown;
+    freeAiRemaining?: unknown;
+    trialEligible?: unknown;
+  };
   if (typeof data.plan !== "string") return null;
   const expires = Number(data.planExpiresAt);
   return {
     plan: normalizePlan(data.plan),
     starterCoat: isStarterCoat(data.starterCoat) ? data.starterCoat : null,
     expiresAt: data.planExpiresAt == null || !Number.isFinite(expires) ? null : expires,
+    ...(typeof data.freeAiRemaining === "number" && Number.isFinite(data.freeAiRemaining)
+      ? { freeAiRemaining: Math.max(0, Math.floor(data.freeAiRemaining)) }
+      : {}),
+    ...(typeof data.trialEligible === "boolean" ? { trialEligible: data.trialEligible } : {}),
   };
 }
 
@@ -86,6 +100,8 @@ export async function savePlan(userId: string, body: unknown, scope?: DbScope): 
         plan: snapshot.plan,
         starterCoat: snapshot.starterCoat,
         planExpiresAt: snapshot.expiresAt,
+        freeAiRemaining: snapshot.freeAiRemaining,
+        trialEligible: snapshot.trialEligible,
       }),
       scope,
     );
@@ -216,6 +232,19 @@ export function claimStarterCoat(
     }
   })();
   return claimInflight;
+}
+
+/**
+ * Ajusta el contador de cortesía sin esperar a la red: `n` fijo (402 → 0) o
+ * `null` para descontar uno tras una respuesta de IA correcta.
+ */
+export function setFreeAiRemaining(n: number | null): void {
+  if (!current) return;
+  const snap = current.snapshot;
+  if (snap.freeAiRemaining === undefined) return;
+  const next = n === null ? Math.max(0, snap.freeAiRemaining - 1) : Math.max(0, n);
+  if (next === snap.freeAiRemaining) return;
+  planStore.set(current.userId, { ...snap, freeAiRemaining: next });
 }
 
 /** Solo para pruebas. */

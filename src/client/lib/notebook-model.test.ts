@@ -3,6 +3,7 @@ import type { SavedWord } from "./idb";
 import {
   clozeTextFor,
   isEligible,
+  isPlusOnlyMode,
   matchesFilter,
   matchesQuery,
   searchHaystack,
@@ -175,5 +176,13 @@ describe("wordOrigin", () => {
     expect(wordOrigin(word({ bookHash: "hash-serie" }), new Map())).toBe(
       "books",
     );
+  });
+});
+
+describe("isPlusOnlyMode", () => {
+  it("solo Acepción, Contexto y Oración nueva son de Lecta+; los modos locales son libres", () => {
+    for (const m of ["sense", "context", "clozeNew"] as const) expect(isPlusOnlyMode(m)).toBe(true);
+    for (const m of ["cloze", "scramble", "syntax", "match", "meaning", "form", "choose", "grammar"] as const)
+      expect(isPlusOnlyMode(m)).toBe(false);
   });
 });

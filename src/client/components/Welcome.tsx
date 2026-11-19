@@ -5,7 +5,16 @@
 import { Companion } from "./Companion";
 import AuthForms from "./AuthForms";
 import { pendingStarterCoat } from "../lib/account-plan";
+import { TRIAL_BOOKS } from "../lib/trial";
 import { COMPANION_COATS } from "../../shared/companion-data";
+
+// Selección breve ES/EN de la allowlist de lib/trial.ts.
+const TRIAL_PICKS: { id: string; lang: string }[] = [
+  { id: "marianela", lang: "ES" },
+  { id: "lazarillo", lang: "ES" },
+  { id: "alice-wonderland", lang: "EN" },
+  { id: "christmas-carol", lang: "EN" },
+];
 
 export interface WelcomeProps {
   /** Token de restablecer contraseña (?token=). */
@@ -25,7 +34,7 @@ export default function Welcome({
   onShowLegal,
 }: WelcomeProps) {
   const coat = pendingStarterCoat() ?? "ginger";
-  const coatDef = COMPANION_COATS[coat];
+const coatDef = COMPANION_COATS[coat];
 
   return (
     <main className="welcome" aria-labelledby="welcome-title">
@@ -60,6 +69,20 @@ export default function Welcome({
             onShowLegal={onShowLegal}
           />
         )}
+        {!offline && !resetToken ? (
+          <nav className="welcome-trial" aria-label="Probar con un clásico">
+            <p className="welcome-lede">Probar con un clásico antes de crear cuenta</p>
+            <ul className="welcome-trial-list">
+              {TRIAL_PICKS.map(({ id, lang }) => (
+                <li key={id}>
+                  <a className="welcome-trial-link" href={`/?probar=${id}`}>
+                    {TRIAL_BOOKS[id]?.title ?? id} <span aria-hidden="true">· {lang}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
       </section>
     </main>
   );

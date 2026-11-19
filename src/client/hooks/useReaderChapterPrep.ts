@@ -267,10 +267,6 @@ export function useReaderChapterPrep({
   const openPrepSheet = useCallback(
     async (target: ChapterTarget, record: PreparationRecord | null) => {
       if (!isFeatureFlagEnabled("chapterPriming")) return;
-      if (planFreeRef.current) {
-        setPrepPlanNote(true);
-        return;
-      }
       const scope = captureDbScope();
       const cat = catalogRef.current;
       const analyzer = analyzerRef.current;

@@ -12,6 +12,7 @@ import {
   rememberStarterCoat,
   resetPlanStoreForTests,
   savePlan,
+  setFreeAiRemaining,
 } from "./account-plan";
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -50,6 +51,20 @@ describe("account-plan", () => {
     expect(
       planFromAccountState({ plan: "lecta_plus", starterCoat: "nope", planExpiresAt: 9 }),
     ).toEqual({ plan: "lecta_plus", starterCoat: null, expiresAt: 9 });
+  });
+
+  it("lee freeAiRemaining y trialEligible del estado y los descuenta/agota", async () => {
+    expect(
+      planFromAccountState({ plan: "free", freeAiRemaining: 5, trialEligible: true }),
+    ).toEqual({ plan: "free", starterCoat: null, expiresAt: null, freeAiRemaining: 5, trialEligible: true });
+    expect(planFromAccountState({ plan: "free", freeAiRemaining: "x" })?.freeAiRemaining).toBeUndefined();
+    await savePlan("u1", { plan: "free", freeAiRemaining: 2, trialEligible: false });
+    setFreeAiRemaining(null);
+    expect(planStore.get()?.freeAiRemaining).toBe(1);
+    setFreeAiRemaining(0);
+    expect(planStore.get()?.freeAiRemaining).toBe(0);
+    setFreeAiRemaining(null);
+    expect(planStore.get()?.freeAiRemaining).toBe(0);
   });
 
   it("savePlan publica, avisa a los suscriptores y persiste por cuenta", async () => {

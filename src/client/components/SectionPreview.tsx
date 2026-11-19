@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
+import PlanNote from "./PlanNote";
 import { triggerHaptic } from "../lib/haptics";
 import type { PreparationAnswer, PreparationAnswers } from "../lib/preparation";
 import {
@@ -82,6 +83,8 @@ export type SectionPreviewProps = {
   onStartReading?: () => void;
   onMuteForBook?: (bookId: string) => void;
   onDisableGlobally?: () => void;
+  /** Cuenta free: palabras de la lista que no se muestran (la lista completa es de Lecta+). */
+  planHiddenCount?: number;
 };
 
 const PAGE_SIZE = 8;
@@ -878,6 +881,12 @@ function FullSectionPreview(props: SectionPreviewProps) {
                 </>
               ) : null}
             </section>
+          ) : null}
+          {props.planHiddenCount && props.planHiddenCount > 0 ? (
+            <PlanNote
+              title={`Ves 3 de ${3 + props.planHiddenCount} palabras de este capítulo.`}
+              detail="La lista completa de palabras previstas es de Lecta+."
+            />
           ) : null}
           <p className="meta">
             {answered

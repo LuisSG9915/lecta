@@ -101,6 +101,8 @@ type AccountProps = {
   // Sube al cerrar la calibración: el resumen de nivel se relee sin
   // que el lector tenga que salir y volver a entrar a Cuenta.
   vocabVersion?: number;
+  // Vuelta de Stripe Checkout (?carne=gracias|cancelado): aviso en el Carné.
+  carneNotice?: "gracias" | "cancelado";
 };
 
 type VocabSummary = {
@@ -204,6 +206,7 @@ export default function Account({
   onThemeChange,
   onRestored,
   vocabVersion = 0,
+  carneNotice,
 }: AccountProps) {
   const isPage = presentation === "page";
   const companion = useCompanionSafe();
@@ -870,7 +873,7 @@ export default function Account({
       ) : null}
 
       {/* Carné de Lector: plan de la cuenta (Lecta+). */}
-      {!isPending && session?.user ? <ReaderCard plan={userPlan} /> : null}
+      {!isPending && session?.user ? <ReaderCard plan={userPlan} notice={carneNotice} /> : null}
 
       {/* Tarjeta 1: Sincronización y Modo Kindle */}
       {!isPending && session?.user ? (

@@ -692,6 +692,21 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
   /api/books(/:hash)`, `GET /api/books/:hash`, `PUT/GET
   /api/user/books/:bookId/file`), `/api/kindle/prefs` y vincular Kindle.
   Libres: `enrich*`, listas, catálogo y `PUT /api/user/books/:bookId/meta`.
+- **Cortesía de IA y prueba (2026-11-18)**: en `free`, `explain-in-passage`,
+  `page-recap` y `translate` dan **5 usos al mes UTC** (`FREE_AI_COURTESY_LIMIT`,
+  `free-courtesy.ts`, contador en `lecta_ai_quota` scope `free-courtesy`; **sin
+  migración 033**). Se descuenta en el handler solo tras fallar la caché y se
+  devuelve si la IA falla; agotada o sin tabla → 402 `LECTA_PLUS_REQUIRED`
+  (fail-closed). `/api/account/state` suma `freeAiRemaining` (null = sin tope) y
+  `trialEligible` (free y sin `stripeCustomerId`); el checkout añade
+  `trial_period_days=7` solo si `trialEligible`; `success_url` `/?carne=gracias`,
+  `cancel_url` `/?carne=cancelado`. `/api/ai/enrich` sigue libre pero no persiste
+  en el catálogo si trae `context`. `loadUserPlan` cachea 30 s **solo planes
+  positivos** (invalida en `beforeDelete`, `setStarterCoat`, webhook). Modos
+  locales del Cuaderno (cloze/scramble/syntax/match) y premios del gato
+  (no-pelaje) libres en free; sin pista IA en free. Caché L2 en R2 de IA
+  **pospuesta** (riesgo de envenenamiento y derechos). Pendiente: campo del
+  worker para distinguir «prueba activa» de suscriptor.
 - **Pruebas del worker**: mockean `loadUserPlan` de `./plan-store`
   (fundador por defecto); con `getSession` en `Once`, el middleware se lo
   come: usar `mockResolvedValue`.

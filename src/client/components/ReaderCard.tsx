@@ -20,9 +20,12 @@ const dateLabel = (ms: number) =>
 
 export default function ReaderCard({
   plan,
+  notice,
   navigate = (url: string) => window.location.assign(url),
 }: {
   plan: PlanSnapshot | null;
+  /** Vuelta de Checkout: éxito (`gracias`) o cancelación sin cargos. */
+  notice?: "gracias" | "cancelado";
   /** Inyectable en pruebas. */
   navigate?: (url: string) => void;
 }) {
@@ -61,10 +64,24 @@ export default function ReaderCard({
   };
 
   if (!plan) return null;
+  const paid = plan.plan === "lecta_plus";
 
   return (
     <section className="reader-card" aria-label="Carné de Lector">
       <p className="eyebrow">Carné de Lector</p>
+      {notice === "gracias" && paid ? (
+        <p role="status" className="status">
+          ¡Gracias! Tu prueba de Lecta+ ya está activa.
+        </p>
+      ) : notice === "gracias" ? (
+        <p role="status" className="status">
+          Gracias. Estamos confirmando tu pago; Lecta+ aparece en unos segundos.
+        </p>
+      ) : notice === "cancelado" && !paid ? (
+        <p role="status" className="status">
+          Cancelaste el pago: no se hizo ningún cargo.
+        </p>
+      ) : null}
       {plan.plan === "founder_lifetime" ? (
         <>
           <strong className="reader-card__state">Mecenas de Primera Imprenta · Acceso Vitalicio</strong>
@@ -74,7 +91,9 @@ export default function ReaderCard({
         </>
       ) : plan.plan === "lecta_plus" ? (
         <>
-          <strong className="reader-card__state">Suscriptor Lecta+</strong>
+          <strong className="reader-card__state">
+            {notice === "gracias" ? "Prueba activa de Lecta+" : "Suscriptor Lecta+"}
+          </strong>
           {plan.expiresAt ? (
             <p className="reader-card__detail">Se renueva el {dateLabel(plan.expiresAt)}.</p>
           ) : null}
@@ -109,7 +128,7 @@ export default function ReaderCard({
             disabled={busy}
             onClick={() => void go("/api/billing/checkout", { period })}
           >
-            Hacerme Lecta+
+            {plan.trialEligible ? "Hacerme Lecta+ · 7 días gratis" : "Hacerme Lecta+"}
           </button>
         </>
       )}

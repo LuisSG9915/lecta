@@ -74,4 +74,29 @@ describe("ReaderCard (Carné de Lector)", () => {
     render(null);
     expect(host.querySelector(".reader-card")).toBeNull();
   });
+
+  it("trialEligible etiqueta «7 días gratis» y sin elegibilidad no", () => {
+    render({ plan: "free", starterCoat: null, expiresAt: null, trialEligible: true });
+    expect(host.textContent).toContain("7 días gratis");
+    render({ plan: "free", starterCoat: null, expiresAt: null, trialEligible: false });
+    expect(host.textContent).not.toContain("7 días gratis");
+  });
+
+  it("vuelta de Checkout: aviso de éxito con badge de prueba y aviso sin cargos", () => {
+    act(() =>
+      root.render(
+        h(ReaderCard, {
+          plan: { plan: "lecta_plus", starterCoat: null, expiresAt: 1 },
+          notice: "gracias",
+        }),
+      ),
+    );
+    expect(host.textContent).toContain("Prueba activa de Lecta+");
+    act(() =>
+      root.render(
+        h(ReaderCard, { plan: { plan: "free", starterCoat: null, expiresAt: null }, notice: "cancelado" }),
+      ),
+    );
+    expect(host.textContent).toContain("ningún cargo");
+  });
 });

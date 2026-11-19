@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  FREE_AI_COURTESY_LIMIT,
   PLAN_GRACE_MS,
+  courtesyBucketHour,
+  freeAiRemaining,
   effectivePlan,
   hasLectaPlus,
   isStarterCoat,
@@ -42,5 +45,30 @@ describe("plan", () => {
     expect(effectivePlan("lecta_plus", now - PLAN_GRACE_MS - 1, now)).toBe("free");
     expect(effectivePlan("founder_lifetime", 0, now)).toBe("founder_lifetime");
     expect(effectivePlan("free", now + 1, now)).toBe("free");
+  });
+});
+
+describe("cortesía de IA free", () => {
+  it("el tope es 5 al mes", () => {
+    expect(FREE_AI_COURTESY_LIMIT).toBe(5);
+  });
+
+  it("courtesyBucketHour es fijo en el mes UTC y cambia el día 1 a 00:00 UTC", () => {
+    const monthStart = Date.UTC(2026, 10, 1);
+    const hours = monthStart / 3_600_000;
+    expect(courtesyBucketHour(monthStart)).toBe(hours);
+    expect(courtesyBucketHour(Date.UTC(2026, 10, 17, 13, 5))).toBe(hours);
+    expect(courtesyBucketHour(Date.UTC(2026, 10, 30, 23, 59, 59))).toBe(hours);
+    expect(courtesyBucketHour(Date.UTC(2026, 11, 1))).toBe(Date.UTC(2026, 11, 1) / 3_600_000);
+    expect(courtesyBucketHour(monthStart - 1)).toBe(Date.UTC(2026, 9, 1) / 3_600_000);
+  });
+
+  it("freeAiRemaining nunca es negativo y trata basura como agotada", () => {
+    expect(freeAiRemaining(0)).toBe(5);
+    expect(freeAiRemaining(2)).toBe(3);
+    expect(freeAiRemaining(5)).toBe(0);
+    expect(freeAiRemaining(9)).toBe(0);
+    expect(freeAiRemaining(-3)).toBe(5);
+    expect(freeAiRemaining(Number.NaN)).toBe(0);
   });
 });

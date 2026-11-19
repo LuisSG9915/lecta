@@ -6,6 +6,10 @@ export interface PageRecapResult {
   bullets: string[];
   hookQuestion: string;
   fallback?: boolean;
+  /** 402: el resumen con IA es de Lecta+ (o se acabó la cortesía); `bullets` es el determinista. */
+  planRequired?: boolean;
+  /** 401: sin sesión; `bullets` es el determinista. */
+  authRequired?: boolean;
 }
 
 export interface SceneReturnRecap {
@@ -133,6 +137,12 @@ export async function requestPageRecap(
       },
       scope,
     );
+    if (res.status === 402) {
+      return { ...deterministicPageRecapFallback(text), planRequired: true };
+    }
+    if (res.status === 401) {
+      return { ...deterministicPageRecapFallback(text), authRequired: true };
+    }
     if (!res.ok) {
       return deterministicPageRecapFallback(text);
     }

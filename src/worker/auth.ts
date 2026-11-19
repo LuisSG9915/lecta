@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { magicLink } from "better-auth/plugins";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
+import { invalidateUserPlan } from "./plan-store";
 import { cancelBillingForDeletion } from "./stripe";
 import {
   getConnectionString,
@@ -151,6 +152,7 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
           // la persona no queda pagando una cuenta que ya no existe.
           await cancelBillingForDeletion(env, user.id);
           await purgeUserData(env, user.id);
+          invalidateUserPlan(user.id);
         },
       },
     },

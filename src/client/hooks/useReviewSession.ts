@@ -52,6 +52,8 @@ import {
   GRADES,
   clozeTextFor,
   isEligible,
+  isPlusOnlyMode,
+  VERIFY_PLAN_REQUIRED,
 } from "../lib/notebook-model";
 
 
@@ -309,10 +311,10 @@ export function useReviewSession({
 
   const startPractice = async (chosen: PracticeMode) => {
     setPracticeNote("");
-    // Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): en free los modos
-    // libres no arman cola ni piden ítems; «Repasar» no pasa por aquí.
-    if (userPlan?.plan === "free") {
-      setPracticeNote("Los modos libres son de Lecta+.");
+    // Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): en free solo Acepción,
+    // Contexto y Oración nueva quedan fuera; «Repasar» no pasa por aquí.
+    if (userPlan?.plan === "free" && isPlusOnlyMode(chosen)) {
+      setPracticeNote("Este modo es de Lecta+.");
       return;
     }
     // Con la IA apagada estos modos no pueden armar cola (fetchItems
@@ -659,7 +661,7 @@ export function useReviewSession({
     if (writeItemRef.current !== item) return;
     setVerifying(false);
     if (!result.ok) {
-      setVerifyError(result.error);
+      setVerifyError(result.planRequired ? VERIFY_PLAN_REQUIRED : result.error);
       return;
     }
     setVerifyResult({ correct: result.correct, feedback: result.feedback });

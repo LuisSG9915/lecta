@@ -94,4 +94,19 @@ describe("AuthForms", () => {
     expect(translateAuthError("Invalid email or password")).toBe("Correo o contraseña incorrectos.");
     expect(translateAuthError(undefined)).toBe("No se pudo completar la acción.");
   });
+
+  it("ofrece probar un clásico (?probar=<id>) salvo sin red o al restablecer", () => {
+    act(() => root.render(h(Welcome, { offline: false })));
+    const links = [...host.querySelectorAll<HTMLAnchorElement>(".welcome-trial-link")];
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/?probar=marianela",
+      "/?probar=lazarillo",
+      "/?probar=alice-wonderland",
+      "/?probar=christmas-carol",
+    ]);
+    act(() => root.render(h(Welcome, { offline: true })));
+    expect(host.querySelector(".welcome-trial")).toBeNull();
+    act(() => root.render(h(Welcome, { offline: false, resetToken: "t1" })));
+    expect(host.querySelector(".welcome-trial")).toBeNull();
+  });
 });

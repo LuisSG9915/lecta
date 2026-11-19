@@ -852,7 +852,7 @@ export async function answerItem(
 
 export type VerifyResult =
   | { ok: true; correct: boolean; feedback: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; planRequired?: boolean };
 
 // Corrección IA de la oración que escribe el usuario (ejercicio
 // «write»). Solo viajan la forma, el sentido esperado y el texto —
@@ -875,11 +875,14 @@ export async function verifySentence(
       },
       scope,
     );
-    const data = (await response.json()) as {
+    const data = (await response.json().catch(() => ({}))) as {
       correct?: boolean;
       feedback?: string;
       error?: string;
+      code?: string;
     };
+    if (response.status === 402 && data.code === "LECTA_PLUS_REQUIRED")
+      return { ok: false, error: "Requiere Lecta+.", planRequired: true };
     if (!response.ok)
       return { ok: false, error: data.error ?? "No se pudo revisar la oración." };
     return {

@@ -59,6 +59,19 @@ const click = (label: string) =>
     );
   });
 
+describe("SectionPreview · cuenta free", () => {
+  it("planHiddenCount pinta PlanNote con el total real y la lista completa es de Lecta+", () => {
+    render(base({ planHiddenCount: 9 }));
+    expect(host.querySelector(".plan-note")?.textContent).toContain("Ves 3 de 12 palabras");
+    expect(host.querySelector(".plan-note")?.textContent).toContain("Lecta+");
+  });
+
+  it("sin planHiddenCount no hay nota", () => {
+    render(base());
+    expect(host.querySelector(".plan-note")).toBeNull();
+  });
+});
+
 describe("SectionPreview", () => {
   it("tres estados: conocer, desconocer y pendiente se reportan explícitos", () => {
     const props = base();

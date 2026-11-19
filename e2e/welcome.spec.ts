@@ -14,4 +14,15 @@ test.describe("Bienvenida sin sesión", () => {
     expect(new URL(page.url()).search).toBe("");
     expect(await page.evaluate(() => localStorage.getItem("lecta:gato"))).toBe("calico");
   });
+
+  test("ofrece «Probar con un clásico» con enlaces ?probar=<id>", async ({ page }) => {
+    await page.route("**/api/auth/get-session", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "null" }),
+    );
+    await page.goto("/");
+    await expect(page.locator(".welcome")).toBeVisible({ timeout: 10_000 });
+    const links = page.locator(".welcome-trial-link");
+    await expect(links).toHaveCount(4);
+    await expect(links.first()).toHaveAttribute("href", "/?probar=marianela");
+  });
 });

@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-19T02:32:17.581Z
+Generado: 2026-11-19T03:00:59.615Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `80a784e50825f347add01a30ffafdee74057c48e`
+Commit: `cf47974e412846dc4242ea1a84c63079019eeab8`
 Red: no (solo forma de las referencias)
 
 **Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
@@ -131,11 +131,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
@@ -146,8 +146,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/components/Reader.tsx","line":3979,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ❌ **FAIL** · code-anchor: src/client/components/WordPanel.tsx:764-794 no contiene /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","asked":779,"excerpt":["764:       } catch {","765:         savedRef.current = false;","766:         setIsSaved(false);","767:         setSprouted(false);","768:         return null;","769:       } finally {","770:         saveInFlightRef.current = null;","771:         setSaving(false);","772:       }","773:     })();","774: ","775:     saveInFlightRef.current = work;","776:     await work;","777:   };","778: ","779:   const handl…`
+- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:814 coincide con /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","line":814,"text":"{ award: false },"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:53 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":53,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -232,8 +232,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:241 coincide con /const completeChapterTo/
   - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":241,"text":"const completeChapterTo = useCallback("}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:711 coincide con /await grade\(item, wrongs/
-  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":711,"text":"const saved = await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:713 coincide con /await grade\(item, wrongs/
+  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":713,"text":"const saved = await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -313,11 +313,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia lally2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1002/ejsp.674","url":null}`
 
-### ⚠️ H8-sin-medicion — Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación
+### ❌ H8-sin-medicion — Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación
 
 > No hay ninguna medida objetiva de comprensión lectora. La retención del vocabulario sí se calcula (tasa de acierto y palabras con memoria estimada de 7 y 30 días) y al cerrar cada capítulo el lector puede anotar si seguió el hilo; esa autoevaluación se muestra como valoración propia, no como comprensión medida.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-27): MATIZADA** — La comprensión lectora sigue sin medida objetiva. Hay autoevaluación de un toque al cerrar capítulo, guardada por cuenta y mostrada como valoración propia, y la retención de vocabulario (7 y 30 días) ya tiene métrica real. El «Chequeo 30 días» solo ofrece palabras con 30 o más días desde su último repaso. La medida objetiva de comprensión queda pospuesta hasta tener datos de uso.
 - evidencia: `src/client/lib/chapter-follow.ts`
@@ -333,12 +333,12 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /postTest|delayedRecall/ no aparece en src
 - ✅ **PASS** · code-anchor: src/client/lib/journey.ts:93 coincide con /export function computeRetentionSummary/
   - observado: `{"file":"src/client/lib/journey.ts","line":93,"text":"export function computeRetentionSummary("}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:450 coincide con /const startRetentionCheck30d/
-  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":450,"text":"const startRetentionCheck30d = () => {"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:452 coincide con /const startRetentionCheck30d/
+  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":452,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
-- ✅ **PASS** · code-anchor: src/client/lib/notebook-model.ts:207 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
-  - observado: `{"file":"src/client/lib/notebook-model.ts","line":207,"text":"export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
+- ❌ **FAIL** · code-anchor: src/client/lib/notebook-model.ts:204-210 no contiene /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
+  - observado: `{"file":"src/client/lib/notebook-model.ts","asked":207,"excerpt":["204: };","205: ","206: export const STATE_RANK: Record<string, number> = { due: 0, new: 1, learning: 2, settled: 3 };","207: ","208: export const matchesFilter = (","209:   word: SavedWord,","210:   filter: FilterId,"]}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)

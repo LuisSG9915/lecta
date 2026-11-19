@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-19T02:32:17.581Z",
+  "generatedAt": "2026-11-19T03:00:59.615Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "80a784e50825f347add01a30ffafdee74057c48e",
+  "commit": "cf47974e412846dc4242ea1a84c63079019eeab8",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -538,44 +538,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/WordPanel.tsx:764-794 no contiene /award: false/",
+          "status": "PASS",
+          "detail": "src/client/components/WordPanel.tsx:814 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "asked": 779,
-            "excerpt": [
-              "764:       } catch {",
-              "765:         savedRef.current = false;",
-              "766:         setIsSaved(false);",
-              "767:         setSprouted(false);",
-              "768:         return null;",
-              "769:       } finally {",
-              "770:         saveInFlightRef.current = null;",
-              "771:         setSaving(false);",
-              "772:       }",
-              "773:     })();",
-              "774: ",
-              "775:     saveInFlightRef.current = work;",
-              "776:     await work;",
-              "777:   };",
-              "778: ",
-              "779:   const handleQuickKnown = async () => {",
-              "780:     // Una palabra del Cuaderno no se declara «conocida» encima de su",
-              "781:     // tarjeta: eso lo decide el repaso.",
-              "782:     if (saving || savedRef.current) return;",
-              "783:     setSaving(true);",
-              "784:     triggerHaptic(10);",
-              "785:     try {",
-              "786:       const scope = captureDbScope();",
-              "787:       const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();",
-              "788:       const row = await saveKnowledge(",
-              "789:         {",
-              "790:           language: effectiveLang,",
-              "791:           lemma,",
-              "792:           known: true,",
-              "793:           source: \"declared\",",
-              "794:           status: \"known\","
-            ]
+            "line": 814,
+            "text": "{ award: false },"
           }
         },
         {
@@ -921,10 +889,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReviewSession.ts:711 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/hooks/useReviewSession.ts:713 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 711,
+            "line": 713,
             "text": "const saved = await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1243,7 +1211,7 @@
       "title": "Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación",
       "statement": "No hay ninguna medida objetiva de comprensión lectora. La retención del vocabulario sí se calcula (tasa de acierto y palabras con memoria estimada de 7 y 30 días) y al cerrar cada capítulo el lector puede anotar si seguió el hilo; esa autoevaluación se muestra como valoración propia, no como comprensión medida.",
       "section": "H8",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-27",
@@ -1258,7 +1226,7 @@
           "src/client/lib/notebook-model.ts"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -1292,10 +1260,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReviewSession.ts:450 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/hooks/useReviewSession.ts:452 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 450,
+            "line": 452,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1311,12 +1279,20 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/lib/notebook-model.ts:207 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "status": "FAIL",
+          "detail": "src/client/lib/notebook-model.ts:204-210 no contiene /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/lib/notebook-model.ts",
-            "line": 207,
-            "text": "export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
+            "asked": 207,
+            "excerpt": [
+              "204: };",
+              "205: ",
+              "206: export const STATE_RANK: Record<string, number> = { due: 0, new: 1, learning: 2, settled: 3 };",
+              "207: ",
+              "208: export const matchesFilter = (",
+              "209:   word: SavedWord,",
+              "210:   filter: FilterId,"
+            ]
           }
         },
         {

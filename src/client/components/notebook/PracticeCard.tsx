@@ -16,8 +16,10 @@ import {
   MODES,
   EXERCISE_MODES,
   GRADES,
+  VERIFY_PLAN_REQUIRED,
 } from "../../lib/notebook-model";
 import { PracticeContext } from "../PracticeContext";
+import PlanNote from "../PlanNote";
 import { PracticeCompanionHeader } from "../PracticeCompanionHeader";
 import { WordScrambleGame } from "../WordScrambleGame";
 import { GrammarGame } from "../GrammarGame";
@@ -329,7 +331,12 @@ export function PracticeCard({
               {verifyResult.feedback}
             </p>
           ) : null}
-          {verifyError ? (
+          {verifyError === VERIFY_PLAN_REQUIRED ? (
+            <PlanNote
+              title="Comprobar con IA es de Lecta+."
+              detail="Califica tu oración tú mismo, justo debajo."
+            />
+          ) : verifyError ? (
             <p className="status" role="alert">
               {verifyError}
             </p>

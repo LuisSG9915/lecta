@@ -30,11 +30,16 @@ const render = (locked: boolean) => {
 };
 
 describe("FreeModes y Lecta+", () => {
-  it("en free los modos se ven apagados con la nota de Lecta+", () => {
+  it("en free solo Acepción, Contexto, Oración nueva y el Taller se apagan, con nota de Lecta+", () => {
     const { host, root } = render(true);
-    const buttons = host.querySelectorAll<HTMLButtonElement>(".nb-free-mode-card");
-    expect(buttons.length).toBeGreaterThan(0);
-    expect(Array.from(buttons).every((b) => b.disabled)).toBe(true);
+    const byName = (name: string) =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>(".nb-free-mode-card")).find((b) =>
+        b.querySelector(".nb-free-mode-name")?.textContent === name,
+      )!;
+    for (const name of ["Hueco en el Libro", "Sílabas de Tinta", "Telar de Frases", "Parejas"])
+      expect(byName(name).disabled).toBe(false);
+    for (const name of ["Acepción", "Contexto", "Oración nueva", "Taller con el Gato IA"])
+      expect(byName(name).disabled).toBe(true);
     expect(host.querySelector(".plan-note")?.textContent).toContain("Lecta+");
     act(() => root.unmount());
   });

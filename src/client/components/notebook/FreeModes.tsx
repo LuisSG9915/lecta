@@ -3,6 +3,7 @@
 import {
   type PracticeMode,
   EXTRA_MODES,
+  isPlusOnlyMode,
 } from "../../lib/notebook-model";
 
 
@@ -21,7 +22,7 @@ type FreeModesProps = {
   practiceNote: string;
   onStartPractice: (mode: PracticeMode) => void | Promise<void>;
   onToggleWorkshop: () => void;
-  /** Cuenta free: los modos libres son de Lecta+ (se ven apagados con nota). */
+  /** Cuenta free: sólo Acepción, Contexto, Oración nueva y el Taller IA son de Lecta+ (apagados con nota). */
   locked?: boolean;
 };
 
@@ -42,7 +43,7 @@ export function FreeModes({
           type="button"
           className="nb-free-mode-card"
           onClick={() => void onStartPractice("cloze")}
-          disabled={locked || eligibleCount.cloze === 0}
+          disabled={eligibleCount.cloze === 0}
           title="Hueco en el Libro · Contexto rápido"
         >
           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="book" size={16} /></span>
@@ -56,7 +57,7 @@ export function FreeModes({
           type="button"
           className="nb-free-mode-card"
           onClick={() => void onStartPractice("scramble")}
-          disabled={locked || eligibleCount.scramble === 0}
+          disabled={eligibleCount.scramble === 0}
           title="Sílabas de Tinta · Descifrar palabra"
         >
           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="sparkles" size={16} /></span>
@@ -70,7 +71,7 @@ export function FreeModes({
           type="button"
           className="nb-free-mode-card"
           onClick={() => void onStartPractice("syntax")}
-          disabled={locked || eligibleCount.syntax === 0}
+          disabled={eligibleCount.syntax === 0}
           title="Telar de Frases · Ordenar oración"
         >
           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="strategy" size={16} /></span>
@@ -84,7 +85,7 @@ export function FreeModes({
           type="button"
           className="nb-free-mode-card"
           onClick={() => void onStartPractice("match")}
-          disabled={locked || eligibleCount.match === 0}
+          disabled={eligibleCount.match === 0}
           title="Parejas · Une cada palabra con su significado"
         >
           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="bookmark" size={16} /></span>
@@ -114,7 +115,7 @@ export function FreeModes({
               type="button"
               className="nb-free-mode-card"
               onClick={() => void onStartPractice(id)}
-              disabled={locked || eligibleCount[id] === 0}
+              disabled={(locked && isPlusOnlyMode(id)) || eligibleCount[id] === 0}
               title={`${name} · ${hint}`}
             >
               <span className="nb-free-mode-icon" aria-hidden="true"><Icon name={icon} size={16} /></span>
@@ -127,8 +128,8 @@ export function FreeModes({
       </div>
       {locked ? (
         <PlanNote
-          title="Los modos libres son de Lecta+."
-          detail="Tu repaso diario y tu Herbario siguen aquí, sin límite."
+          title="Acepción, Contexto, Oración nueva y el Taller son de Lecta+."
+          detail="Los demás modos, tu repaso diario y tu Herbario siguen aquí, sin límite."
         />
       ) : reviewWordCount === 0 ? (
         // Todos los botones quedan deshabilitados: se explica por qué.

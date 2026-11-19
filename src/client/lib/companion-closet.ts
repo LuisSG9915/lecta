@@ -270,15 +270,26 @@ export function starterArticleFor(coat: string | null | undefined): string | nul
   return def?.articleId ?? null;
 }
 
+const COAT_ARTICLES: ReadonlySet<string> = new Set(
+  Object.values(COMPANION_COATS).map((coat) => (coat as { articleId: string }).articleId),
+);
+
+// ¿Es el artículo de uno de los pelajes? (cambiar de pelaje es de Lecta+).
+export const isCoatArticle = (article: string): boolean => COAT_ARTICLES.has(article);
+
 // Lo que el plan deja usar del inventario: el pelaje inicial siempre; en
-// free, solo el chaleco y ese pelaje (lo ganado se conserva pero no se usa).
+// free, además el chaleco y todo accesorio que no sea pelaje y ya sea suyo
+// (cambiar entre los 5 pelajes es de Lecta+).
 export function planOwnedArticles(
   owned: ReadonlySet<string>,
   ctx?: ClosetPlanContext,
 ): Set<string> {
   const starter = ctx?.starterArticle ?? null;
   if (ctx?.plan === "free") {
-    return new Set(starter ? ["chaleco", starter] : ["chaleco"]);
+    const usable = new Set<string>(["chaleco"]);
+    for (const article of owned) if (!isCoatArticle(article)) usable.add(article);
+    if (starter) usable.add(starter);
+    return usable;
   }
   const result = new Set(owned);
   if (starter) result.add(starter);
@@ -295,7 +306,7 @@ export function closetRequirement(
   ctx?: ClosetPlanContext,
 ): ClosetRequirement | null {
   if (ctx?.starterArticle && article === ctx.starterArticle) return null;
-  if (ctx?.plan === "free" && article !== "chaleco") {
+  if (ctx?.plan === "free" && isCoatArticle(article)) {
     return { kind: "plan", text: "Lecta+", ratio: 0 };
   }
   if (owned.has(article)) return null;

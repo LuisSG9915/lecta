@@ -11,6 +11,8 @@ import { getSession } from "./session";
 export type Session = NonNullable<Awaited<ReturnType<typeof getSession>>>;
 export type PlanVariables = { session: Session };
 
+export type CourtesyVariables = PlanVariables & { lectaPlus: boolean };
+
 export const LECTA_PLUS_REQUIRED = "LECTA_PLUS_REQUIRED";
 export const LECTA_PLUS_ERROR = "Esta función es de Lecta+.";
 const STORAGE_UNCONFIGURED = "El almacenamiento no está configurado.";
@@ -37,6 +39,30 @@ export const requireLectaPlus = createMiddleware<{
     return c.json({ error: LECTA_PLUS_ERROR, code: LECTA_PLUS_REQUIRED }, 402);
   }
   c.set("session", session);
+  await next();
+});
+
+/**
+ * Para las rutas de IA con cortesía free: exige sesión pero NO bloquea a las
+ * cuentas sin Lecta+. Deja `session` y `lectaPlus` en c.get: el handler
+ * descuenta la cortesía solo si hace falta llamar a la IA. Mismos 401/503
+ * que requireLectaPlus.
+ */
+export const requireSessionWithPlan = createMiddleware<{
+  Bindings: WorkerEnv;
+  Variables: CourtesyVariables;
+}>(async (c, next) => {
+  const session = await getSession(c);
+  if (!session?.user?.id) return c.json({ error: "No autorizado" }, 401);
+  let snapshot;
+  try {
+    snapshot = await loadUserPlan(c.env, session.user.id);
+  } catch {
+    return c.json({ error: STORAGE_UNAVAILABLE }, 503);
+  }
+  if (!snapshot) return c.json({ error: STORAGE_UNCONFIGURED }, 503);
+  c.set("session", session);
+  c.set("lectaPlus", hasLectaPlus(snapshot.plan));
   await next();
 });
 

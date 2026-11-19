@@ -252,7 +252,8 @@ export function Vocabulary({
   // queda en autocalificación directa.
   const hasSession = Boolean(getActiveUserId());
   // La pista del gato llama a la IA: pide sesión y la preferencia «Usar IA».
-  const canHint = hasSession && useAi;
+  // En free no hay pista: llama a /api/lexicon/explain (Lecta+) y daría 402.
+  const canHint = hasSession && useAi && userPlan?.plan !== "free";
   // Todo lo que pregunta (la sesión y los modos libres) sale de aquí: solo
   // palabras que ya pasaron por la ficha o por un repaso real. Depende de la
   // hora, así que se calcula en cada render.

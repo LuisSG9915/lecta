@@ -206,6 +206,10 @@ vi.mock("./lib/vocab", () => ({ syncSavedWords: vi.fn(async () => undefined) }))
 // «Probar con un clásico»: la descarga devuelve un EPUB real mínimo.
 vi.mock("./lib/catalog", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/catalog")>()),
+  listCatalog: vi.fn(async () => ({
+    bookCount: 1,
+    books: [{ id: "marianela", gutenbergId: 1, title: "Marianela", author: "Galdós", language: "es", cover: false }],
+  })),
   downloadCatalogEpub: vi.fn(
     async () =>
       new File([readFileSync("fixtures/minimal.epub")], "Marianela.epub", {
@@ -547,7 +551,7 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
     );
   });
 
-  it("?probar= con un libro fuera de la lista muestra la bienvenida", async () => {
+  it("?probar= con un id que no está en el índice del catálogo muestra la bienvenida", async () => {
     vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
     window.history.replaceState({}, "", "/?probar=quijote");
     renderRoot();
@@ -571,6 +575,27 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
     await flush();
     const nav = host.querySelector("nav.app-nav");
     const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
+    expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it.each(["gracias", "cancelado"])("?carne=%s abre «Tú» y limpia la URL", async (value) => {
+    window.history.replaceState({}, "", `/?carne=${value}`);
+    renderRoot();
+    await flush();
+    const accountBtn = host.querySelector<HTMLButtonElement>('nav.app-nav [data-dest="account"]');
+    expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+    expect(window.location.search).toBe("");
+  });
+
+  it("el evento lecta:open-carne abre «Tú» sin recargar", async () => {
+    renderRoot();
+    await flush();
+    const accountBtn = host.querySelector<HTMLButtonElement>('nav.app-nav [data-dest="account"]');
+    expect(accountBtn?.getAttribute("aria-current")).toBeNull();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("lecta:open-carne"));
+    });
+    await flush();
     expect(accountBtn?.getAttribute("aria-current")).toBe("page");
   });
 });

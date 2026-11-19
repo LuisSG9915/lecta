@@ -197,6 +197,25 @@ describe("lexicon language learning and AI endpoints", () => {
   });
 });
 
+describe("verifySentence · plan", () => {
+  it("402 LECTA_PLUS_REQUIRED devuelve planRequired (sin error crudo)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ code: "LECTA_PLUS_REQUIRED", error: "Lecta+" }), { status: 402 }),
+      ),
+    );
+    const result = await verifySentence("wander", "vagar", "I wander.", undefined, "en", "es");
+    expect(result).toMatchObject({ ok: false, planRequired: true });
+  });
+
+  it("otro error no marca planRequired", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "boom" }), { status: 500 })));
+    const result = await verifySentence("wander", "vagar", "I wander.", undefined, "en", "es");
+    expect(result).toEqual({ ok: false, error: "boom" });
+  });
+});
+
 describe("reportShownSense", () => {
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

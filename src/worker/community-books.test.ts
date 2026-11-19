@@ -618,10 +618,8 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
     mockBucket.list = vi.fn(async () => ({ objects: [] }));
     stubDb(async (sql: string) => {
       if (sql.includes("reset_at")) return { rows: [{ reset_at: 0 }] };
-      if (sql.includes("book_id, shared, paper_only")) {
-        return { rows: [{ book_id: minimalHash, shared: false, paper_only: true }] };
-      }
-      if (sql.includes("AND paper_only = true")) {
+      // Una sola consulta de resumen (listUserBooksSummary).
+      if (sql.includes("FROM user_books WHERE user_id")) {
         return {
           rows: [
             {
@@ -629,7 +627,11 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
               title: "El Quijote",
               author: "Cervantes",
               language: "es",
+              r2_key: "",
               created_at: 1000,
+              updated_at: 1000,
+              shared: false,
+              paper_only: true,
             },
           ],
         };
@@ -665,8 +667,22 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
     }));
     stubDb(async (sql: string) => {
       if (sql.includes("reset_at")) return { rows: [{ reset_at: 0 }] };
-      if (sql.includes("book_id, shared, paper_only")) {
-        return { rows: [{ book_id: minimalHash, shared: true, paper_only: false }] };
+      if (sql.includes("FROM user_books WHERE user_id")) {
+        return {
+          rows: [
+            {
+              book_id: minimalHash,
+              title: "Mi libro",
+              author: "",
+              language: "es",
+              r2_key: `books/user-flags/${minimalHash}.epub`,
+              created_at: 1000,
+              updated_at: 1000,
+              shared: true,
+              paper_only: false,
+            },
+          ],
+        };
       }
       return { rows: [] };
     });

@@ -147,7 +147,41 @@ describe("POST /api/billing/checkout", () => {
     expect(form.get("client_reference_id")).toBe("u1");
     expect(form.get("subscription_data[metadata][user_id]")).toBe("u1");
     expect(form.get("customer")).toBe("cus_9");
+    // Ya fue cliente: sin prueba.
+    expect(form.has("subscription_data[trial_period_days]")).toBe(false);
+    expect(form.get("success_url")).toBe("http://localhost/?carne=gracias");
+    expect(form.get("cancel_url")).toBe("http://localhost/?carne=cancelado");
     expect((init.headers as Record<string, string>)["stripe-version"]).toBe("2025-03-31.basil");
+  });
+});
+
+describe("prueba de 7 días", () => {
+  it("free sin stripe_customer_id lleva trial_period_days=7", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(plan());
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
+    await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "monthly" }) },
+      env,
+    );
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const form = new URLSearchParams(String(init.body));
+    expect(form.get("subscription_data[trial_period_days]")).toBe("7");
+    expect(form.has("customer")).toBe(false);
+  });
+
+  it("el portal conserva /?carne=1 como return_url", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(plan({ stripeCustomerId: "cus_1" }));
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ url: "https://billing.stripe.com/p" }));
+    await app.request("/api/billing/portal", { method: "POST" }, env);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new URLSearchParams(String(init.body)).get("return_url")).toBe("http://localhost/?carne=1");
   });
 });
 

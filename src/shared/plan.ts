@@ -36,3 +36,27 @@ export function effectivePlan(
   if (expiresAt == null || !Number.isFinite(expiresAt)) return plan;
   return expiresAt + PLAN_GRACE_MS < now ? "free" : plan;
 }
+
+/** Consultas de IA de cortesía al mes (calendario UTC) para cuentas free. */
+export const FREE_AI_COURTESY_LIMIT = 5;
+
+/** Alcance en `lecta_ai_quota` donde se cuenta la cortesía (sin migración). */
+export const FREE_AI_COURTESY_SCOPE = "free-courtesy";
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * `bucket_hour` fijo del mes UTC de `now`: el inicio del mes expresado en
+ * horas desde la época (la unidad que usa `lecta_ai_quota`). Todas las
+ * consultas del mes comparten fila; el 1.º a 00:00 UTC arranca otra.
+ */
+export function courtesyBucketHour(now: number): number {
+  const d = new Date(now);
+  return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / HOUR_MS);
+}
+
+/** Cortesías que quedan dado lo usado este mes (nunca negativo). */
+export function freeAiRemaining(used: number): number {
+  const n = Number.isFinite(used) ? Math.floor(used) : FREE_AI_COURTESY_LIMIT;
+  return Math.max(0, FREE_AI_COURTESY_LIMIT - Math.max(0, n));
+}

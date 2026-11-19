@@ -302,6 +302,52 @@ describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () =>
     expect(((await res.json()) as { plan: string }).plan).toBe("free");
   });
 
+  it("account/state free: freeAiRemaining = 5 menos lo usado este mes y trialEligible", async () => {
+    await mockSession();
+    await mockDb((sql, params) => {
+      if (sql.includes("lecta_ai_quota")) {
+        expect(params?.[1]).toBe("free-courtesy");
+        return { rows: [{ units_used: "2" }] };
+      }
+      return { rows: [] };
+    });
+    const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ plan: "free", freeAiRemaining: 3, trialEligible: true });
+  });
+
+  it("account/state free sin tabla de cuota: 0 restantes (cerrada)", async () => {
+    await mockSession();
+    await mockDb((sql) => {
+      if (sql.includes("lecta_ai_quota")) throw Object.assign(new Error("x"), { code: "42P01" });
+      return { rows: [] };
+    });
+    const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body.freeAiRemaining).toBe(0);
+  });
+
+  it("account/state free con stripe_customer_id: trialEligible false", async () => {
+    await mockSession();
+    await mockDb((sql) =>
+      sql.includes("lecta_user_plan")
+        ? { rows: [{ plan: "free", stripe_customer_id: "cus_1" }] }
+        : { rows: [] },
+    );
+    const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body.trialEligible).toBe(false);
+  });
+
+  it("account/state Lecta+/fundador: freeAiRemaining null, sin consultar la cuota", async () => {
+    await mockSession();
+    const query = await mockDb((sql) =>
+      sql.includes("lecta_user_plan")
+        ? { rows: [{ plan: "founder_lifetime" }] }
+        : { rows: [] },
+    );
+    const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ freeAiRemaining: null, trialEligible: false });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("lecta_ai_quota"))).toBe(false);
+  });
+
   it("account/state omite plan ante un error distinto de 42P01", async () => {
     await mockSession();
     vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -133,8 +133,8 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
   {prepPlanNote && !isDeepReading ? (
     <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
       <PlanNote
-        title="Las palabras previstas son de Lecta+."
-        detail="Sigue leyendo: tocar cualquier palabra te da su significado."
+        title="La lista completa de palabras previstas es de Lecta+."
+        detail="Ábrela para ver 3, o sigue leyendo: tocar cualquier palabra te da su significado."
       />
       <button
         type="button"

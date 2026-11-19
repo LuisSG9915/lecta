@@ -622,7 +622,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/notebook-model.ts",
-          "line": 207,
+          "line": 218,
           "window": 3,
           "expect": "const RETENTION_CHECK_MIN_AGE_DAYS = 30",
           "why": "el chequeo de retención solo ofrece palabras con 30 o más días desde su último repaso"
