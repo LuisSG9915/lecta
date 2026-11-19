@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LegalNotice from "./LegalNotice";
+import { DICTIONARY_PACKS } from "../lib/dictionaryPack";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -76,6 +77,15 @@ describe("LegalNotice", () => {
     expect(hrefs).toContain("/lexicon/lemmas-freq-en.tsv.gz");
     expect(hrefs).toContain("/lexicon/senses-es.csv.gz");
     expect(hrefs).toContain("/lexicon/README.md");
+    // La atribución enlaza el paquete que la app descarga hoy, no una
+    // versión anterior, y el README público documenta esa misma versión.
+    const readme = fs.readFileSync(path.join(publicDir, "lexicon/README.md"), "utf8");
+    for (const pack of Object.values(DICTIONARY_PACKS)) {
+      expect(hrefs).toContain(pack.url);
+      expect(fs.existsSync(path.join(publicDir, pack.url)), `falta public${pack.url}`).toBe(true);
+      expect(readme).toContain(pack.url);
+      expect(readme).toContain(pack.sha256);
+    }
   });
 
   it("permite abrir directamente en la pestaña de términos", () => {

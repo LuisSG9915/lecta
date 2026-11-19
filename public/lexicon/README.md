@@ -107,16 +107,18 @@ externos.
   gzip -9 -c data/lexicon/en-lemmas.tsv > public/lexicon/lemmas-freq-en.tsv.gz
   ```
 
-## `/dict/dict-es-v6.bin` — diccionario local de lectura (español)
+## `/dict/dict-es-v7.bin` — diccionario local de lectura (español)
 
 > Vive bajo `/dict/` (no junto a este README) para que su regla de caché
 > inmutable no se fusione con la genérica de `/lexicon/*` en `_headers`.
 
-- **Contenido:** 126 905 lemas y 358 040 formas flexionadas con sus acepciones
+- **Contenido:** 126 905 lemas y 336 259 formas flexionadas con sus acepciones
   (hasta 3 por lema, ≤180 caracteres) y pronunciación IPA (5º campo de la
-  línea `E`, solo para lemas con zipf ≥ 3, normalizada sin barras ni corchetes).
-  TSV con líneas `E\tlema\tpos\tdef1␟def2\tipa` y `F\tforma\tlema`;
-  cabecera `#lecta-dict v6 es`. Es el paquete que la app descarga a IndexedDB
+  línea `E`, solo para lemas con zipf ≥ 3, normalizada sin barras ni corchetes)
+  y, desde la v7, un ejemplo de uso por lema (6º campo, solo lemas con
+  zipf ≥ 3 que lo tengan; el campo se omite si no hay).
+  TSV con líneas `E\tlema\tpos\tdef1␟def2\tipa\tej1␟ej2` y `F\tforma\tlema`;
+  cabecera `#lecta-dict v7 es`. Es el paquete que la app descarga a IndexedDB
   para resolver palabras sin conexión.
 - **Origen:** acepciones del Wikcionario en español vía kaikki.org (`source =
   'wiktionary'`), formas del catálogo de Lecta; solo lemas con acepción y, para
@@ -126,15 +128,15 @@ externos.
   sin tags regionales; un IPA por lema.
 - **Licencia:** CC BY-SA 4.0 + GFDL, igual que `senses-es.csv.gz`.
 - **SHA-256 del `.bin`:**
-  `3f70199b6ecd68f238464649b73cfd3fdce393408b28f9ecc4a21af883e03a3f`
-- **Generado:** 2026-11-17.
+  `516f010b9c799c782522383fb5bedf0af52c02ecfae4fe027834df3635ca92ec`
+- **Generado:** 2026-11-18.
 
-## `/dict/dict-en-v6.bin` — diccionario local de lectura (inglés→español)
+## `/dict/dict-en-v7.bin` — diccionario local de lectura (inglés→español)
 
-- **Contenido:** 20 344 lemas en inglés y 122 517 formas flexionadas con
+- **Contenido:** 20 344 lemas en inglés y 57 675 formas flexionadas con
   acepciones **en español** (p. ej. `school` → «Escuela, instituto, colegio.»),
   más pronunciación IPA (5º campo de la línea `E`, solo para lemas con zipf ≥ 3).
-  Mismo formato que `dict-es-v6`. Ambos `.bin` son TSV comprimido con gzip: la
+  Mismo formato que `dict-es-v7`. Ambos `.bin` son TSV comprimido con gzip: la
   extensión evita que servidores estáticos lo sirvan ya descomprimido con
   `Content-Encoding: gzip` (el cliente verifica el SHA-256 del archivo crudo).
 - **Origen:** Wikcionario en español vía kaikki.org, sección «Inglés»
@@ -143,8 +145,8 @@ externos.
   sin tags regionales; un IPA por lema.
 - **Licencia:** CC BY-SA 4.0 + GFDL.
 - **SHA-256 del `.bin`:**
-  `398efe4a7f177f113c1e1d802f608a670c66463d127547d5e266709ef6a2e10d`
-- **Generado:** 2026-11-17.
+  `bfc9c115dd39c0f35c77261014cf137b7b53447e12da4e72d8fd2553a556d8cd`
+- **Generado:** 2026-11-18.
 - **Regenerar (ambos paquetes):**
   ```bash
   node --env-file=.env scripts/lexicon-pack.mjs --lang=es
