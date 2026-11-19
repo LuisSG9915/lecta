@@ -174,6 +174,149 @@ describe("Algoritmo Next-Chapter Utility (Fase 4.2)", () => {
     expect(countFormTokens("", ["sombra"]).get("sombra")).toBe(1);
   });
 
+  const ficha = (lemma: string, zipf: number, pos = "adjetivo"): LexiconEntry => ({
+    entryId: null,
+    freqRank: null,
+    lemma,
+    pos,
+    zipf,
+    senses: [{ definition: "Definición.", example: null, senseOrder: null }],
+  });
+
+  it("buildSuggestionRows suma la frecuencia de todas las formas de un lema", () => {
+    // «correr» sale tres veces repartidas en tres formas; «lóbrego», dos.
+    // Por forma, cada una de «correr» valdría 1 y «lóbrego» quedaría arriba.
+    const rows = buildSuggestionRows({
+      language: "es",
+      forms: ["corrió", "corren", "corría", "lóbrego"],
+      entries: {
+        corrió: [ficha("correr", 2.5, "verbo")],
+        corren: [ficha("correr", 2.5, "verbo")],
+        corría: [ficha("correr", 2.5, "verbo")],
+        lóbrego: [ficha("lóbrego", 2.5)],
+      },
+      capitalOnly: new Set(),
+      text: "Él corrió. Ellos corren. Ella corría. Un pasillo lóbrego. Un patio lóbrego.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.0,
+      userTheta: 1.0,
+    });
+    expect(rows.rows.map((r) => r.form)).toEqual(["corrió", "lóbrego"]);
+  });
+
+  it("buildSuggestionRows acredita un homógrafo a cada lema de sus fichas y a ningún otro", () => {
+    // «sierra» tiene fichas de «sierra» y «serrar»: sus dos apariciones
+    // cuentan para «serrar» (1 + 2 = 3, por encima de «arcano»), pero no
+    // para «umbrío», que sigue con una sola.
+    const rows = buildSuggestionRows({
+      language: "es",
+      forms: ["sierra", "serró", "arcano", "umbría"],
+      entries: {
+        sierra: [ficha("sierra", 2.6, "sustantivo"), ficha("serrar", 2.4, "verbo")],
+        serró: [ficha("serrar", 2.4, "verbo")],
+        arcano: [ficha("arcano", 2.4)],
+        umbría: [ficha("umbrío", 2.4)],
+      },
+      capitalOnly: new Set(),
+      text: "La sierra cortaba. Otra sierra. Él serró la tabla. Un saber arcano. Un rito arcano. La umbría.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.0,
+      userTheta: 1.0,
+    });
+    const order = rows.rows.map((r) => r.form);
+    expect(order.indexOf("serró")).toBeLessThan(order.indexOf("arcano"));
+    expect(order.indexOf("arcano")).toBeLessThan(order.indexOf("umbría"));
+  });
+
+  it("buildSuggestionRows no infla un lema raro con una forma de lectura frecuente", () => {
+    // «antigua» se lee como «antiguo» (frecuente): sus cinco apariciones
+    // no cuentan para «antiguar», que solo sale una vez en «antiguó».
+    const rows = buildSuggestionRows({
+      language: "es",
+      forms: ["antigua", "antiguó", "arcano"],
+      entries: {
+        antigua: [ficha("antiguo", 4.5), ficha("antiguar", 1.5, "verbo")],
+        antiguó: [ficha("antiguar", 1.5, "verbo")],
+        arcano: [ficha("arcano", 1.5)],
+      },
+      capitalOnly: new Set(),
+      text: "La antigua casa. Una antigua torre. La antigua ley. Otra antigua. Muy antigua. Se antiguó. Un saber arcano. Un rito arcano. Otro arcano.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.0,
+      userTheta: 1.0,
+    });
+    expect(rows.rows.map((r) => r.form)).toEqual(["arcano", "antiguó"]);
+  });
+
+  it("buildSuggestionRows suma al lema las formas resueltas por base clítica", () => {
+    // «acicalándose» no tiene ficha propia: cuenta para «acicalar» junto
+    // con «acicala» (2 + 1 = 3, por encima de «arcano»).
+    const rows = buildSuggestionRows({
+      language: "es",
+      forms: ["acicalándose", "acicala", "arcano"],
+      entries: {
+        acicalando: [ficha("acicalar", 1.5, "verbo")],
+        acicala: [ficha("acicalar", 1.5, "verbo")],
+        arcano: [ficha("arcano", 1.5)],
+      },
+      capitalOnly: new Set(),
+      text: "Iba acicalándose. Seguía acicalándose. Se acicala. Un saber arcano. Un rito arcano.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.0,
+      userTheta: 1.0,
+    });
+    expect(rows.rows.map((r) => r.lemma)).toEqual(["acicalar", "arcano"]);
+  });
+
+  it("buildSuggestionRows suma por lema la frecuencia en el libro", () => {
+    // Mismo conteo en el capítulo (2 y 2); en el libro «correr» suma
+    // 4 + 5 = 9 y supera a «lóbrego» (8).
+    const rows = buildSuggestionRows({
+      language: "es",
+      forms: ["corrió", "corren", "lóbrego"],
+      entries: {
+        corrió: [ficha("correr", 2.5, "verbo")],
+        corren: [ficha("correr", 2.5, "verbo")],
+        lóbrego: [ficha("lóbrego", 2.5)],
+      },
+      capitalOnly: new Set(),
+      text: "Él corrió. Ellos corren. Un pasillo lóbrego. Un patio lóbrego.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.0,
+      userTheta: 1.0,
+      bookFrequencies: new Map([["corrió", 4], ["corren", 5], ["lóbrego", 8]]),
+    });
+    expect(rows.rows.map((r) => r.form)).toEqual(["corrió", "lóbrego"]);
+  });
+
+  it("buildSuggestionRows en L2 trata como repetida una familia de formas sueltas", () => {
+    // «trudged» y «trudges» salen una vez cada una: por lema «trudge» se
+    // repite y gana a «quill», que con el conteo por forma empataría y
+    // quedaría primero por orden alfabético.
+    const rows = buildSuggestionRows({
+      language: "en",
+      forms: ["quill", "trudged", "trudges"],
+      entries: {
+        quill: [ficha("quill", 3.0, "noun")],
+        trudged: [ficha("trudge", 3.0, "verb")],
+        trudges: [ficha("trudge", 3.0, "verb")],
+      },
+      capitalOnly: new Set(),
+      text: "He trudged home. She trudges on. A quill lay there.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.5,
+      userTheta: 1.0,
+      isSecondLanguage: true,
+    });
+    expect(rows.rows.map((r) => r.form)).toEqual(["trudged", "quill"]);
+  });
+
   it("en modo L2 prioriza palabras narrativas de alta utilidad (repeticiones >= 2, B1-C1) sobre hapax legomena oscuras", () => {
     // Palabra útil recurrente en la narración (ej. 'whisper', B1-C1, repite 3 veces)
     const repeatedB1 = nextChapterUtility({

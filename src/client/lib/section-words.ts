@@ -2,8 +2,9 @@ import type { LexiconEntry } from "./lexicon";
 import type { MarkLevel } from "./word-level";
 import type { PresentedReason } from "./idb";
 import { predictSection } from "./knowledge";
-import { capitalOnlyForms, isWordToken } from "../../shared/word-form";
+import { capitalOnlyForms, cliticBaseForms, isWordToken, menteBaseForms } from "../../shared/word-form";
 import { isStopword } from "../../shared/stopwords";
+import { isLearnablePos } from "../../shared/lexicon";
 import { preparationAnswerKey, type PreparationRow } from "./preparation";
 import {
   betaFromZipf,
@@ -247,7 +248,37 @@ export function buildSuggestionRows(input: {
   // Frecuencias de aparición de formas en el capítulo para Next-Chapter Utility.
   // `forms` llega sin duplicados (el análisis guarda formas únicas), así que
   // las apariciones se cuentan como tokens del texto; sin texto, una por forma.
+  // Se agregan por lema: «corrió», «corren» y «corría» suman a «correr».
   const chapterFrequencies = countFormTokens(input.text, input.forms);
+  // Un homógrafo acredita a cada lema de sus fichas, salvo que alguna sea
+  // frecuente: entonces se lee como esa (misma regla que predictSection) y
+  // no infla al lema raro. Sin ficha propia se usa la raíz «-mente» o la
+  // base clítica; sin ninguna, la forma es su propio lema.
+  const learnableOf = (key: string) =>
+    (entries[key] ?? []).filter((entry) => isLearnablePos(entry.pos));
+  const lemmaChapterFreq = new Map<string, number>();
+  const lemmaBookFreq = new Map<string, number>();
+  const seenForms = new Set<string>();
+  for (const form of input.forms) {
+    const lower = form.toLowerCase();
+    if (seenForms.has(lower)) continue;
+    seenForms.add(lower);
+    let fichas = learnableOf(form);
+    if (!fichas.length) fichas = menteBaseForms(form).flatMap(learnableOf);
+    if (!fichas.length)
+      fichas = cliticBaseForms(form).map(learnableOf).find((list) => list.length) ?? [];
+    const frequent = fichas.filter((entry) => entry.zipf != null && entry.zipf >= threshold);
+    const lemmas = new Set(
+      (frequent.length ? frequent : fichas).map((entry) => entry.lemma.toLowerCase()),
+    );
+    if (!lemmas.size) lemmas.add(lower);
+    const n = chapterFrequencies.get(lower) ?? 1;
+    const b = input.bookFrequencies?.get(lower);
+    for (const lemma of lemmas) {
+      lemmaChapterFreq.set(lemma, (lemmaChapterFreq.get(lemma) ?? 0) + n);
+      if (b != null) lemmaBookFreq.set(lemma, (lemmaBookFreq.get(lemma) ?? 0) + b);
+    }
+  }
   // Barrera local además de la del análisis: dígitos, puntuación
   // residual y palabras funcionales nunca llegan a la hoja, ni a la
   // selección ni a la consulta secundaria.
@@ -407,19 +438,22 @@ export function buildSuggestionRows(input: {
   // Ordenamiento contextual Next-Chapter Utility de las candidatas de rareza:
   // Combina probabilidad logística de desconocimiento, recompensa por frecuencia
   // en la obra, campana de Zona de Desarrollo Próximo (i+1) y bonificación de locución.
-  const utilityOf = (row: SuggestionRow) =>
-    nextChapterUtility({
+  const utilityOf = (row: SuggestionRow) => {
+    const lemmaKey = (row.lemma ?? row.form).toLowerCase();
+    return nextChapterUtility({
       zipf: row.zipf,
       userTheta: input.userTheta,
       threshold,
-      chapterFreq: chapterFrequencies.get(row.form.toLowerCase()) ?? 1,
-      bookFreq: input.bookFrequencies?.get(row.form.toLowerCase()),
+      chapterFreq:
+        lemmaChapterFreq.get(lemmaKey) ?? chapterFrequencies.get(row.form.toLowerCase()) ?? 1,
+      bookFreq: lemmaBookFreq.get(lemmaKey) ?? input.bookFrequencies?.get(row.form.toLowerCase()),
       isPhrase:
         row.pos === "locución" ||
         row.pos?.includes("locución") ||
         row.form.includes(" "),
       isSecondLanguage: input.isSecondLanguage,
     });
+  };
 
   rarity.sort((a, b) => {
     const diff = utilityOf(b) - utilityOf(a);
