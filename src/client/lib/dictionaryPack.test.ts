@@ -92,8 +92,8 @@ import {
 } from "./dictionaryPack";
 
 const PACK_TSV = [
-  "#lecta-dict v6 en",
-  "E\tschool\tsustantivo\tEscuela, instituto, colegio.\x1FCardumen, banco de peces.\tˈskuːl",
+  "#lecta-dict v7 en",
+  "E\tschool\tsustantivo\tEscuela, instituto, colegio.\x1FCardumen, banco de peces.\tˈskuːl\tThe school is old.\x1F",
   "E\tstilt\tsustantivo\tZanco.\x1FPilar elevado.\t",
   "F\tschools\tschool",
   "F\tstilts\tstilt",
@@ -145,10 +145,24 @@ describe("dictionaryPack", () => {
     expect(lemma?.pos).toBe("sustantivo");
     expect(lemma?.senses[0]?.definition).toContain("Escuela");
     expect(lemma?.ipa).toBe("ˈskuːl");
+    expect(lemma?.senses[0]?.example).toBe("The school is old.");
+    expect(lemma?.senses[1]?.example).toBeNull();
+    expect((await lookupDictionaryPack("stilt", "en"))?.senses[0]?.example).toBeNull();
 
     const flexion = await lookupDictionaryPack("schools", "en");
     expect(flexion?.lemma).toBe("school");
     expect(flexion?.senses[0]?.definition).toContain("Escuela");
+  });
+
+  it("tolera líneas v6 de 5 columnas (sin ejemplos)", async () => {
+    const tsv = "#lecta-dict v7 en\nE\tdesk\tsustantivo\tEscritorio.\x1FPupitre.\tdɛsk\n";
+    const { gz, sha } = packResponse(tsv);
+    stubPackInfo("en", sha, gz.length);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(gz, { status: 200 })));
+    expect(await ensureDictionaryPack("en")).toBe("installed");
+    const e = await lookupDictionaryPack("desk", "en");
+    expect(e?.senses.map((x) => x.definition)).toEqual(["Escritorio.", "Pupitre."]);
+    expect(e?.senses.every((x) => x.example === null)).toBe(true);
   });
 
   it("no instala con hash incorrecto y puede reintentar", async () => {
@@ -192,12 +206,12 @@ describe("dictionaryPack", () => {
   it("instalar un idioma no borra al otro", async () => {
     const en = packResponse();
     stubPackInfo("en", en.sha, en.gz.length);
-    const esTsv = "#lecta-dict v6 es\nE\tcasa\tsustantivo\tVivienda.\t/viˈβjen.da/\n";
+    const esTsv = "#lecta-dict v7 es\nE\tcasa\tsustantivo\tVivienda.\t/viˈβjen.da/\n";
     const es = packResponse(esTsv);
     stubPackInfo("es", es.sha, es.gz.length);
     const bodies: Record<string, ArrayBuffer> = {
-      "/dict/dict-en-v6.bin": new Uint8Array(en.gz).buffer,
-      "/dict/dict-es-v6.bin": new Uint8Array(es.gz).buffer,
+      "/dict/dict-en-v7.bin": new Uint8Array(en.gz).buffer,
+      "/dict/dict-es-v7.bin": new Uint8Array(es.gz).buffer,
     };
     vi.stubGlobal(
       "fetch",

@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-18T13:49:00.995Z",
+  "generatedAt": "2026-11-19T02:32:17.581Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "255282b348dd75be74d1f3498ef5a49b9498db79",
+  "commit": "80a784e50825f347add01a30ffafdee74057c48e",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -518,18 +518,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/Reader.tsx:3959-3963 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "PASS",
+          "detail": "src/client/components/Reader.tsx:3979 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "asked": 3961,
-            "excerpt": [
-              "3959:         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}",
-              "3960:         charOffsetInChapter={charOffsetInChapter}",
-              "3961:         currentChapterId={currentChapterId}",
-              "3962:         currentChapterTitle={currentChapterTitle}",
-              "3963:         prep={prep}"
-            ]
+            "line": 3979,
+            "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
         {
@@ -544,12 +538,44 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:779 coincide con /award: false/",
+          "status": "FAIL",
+          "detail": "src/client/components/WordPanel.tsx:764-794 no contiene /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 779,
-            "text": "{ award: false },"
+            "asked": 779,
+            "excerpt": [
+              "764:       } catch {",
+              "765:         savedRef.current = false;",
+              "766:         setIsSaved(false);",
+              "767:         setSprouted(false);",
+              "768:         return null;",
+              "769:       } finally {",
+              "770:         saveInFlightRef.current = null;",
+              "771:         setSaving(false);",
+              "772:       }",
+              "773:     })();",
+              "774: ",
+              "775:     saveInFlightRef.current = work;",
+              "776:     await work;",
+              "777:   };",
+              "778: ",
+              "779:   const handleQuickKnown = async () => {",
+              "780:     // Una palabra del Cuaderno no se declara «conocida» encima de su",
+              "781:     // tarjeta: eso lo decide el repaso.",
+              "782:     if (saving || savedRef.current) return;",
+              "783:     setSaving(true);",
+              "784:     triggerHaptic(10);",
+              "785:     try {",
+              "786:       const scope = captureDbScope();",
+              "787:       const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();",
+              "788:       const row = await saveKnowledge(",
+              "789:         {",
+              "790:           language: effectiveLang,",
+              "791:           lemma,",
+              "792:           known: true,",
+              "793:           source: \"declared\",",
+              "794:           status: \"known\","
+            ]
           }
         },
         {

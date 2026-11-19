@@ -1,4 +1,4 @@
-// Genera el diccionario local descargable public/dict/dict-<lang>-v6.bin
+// Genera el diccionario local descargable public/dict/dict-<lang>-v7.bin
 // a partir del catálogo de lecta_dev — la misma fuente que el servidor para
 // que lema, pos y glosas coincidan en ambos lados. La extensión es .bin a
 // propósito: con .gz los servidores de desarrollo (vite) sirven
@@ -8,8 +8,11 @@
 //   node --env-file=.env scripts/lexicon-pack.mjs --lang=es|en
 //
 // Formato (una línea por registro, UTF-8):
-//   #lecta-dict v6 <lang>             <- cabecera
-//   E<TAB>lema<TAB>pos<TAB>def1<US>def2<US>def3<TAB>ipa   <- hasta 3 acepciones + IPA (5º campo, vacío si zipf<3)
+//   #lecta-dict v7 <lang>             <- cabecera
+//   E<TAB>lema<TAB>pos<TAB>def1<US>def2<US>def3<TAB>ipa<TAB>ej1<US>ej2<US>ej3
+//        hasta 3 acepciones + IPA (5º campo, vacío si zipf<3) + ejemplos
+//        (6º campo, una casilla por acepción, vacía si no hay; el campo se
+//        omite entero si el lema no lleva ejemplo — el parser tolera 5 cols)
 //   F<TAB>forma<TAB>lema              <- flexión -> lema (solo formas != lema)
 // <US> = U+001F (separador de unidad; las glosas lo saneamos a espacio).
 //
@@ -21,18 +24,23 @@
 //   . es: formas solo de lemas con zipf >= 2.0
 //   . en: todas las formas con ficha
 //   . Por lema se fusionan las fichas de cada pos.
-//   . Tope de 3 acepciones y 180 chars.
+//   . Tope de 3 acepciones y 180 chars (al truncar se corta en límite de
+//     palabra y se añade «…»).
+//   . Ejemplos: solo lemas con zipf >= 3, máx. 1 por lema (el de la primera
+//     acepción que lo tenga), <=120 chars en es y <=80 en en, cortado en
+//     límite de palabra con «…».
+//   . Si el v7 pesa >15 % más que el v6 (gzip) el script sale con código 1.
 //   . IPA: solo lemas con zipf >= 3 llevan IPA (5º campo). El resto campo vacío.
 //   . Salida con gzip -9 y SHA-256 del .gz impreso para copiar al cliente.
 
-import { createWriteStream, readFileSync, statSync } from "node:fs";
+import { createWriteStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createGzip } from "node:zlib";
 import { createHash } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import pg from "pg";
 
-const VERSION = 6;
+const VERSION = 7;
 const LANG = process.argv
   .map((arg) => /^--lang=([a-z]{2})$/.exec(arg)?.[1])
   .find(Boolean) ?? "es";
@@ -45,15 +53,29 @@ const OUT = `public/dict/dict-${LANG}-v${VERSION}.bin`;
 const MAX_SENSES = 3;
 const MAX_DEF_CHARS = 180;
 const FORM_ZIPF_MIN = LANG === "es" ? 2.0 : null;
+const EXAMPLE_ZIPF_MIN = 3;
+const MAX_EXAMPLE_CHARS = LANG === "es" ? 120 : 80;
+const MAX_GROWTH = 0.15;
 
 const US = "\u001F";
-const sanitize = (raw) =>
-  String(raw ?? "")
-    .replace(/[\t\n\r]/g, " ")
-    .replaceAll(US, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_DEF_CHARS);
+// Recorta a max chars cortando en límite de palabra y añadiendo «…»; nunca
+// parte una palabra a medias (si no hay espacio, corta duro).
+const truncate = (text, max) => {
+  if (text.length <= max) return text;
+  const room = text.slice(0, max - 1);
+  const cut = room.lastIndexOf(" ");
+  const head = (cut > 0 ? room.slice(0, cut) : room).replace(/[\s,;:.\-–—]+$/u, "");
+  return `${head}…`;
+};
+const sanitize = (raw, max = MAX_DEF_CHARS) =>
+  truncate(
+    String(raw ?? "")
+      .replace(/[\t\n\r]/g, " ")
+      .replaceAll(US, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+    max,
+  );
 
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
@@ -70,7 +92,7 @@ const { rows: entryRows } = await client.query(
 
 // Query 2: senses
 const { rows: senseRows } = await client.query(
-  `SELECT s.entry_id::text AS entry_id, s.sense_order, s.definition, s.source, s.status
+  `SELECT s.entry_id::text AS entry_id, s.sense_order, s.definition, s.example, s.source, s.status
    FROM lexicon_senses s
    JOIN lexicon_entries e ON e.id = s.entry_id
    WHERE e.language = $1`,
@@ -111,8 +133,8 @@ for (const e of entryRows) {
   if (filtered.length === 0) continue;
   const defs = filtered
     .sort((a, b) => (a.sense_order ?? 0) - (b.sense_order ?? 0))
-    .map((s) => sanitize(s.definition))
-    .filter(Boolean)
+    .map((s) => ({ d: sanitize(s.definition), x: sanitize(s.example, MAX_EXAMPLE_CHARS) }))
+    .filter((s) => s.d)
     .slice(0, MAX_SENSES);
   if (defs.length === 0) continue;
   entryData.push({
@@ -154,8 +176,8 @@ for (const row of entryData) {
     };
     merged.push(current);
   }
-  for (const d of row.defs) {
-    if (d && current.defs.length < MAX_SENSES) current.defs.push(d);
+  for (const sense of row.defs) {
+    if (sense.d && current.defs.length < MAX_SENSES) current.defs.push(sense);
   }
   if (!current.ipa && row.ipa) current.ipa = sanitize(row.ipa);
   if (current.zipf == null && row.zipf != null) current.zipf = row.zipf;
@@ -172,10 +194,16 @@ const filteredForms = formRows.filter((r) => {
 function* lines() {
   yield `#lecta-dict v${VERSION} ${LANG}`;
   for (const entry of merged) {
-    const defs = entry.defs.filter(Boolean);
-    if (defs.length) {
-      const ipa = (entry.zipf ?? 0) >= 3 ? (entry.ipa ?? "") : "";
-      yield `E\t${entry.lemma}\t${entry.pos}\t${defs.join(US)}\t${ipa}`;
+    const senses = entry.defs.filter((s) => s.d);
+    if (senses.length) {
+      const frequent = (entry.zipf ?? 0) >= EXAMPLE_ZIPF_MIN;
+      const ipa = frequent ? (entry.ipa ?? "") : "";
+      // Un solo ejemplo por lema: el de la primera acepción que lo tenga.
+      const exIndex = frequent ? senses.findIndex((s) => s.x) : -1;
+      const tail = exIndex >= 0
+        ? `\t${senses.map((s, i) => (i === exIndex ? s.x : "")).join(US)}`
+        : "";
+      yield `E\t${entry.lemma}\t${entry.pos}\t${senses.map((s) => s.d).join(US)}\t${ipa}${tail}`;
     }
   }
   for (const row of filteredForms) {
@@ -193,9 +221,19 @@ const source = Readable.from(
 await pipeline(source, createGzip({ level: 9 }), createWriteStream(OUT));
 
 const { size } = statSync(OUT);
+const prevOut = `public/dict/dict-${LANG}-v${VERSION - 1}.bin`;
+const prevSize = existsSync(prevOut) ? statSync(prevOut).size : null;
 const sha256 = createHash("sha256").update(readFileSync(OUT)).digest("hex");
 console.log(
   `Listo: ${OUT}\n` +
     `  ${merged.length} lemas · ${filteredForms.length} formas · ${size} bytes\n` +
     `  sha256: ${sha256}`,
 );
+if (prevSize != null) {
+  const growth = size / prevSize - 1;
+  console.log(`  gzip v${VERSION - 1}: ${prevSize} -> v${VERSION}: ${size} (${(growth * 100).toFixed(1)} %)`);
+  if (growth > MAX_GROWTH) {
+    console.error(`v${VERSION} supera +${MAX_GROWTH * 100} % del v${VERSION - 1}: revisar recortes.`);
+    process.exit(1);
+  }
+}

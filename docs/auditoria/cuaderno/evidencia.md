@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-17T03:12:29.402Z. Commit: `aed6f5302857`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-19T02:32:15.501Z. Commit: `80a784e50825`.
 
 ## La queja, en palabras del usuario
 
@@ -75,7 +75,7 @@ _Por qué:_ Se fue la rama scopedWords.slice(0,5), que servía palabras no venci
 
 _Por qué:_ scheduleCapturedReview crea newCard() (reps 0, due=ahora) al guardar. La cola no puede decidir solo por vencimiento: exige exposición o reps > 0.
 
-- ✔ src/client/lib/reviews.ts:76 ~ /const card = existing\.card \?\? newCard\(\);/
+- ✔ src/client/lib/reviews.ts:81 ~ /const card = existing\.card \?\? newCard\(\);/
   - `const card = existing.card ?? newCard();`
 - ✔ src/client/lib/fsrs.ts:71 ~ /return createEmptyCard\(now\);/
   - `if (!card || typeof card !== "object") return createEmptyCard(now);`

@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-18T13:49:00.995Z
+Generado: 2026-11-19T02:32:17.581Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `255282b348dd75be74d1f3498ef5a49b9498db79`
+Commit: `80a784e50825f347add01a30ffafdee74057c48e`
 Red: no (solo forma de las referencias)
 
 **Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
@@ -142,12 +142,12 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:3959-3963 no contiene /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","asked":3961,"excerpt":["3959:         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}","3960:         charOffsetInChapter={charOffsetInChapter}","3961:         currentChapterId={currentChapterId}","3962:         currentChapterTitle={currentChapterTitle}","3963:         prep={prep}"]}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3979 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":3979,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:779 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":779,"text":"{ award: false },"}`
+- ❌ **FAIL** · code-anchor: src/client/components/WordPanel.tsx:764-794 no contiene /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","asked":779,"excerpt":["764:       } catch {","765:         savedRef.current = false;","766:         setIsSaved(false);","767:         setSprouted(false);","768:         return null;","769:       } finally {","770:         saveInFlightRef.current = null;","771:         setSaving(false);","772:       }","773:     })();","774: ","775:     saveInFlightRef.current = work;","776:     await work;","777:   };","778: ","779:   const handl…`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:53 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":53,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)

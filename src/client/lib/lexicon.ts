@@ -721,6 +721,58 @@ export async function reportSense(
   }
 }
 
+export type ShownSenseRef = {
+  form: string;
+  lang: string;
+  lemma?: string | null;
+  entryId?: string | null;
+  senseOrder?: number | null;
+};
+
+const normalizeSenseText = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+// Reporta la acepción que el panel muestra. Con ids del servidor los usa
+// tal cual; el pack local no los trae, así que consulta el catálogo por red
+// y empata por definición normalizada. Sin empate: aviso amable, no técnico.
+export async function reportShownSense(
+  ref: ShownSenseRef,
+  shownDefinition: string,
+  scope?: DbScope,
+): Promise<ReportResult> {
+  const notNow: ReportResult = { ok: false, error: "No pudimos reportarla ahora." };
+  if (ref.entryId && ref.senseOrder != null) {
+    const res = await reportSense(ref.entryId, ref.senseOrder, scope);
+    return res.ok ? res : notNow;
+  }
+  const target = normalizeSenseText(shownDefinition);
+  const forms = [...new Set([ref.form, ref.lemma].filter((x): x is string => Boolean(x)))];
+  for (const form of forms) {
+    try {
+      const response = await accountFetch(
+        `/api/lexicon/lookup?${new URLSearchParams({ form, lang: ref.lang })}`,
+        undefined,
+        scope,
+      );
+      if (!response.ok) continue;
+      const data = (await response.json()) as LexiconResponseBody;
+      const entries = Array.isArray(data.entries) ? data.entries : [];
+      for (const entry of entries) {
+        if (!entry.entryId) continue;
+        const hit = entry.senses.find(
+          (sn) => sn.definition && normalizeSenseText(sn.definition) === target,
+        );
+        if (hit) {
+          const res = await reportSense(String(entry.entryId), hit.senseOrder ?? 1, scope);
+          return res.ok ? res : notNow;
+        }
+      }
+    } catch {
+      return notNow;
+    }
+  }
+  return notNow;
+}
+
 // ---------- Ítems de ejercicio (Nivel B) ----------
 
 // `options` ya trae mezclada la definición correcta con los

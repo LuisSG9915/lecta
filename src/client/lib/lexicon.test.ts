@@ -7,6 +7,7 @@ import {
   fetchItems,
   lookupWord,
   reportSense,
+  reportShownSense,
   verifySentence,
   BATCH_LOOKUP_LIMIT,
 } from "./lexicon";
@@ -192,6 +193,60 @@ describe("lexicon language learning and AI endpoints", () => {
       sentence: "I wander in the woods.",
       language: "en",
       nativeLanguage: "es",
+    });
+  });
+});
+
+describe("reportShownSense", () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const lookupBody = {
+    found: true,
+    entries: [
+      {
+        entryId: "9007199254740993",
+        lemma: "casa",
+        senses: [
+          { definition: "Edificio.", senseOrder: 1 },
+          { definition: "Familia  o linaje.", senseOrder: 2 },
+        ],
+      },
+    ],
+  };
+
+  it("con ids del servidor reporta directo, sin lookup", async () => {
+    const spy = vi.fn(async () => json({ ok: true }));
+    vi.stubGlobal("fetch", spy);
+    const res = await reportShownSense({ form: "casa", lang: "es", entryId: "7", senseOrder: 2 }, "x");
+    expect(res).toEqual({ ok: true });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse((spy.mock.calls[0] as unknown[])[1] ? ((spy.mock.calls[0] as unknown[])[1] as { body: string }).body : "{}")).toEqual({ entryId: "7", senseOrder: 2 });
+  });
+
+  it("sin ids busca por red la acepción con la misma definición", async () => {
+    const spy = vi.fn(async (url: unknown) =>
+      String(url).includes("/api/lexicon/lookup") ? json(lookupBody) : json({ ok: true }),
+    );
+    vi.stubGlobal("fetch", spy);
+    const res = await reportShownSense({ form: "casa", lang: "es" }, "familia o linaje.");
+    expect(res).toEqual({ ok: true });
+    const post = spy.mock.calls.find((c) => String((c as unknown[])[0]).includes("/report")) as unknown[];
+    expect(JSON.parse((post[1] as { body: string }).body)).toEqual({
+      entryId: "9007199254740993",
+      senseOrder: 2,
+    });
+  });
+
+  it("sin coincidencia o con 404 da aviso amable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(lookupBody)));
+    expect(await reportShownSense({ form: "casa", lang: "es" }, "otra cosa")).toEqual({
+      ok: false,
+      error: "No pudimos reportarla ahora.",
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => json({ error: "nada" }, 404)));
+    expect(await reportShownSense({ form: "casa", lang: "es" }, "Edificio.")).toEqual({
+      ok: false,
+      error: "No pudimos reportarla ahora.",
     });
   });
 });

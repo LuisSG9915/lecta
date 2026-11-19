@@ -30,21 +30,21 @@ export interface DictionaryPackInfo {
 }
 
 // Los hashes salen de scripts/lexicon-pack.mjs; regenerar el paquete =
-// subir la versión (la URL lleva v1) y pegar el nuevo hash aquí.
+// subir la versión (la URL lleva vN) y pegar el nuevo hash aquí.
 export const DICTIONARY_PACKS: Record<DictLanguage, DictionaryPackInfo> = {
   es: {
-    url: "/dict/dict-es-v6.bin",
-    sha256: "8b2167d67ffd23634feafdf508dc165b6534d50f89349a924b336d1bbc35d464",
-    bytes: 4_918_724,
-    version: 6,
+    url: "/dict/dict-es-v7.bin",
+    sha256: "516f010b9c799c782522383fb5bedf0af52c02ecfae4fe027834df3635ca92ec",
+    bytes: 5_014_192,
+    version: 7,
     lemmas: 126_905,
-    forms: 336_257,
+    forms: 336_259,
   },
   en: {
-    url: "/dict/dict-en-v6.bin",
-    sha256: "17016d3f1ef3410f8c9c15ee084e6d0da2f5ed90ed97cd99dc3c05462a905681",
-    bytes: 752_641,
-    version: 6,
+    url: "/dict/dict-en-v7.bin",
+    sha256: "bfc9c115dd39c0f35c77261014cf137b7b53447e12da4e72d8fd2553a556d8cd",
+    bytes: 788_684,
+    version: 7,
     lemmas: 20_344,
     forms: 57_675,
   },
@@ -55,7 +55,7 @@ const FLUSH_ROWS = 5_000;
 const dbName = (lang: DictLanguage) => `lecta-dict-${lang}`;
 
 interface DictDB extends DBSchema {
-  entries: { key: string; value: { key: string; pos: string | null; defs: string[]; ipa?: string } };
+  entries: { key: string; value: { key: string; pos: string | null; defs: string[]; ipa?: string; ex?: string[] } };
   forms: { key: string; value: { key: string; lemma: string } };
   meta: {
     key: string;
@@ -247,13 +247,24 @@ async function installPack(
       }
       const cols = line.split("\t");
       if (cols[0] === "E" && cols.length >= 4) {
-        const defs = cols[3].split("\x1F").filter(Boolean);
+        // cols[5] (v7): un ejemplo por acepción, alineado con defs; las
+        // líneas v5/v6 (5 cols) no lo traen.
+        const rawDefs = cols[3].split("\x1F");
+        const rawEx = (cols[5] ?? "").split("\x1F");
+        const defs: string[] = [];
+        const ex: string[] = [];
+        rawDefs.forEach((d, i) => {
+          if (!d) return;
+          defs.push(d);
+          ex.push(rawEx[i] ?? "");
+        });
         if (!defs.length) continue;
         batch.entries.push({
           key: `${lang}:${cols[1]}`,
           pos: cols[2] || null,
           defs,
           ipa: cols[4] || undefined,
+          ex: ex.some(Boolean) ? ex : undefined,
         });
         stats.entries += 1;
       } else if (cols[0] === "F" && cols.length === 3) {
@@ -315,7 +326,7 @@ export async function lookupDictionaryPack(
 
 function toLexiconEntry(
   lemma: string,
-  row: { pos: string | null; defs: string[]; ipa?: string },
+  row: { pos: string | null; defs: string[]; ipa?: string; ex?: string[] },
 ): LexiconEntry {
   return {
     entryId: null,
@@ -326,7 +337,7 @@ function toLexiconEntry(
     ipa: row.ipa || null,
     senses: row.defs.map((definition, index) => ({
       definition,
-      example: null,
+      example: row.ex?.[index] || null,
       senseOrder: index + 1,
     })),
   };

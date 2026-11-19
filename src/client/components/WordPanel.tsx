@@ -5,6 +5,7 @@ import {
   explainInPassage,
   lookupWordInMemory,
   lookupWord,
+  reportShownSense,
 } from "../lib/lexicon";
 import {
   type SearchSection,
@@ -60,6 +61,15 @@ export interface LocalLexiconEntry {
   ipa?: string;
   /** Hasta 3 definiciones (la primera es el significado principal). */
   senses?: string[];
+  /** Paralelo a `senses`: ejemplo e ids del servidor (si los hay) de cada acepción. */
+  senseDetails?: SenseDetail[];
+}
+
+export interface SenseDetail {
+  definition: string;
+  example: string | null;
+  entryId: string | null;
+  senseOrder: number | null;
 }
 
 export interface ContextualMeaningResult {
@@ -82,6 +92,20 @@ const senseDefinitions = (senses: ReadonlyArray<{ definition?: string | null }>)
     .map((x) => x.definition?.trim() ?? "")
     .filter(Boolean)
     .slice(0, 3);
+
+const senseDetailsOf = (
+  entryId: string | null | undefined,
+  senses: ReadonlyArray<{ definition?: string | null; example?: string | null; senseOrder?: number | null }>,
+): SenseDetail[] =>
+  senses
+    .filter((x) => x.definition?.trim())
+    .slice(0, 3)
+    .map((x) => ({
+      definition: x.definition!.trim(),
+      example: x.example?.trim() || null,
+      entryId: entryId ? String(entryId) : null,
+      senseOrder: x.senseOrder ?? null,
+    }));
 
 const NATIVE_LABELS: Record<string, string> = { es: "al español", en: "al inglés" };
 
@@ -208,6 +232,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
 
   // NUEVO: Nivel de disclosure progresivo (1 = significado + guardar, 2 = matiz + tono, 3 = todo)
   const [disclosureLevel, setDisclosureLevel] = useState<DisclosureLevel>(1);
+  const [reportState, setReportState] = useState<"idle" | "sending" | "done">("idle");
+  const [reportNote, setReportNote] = useState<string | null>(null);
   const [localEntry, setLocalEntry] = useState<LocalLexiconEntry | null>(() => {
     const mem = lookupWordInMemory(cleanWord, effectiveLang);
     if (mem?.ok && mem.found && mem.entries && mem.entries.length > 0) {
@@ -222,6 +248,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         synonyms: [],
         ipa: primary.ipa ?? undefined,
         senses: senseDefinitions(primary.senses),
+        senseDetails: senseDetailsOf(primary.entryId, primary.senses),
       };
     }
     return null;
@@ -483,6 +510,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 synonyms: validFamily.slice(0, 4),
                 ipa: primary.ipa ?? undefined,
                 senses: senseDefinitions(primary.senses),
+        senseDetails: senseDetailsOf(primary.entryId, primary.senses),
               };
             }
             return {
@@ -906,6 +934,42 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       ? (localEntry?.senses ?? []).slice(1).filter((def) => def !== meaning.text)
       : [];
 
+  const senseDetailList = localEntry?.senseDetails ?? [];
+  const shownDetail =
+    meaning?.source === "dictionary"
+      ? senseDetailList.find(
+          (d) => normalizeForCompare(d.definition) === normalizeForCompare(meaning.text),
+        )
+      : undefined;
+  const exampleIsBookSentence = (ex: string | null) =>
+    !ex || normalizeForCompare(ex) === normalizeForCompare(effectiveContext);
+  const shownExample = exampleIsBookSentence(shownDetail?.example ?? null)
+    ? null
+    : (shownDetail?.example ?? null);
+
+  const handleReportSense = async () => {
+    if (!shownDetail || reportState !== "idle") return;
+    setReportState("sending");
+    const res = await reportShownSense(
+      {
+        form: cleanWord,
+        lang: effectiveLang,
+        lemma: localEntry?.lemma,
+        entryId: shownDetail.entryId,
+        senseOrder: shownDetail.senseOrder,
+      },
+      shownDetail.definition,
+      captureDbScope(),
+    ).catch(() => ({ ok: false as const, error: "" }));
+    if (res.ok) {
+      setReportState("done");
+      setReportNote("Gracias, la revisaremos.");
+    } else {
+      setReportState("idle");
+      setReportNote("No pudimos reportarla ahora.");
+    }
+  };
+
   // Determinar si mostrar botón "Más" (nivel 3)
   const showMoreButton = 
     (isCandidateProperNoun && characterCard) ||
@@ -1178,13 +1242,42 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 {meaning.source === "ai" ? (
                   <p className="word-card-ai-source">Significado sugerido por IA</p>
                 ) : null}
+                {shownExample ? (
+                  <p className="word-card-sense-example">{shownExample}</p>
+                ) : null}
+                {canExplain && shownDetail && disclosureLevel >= 2 ? (
+                  <div className="word-card-report">
+                    <button
+                      type="button"
+                      className="word-card-report-btn"
+                      onClick={() => void handleReportSense()}
+                      disabled={reportState !== "idle"}
+                    >
+                      Esta acepción no corresponde
+                    </button>
+                    {reportNote ? (
+                      <span className="word-card-report-note" role="status">
+                        {reportNote}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {extraSenses.length > 0 && (
                   <details className="word-card-more-senses">
                     <summary>Otras acepciones ({extraSenses.length})</summary>
                     <ol className="word-card-more-senses-list">
-                      {extraSenses.map((def) => (
-                        <li key={def}>{def}</li>
-                      ))}
+                      {extraSenses.map((def) => {
+                        const ex = senseDetailList.find((d) => d.definition === def)?.example ?? null;
+                        return (
+                          <li key={def}>
+                            {def}
+                            {!exampleIsBookSentence(ex) &&
+                            normalizeForCompare(ex!) !== normalizeForCompare(shownExample ?? "") ? (
+                              <span className="word-card-sense-example">{ex}</span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ol>
                   </details>
                 )}

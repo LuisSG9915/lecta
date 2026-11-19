@@ -1,8 +1,8 @@
 {
   "tool": "audit-cuaderno",
   "version": 1,
-  "generado": "2026-11-17T03:12:29.402Z",
-  "commit": "aed6f5302857",
+  "generado": "2026-11-19T02:32:15.501Z",
+  "commit": "80a784e50825",
   "queja": "no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar",
   "resumen": {
     "total": 27,
@@ -104,10 +104,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/lib/reviews.ts:76 ~ /const card = existing\\.card \\?\\? newCard\\(\\);/",
+          "detalle": "src/client/lib/reviews.ts:81 ~ /const card = existing\\.card \\?\\? newCard\\(\\);/",
           "evidencia": {
             "file": "src/client/lib/reviews.ts",
-            "line": 76,
+            "line": 81,
             "text": "const card = existing.card ?? newCard();"
           }
         },

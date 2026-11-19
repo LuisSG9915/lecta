@@ -7311,3 +7311,39 @@ b.lecta-anchor {
 .reader-bar-btn[data-active] {
   color: var(--vermilion);
 }
+
+.word-card-sense-example {
+  display: block;
+  margin: var(--s-1, 4px) 0 0;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.word-card-report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2, 8px);
+}
+
+.word-card-report-btn {
+  min-height: 44px;
+  padding: 0 var(--s-2, 8px);
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.word-card-report-btn:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
+.word-card-report-note {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}

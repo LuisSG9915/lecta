@@ -30,6 +30,7 @@ vi.mock("../lib/lexicon", () => ({
     catTip: "El autor emplea esta palabra para enfatizar el paso del tiempo.",
   })),
   reportSense: vi.fn(),
+  reportShownSense: vi.fn(),
   lookupWordInMemory: vi.fn(() => null),
   primeLexiconMemoryCache: vi.fn(),
 }));
@@ -1608,4 +1609,103 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
   });
 
 });
+
+describe("WordPanel - ejemplo y reporte de acepción", () => {
+  const entry = (example: string | null) => ({
+    ok: true as const,
+    found: true,
+    entries: [
+      {
+        entryId: "123",
+        lemma: "efimero",
+        pos: "adjetivo",
+        zipf: 2.5,
+        freqRank: null,
+        senses: [
+          { definition: "De corta duración.", example, senseOrder: 1 },
+          { definition: "Que dura un día.", example: "Una flor efímera.", senseOrder: 2 },
+        ],
+      },
+    ],
+  });
+  const open = async (props: Record<string, unknown> = {}) => {
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero.",
+        language: "es",
+        bookHash: "bookrep",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+        ...props,
+      }),
+    );
+    await flush();
+  };
+  const reveal = async () => {
+    await act(async () => {
+      click(host.querySelector<HTMLButtonElement>(".btn--explain-passage")!);
+    });
+    await flush();
+  };
+
+  it("pinta el ejemplo de la acepción mostrada y de las extra", async () => {
+    const { lookupWord } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce(entry("Fue un placer efímero.") as never);
+    await open();
+    const ex = [...host.querySelectorAll(".word-card-sense-example")].map((e) => e.textContent);
+    expect(ex).toEqual(["Fue un placer efímero.", "Una flor efímera."]);
+  });
+
+  it("no repite el ejemplo si coincide con la frase del libro", async () => {
+    const { lookupWord } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce(entry("un  momento Efimero.") as never);
+    await open();
+    const ex = [...host.querySelectorAll(".word-card-sense-example")].map((e) => e.textContent);
+    expect(ex).toEqual(["Una flor efímera."]);
+  });
+
+  it("el botón reporta con los ids reales y se deshabilita con aviso amable", async () => {
+    const { lookupWord, reportShownSense } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce(entry(null) as never);
+    vi.mocked(reportShownSense).mockResolvedValueOnce({ ok: true });
+    await open();
+    await reveal();
+    const btn = host.querySelector<HTMLButtonElement>(".word-card-report-btn")!;
+    expect(btn.textContent).toBe("Esta acepción no corresponde");
+    await act(async () => {
+      click(btn);
+    });
+    await flush();
+    expect(vi.mocked(reportShownSense).mock.calls.at(-1)?.[0]).toMatchObject({
+      entryId: "123",
+      senseOrder: 1,
+    });
+    expect(host.querySelector(".word-card-report-note")?.textContent).toBe("Gracias, la revisaremos.");
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("si no se puede reportar muestra aviso amable y deja reintentar", async () => {
+    const { lookupWord, reportShownSense } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce(entry(null) as never);
+    vi.mocked(reportShownSense).mockResolvedValueOnce({ ok: false, error: "No pudimos reportarla ahora." });
+    await open();
+    await reveal();
+    const btn = host.querySelector<HTMLButtonElement>(".word-card-report-btn")!;
+    await act(async () => {
+      click(btn);
+    });
+    await flush();
+    expect(host.querySelector(".word-card-report-note")?.textContent).toBe("No pudimos reportarla ahora.");
+    expect(btn.disabled).toBe(false);
+  });
+
+  it("sin sesión no aparece el botón", async () => {
+    const { lookupWord } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce(entry(null) as never);
+    await open({ canExplain: false });
+    expect(host.querySelector(".word-card-report-btn")).toBeNull();
+  });
+});
+
 
