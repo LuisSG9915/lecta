@@ -7,11 +7,9 @@ import {
   putSavedWord,
   removeSavedWord,
   saveSessionValue,
-  saveWordWithKnowledge,
   type DbScope,
   type SavedWord,
   type VocabEntry,
-  type WordMeaning,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
 import {
@@ -314,52 +312,6 @@ export async function findSavedEntry(
     id: found.key,
     note: found.contextSnippet ?? "",
   };
-}
-
-export async function saveVocabEntry(
-  input: {
-    word: string;
-    lemma: string;
-    bookId?: string;
-    bookTitle?: string;
-    sentence?: string;
-    cfi?: string;
-    meaning?: WordMeaning;
-    note?: string;
-  },
-  scope?: DbScope,
-): Promise<{ entry: VocabEntry }> {
-  const bound = scope ?? captureDbScope();
-  const def = input.meaning?.ContextualMeaning || input.meaning?.definitions?.[0] || "";
-  const { word: saved } = await saveWordWithKnowledge(
-    {
-      word: {
-        form: input.word,
-        lemma: input.lemma,
-        meaning: def,
-        language: "es",
-        context: input.sentence,
-        bookHash: input.bookId,
-        bookTitle: input.bookTitle,
-        contextSnippet: input.note,
-        priority: true,
-      },
-      knowledge: {
-        language: "es",
-        lemma: input.lemma,
-        known: false,
-        source: "saved",
-        status: "unknown",
-      },
-    },
-    bound,
-  );
-  const entry: VocabEntry = {
-    ...saved,
-    id: saved.key,
-    note: input.note,
-  };
-  return { entry };
 }
 
 export async function removeVocabEntry(id: string, scope?: DbScope): Promise<void> {

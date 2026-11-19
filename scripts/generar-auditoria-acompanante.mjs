@@ -43,7 +43,7 @@ const FILES = [
     lang: "typescript",
   },
   {
-    name: "Alta manual de vocabulario (saveVocabEntry)",
+    name: "Cuaderno: sincronización y notas de vocabulario",
     path: "src/client/lib/vocab.ts",
     lang: "typescript",
   },

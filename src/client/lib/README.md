@@ -62,7 +62,7 @@ disk.
 
 - [positions-sync.ts:syncPositions], [positions-sync.ts:pushPosition], [positions-sync.ts:flushPendingPositions].
 - [reading-sync.ts:syncAnnotations], [reading-sync.ts:syncActivity], [reading-sync.ts:syncReviews], [reading-sync.ts:syncKnowledge], [reading-sync.ts:scheduleReadingSyncPush], [reading-sync.ts:pullMissingUserBooksFromCloud], [reading-sync.ts:forceFullResyncFromServer].
-- [vocab.ts:syncSavedWords], [vocab.ts:pushWordsToServer], [vocab.ts:saveVocabEntry], [vocab.ts:removeVocabEntry].
+- [vocab.ts:syncSavedWords], [vocab.ts:pushWordsToServer], [vocab.ts:removeVocabEntry].
 - [companion-sync.ts:syncCompanion], [companion-sync.ts:scheduleCompanionSync], [companion-sync.ts:pushCompanionChanges].
 - [sync-cursors.ts:getSyncCursor], [sync-cursors.ts:advanceSyncCursor], [sync-cursors.ts:advanceSyncCompoundCursor], [sync-cursors.ts:resetPullCursors], [sync-push.ts:maxStamp], [sync-state.ts:getSyncState], [sync-state.ts:useSyncState], [sync-state.ts:scheduleSyncRetry], [sync-state.ts:pauseSync], [daily-summary.ts:pushDailySummaries].
 

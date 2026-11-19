@@ -47,7 +47,7 @@ y cada «posibles palabras» del siguiente capítulo sale mejor calibrada.
 | `loadUserTheta` | `src/client/lib/profile-models.ts:280` | θ por idioma en escala `4 − zipf` — **esto es "el nivel de vocabulario"** |
 | `confirmPreparation` → `savePreparationBatch` | `src/client/lib/preparation.ts:321` | Transacción conocimiento + Cuaderno, luego push al servidor |
 | `SectionPreview` | `src/client/components/SectionPreview.tsx` | Vista ya desacoplada: recibe filas/respuestas/callbacks |
-| `saveWordWithKnowledge`, `saveVocabEntry` | `src/client/lib/idb.ts:1635`, `vocab.ts:319` | Alta manual de palabra con evidencia `source:"saved"` |
+| `saveWordWithKnowledge` | `src/client/lib/idb.ts:1635` | Alta manual de palabra con evidencia `source:"saved"` |
 | `lookupWord`, `batchLookup` | `src/client/lib/lexicon.ts:260,283` | Definición del catálogo para el alta manual (con caché offline) |
 | `buildPostChapterConsolidationQueue` | `src/client/lib/practice.ts:561` | Cola de repaso: reencuentros del Cuaderno dentro del capítulo |
 | `recordChapterCompleted` | `src/client/lib/profile-models.ts:600` | Marca «capítulo terminado» en el perfil — ver §5.7 antes de usarla |
@@ -57,10 +57,9 @@ y cada «posibles palabras» del siguiente capítulo sale mejor calibrada.
 al lector es el hook `useReaderChapterPrep` (toma ~30 refs de `Reader.tsx`): el
 acompañante debe componer las librerías directamente, no reusar ese hook.
 
-**(rev.) Ojo con `saveVocabEntry` (`vocab.ts:340`):** fija `language:"es"` en la
-palabra y en la evidencia. Para libros en otros idiomas el alta manual va por
-`saveWordWithKnowledge` con el `language` del libro, o se parametriza la
-función.
+**(rev.) `saveVocabEntry` se retiró (2026-11-18):** no tenía consumidores y
+fijaba `language:"es"` en la palabra y en la evidencia. El alta manual va por
+`saveWordWithKnowledge` con el `language` del libro.
 
 ### 2.3 El equivalente en servidor (portal `/k`, e-ink)
 
@@ -199,8 +198,8 @@ para el portal e-ink (su audiencia sí lee en pantalla, es un caso distinto).
 - **Cero endpoints nuevos (rev.):** toda escritura reusa `pushWordsToServer` /
   `pushKnowledgeToServer`; si el diseño pide un endpoint nuevo, algo se salió
   del camino.
-- **`saveVocabEntry` fijada a `es` (rev.):** ver §2.2 — el alta manual en
-  libros de otro idioma usa `saveWordWithKnowledge` con el idioma del libro.
+- **Alta manual (rev.):** ver §2.2 — usa `saveWordWithKnowledge` con el
+  idioma del libro (`saveVocabEntry`, fijada a `es`, se retiró).
 - **Bundle:** la superficie completa (parse EPUB + análisis + hoja) va detrás de
   `import()` perezoso; `check:size` es puerta.
 - **Descarga del EPUB:** libros grandes tardan; estado de «Descargando…» como
