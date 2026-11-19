@@ -326,6 +326,13 @@ export default defineConfig({
   optimizeDeps: {
     include: ["onnxruntime-web/wasm"],
   },
+  // Sin el CORS por defecto de `vite preview`: respondía `Vary: Origin` en los
+  // assets (producción no lo manda) y el service worker, que los precachea
+  // sin Origin, no los encontraba al pedirlos el <script type="module"> con
+  // Origin — la recarga offline del e2e (Recorrido 4) quedaba en blanco.
+  preview: {
+    cors: false,
+  },
   plugins: [
     react(),
     cloudflare(),

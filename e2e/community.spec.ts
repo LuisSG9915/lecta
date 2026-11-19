@@ -197,15 +197,32 @@ test.describe("Lecta — biblioteca comunitaria", () => {
 
     // --- Compartir: Opciones → «Compartir a la comunidad» ---
     await page.locator(".shelf-book-more").first().click();
+    // La guía se arma en el dispositivo (foliate + worker de palabras)
+    // antes del PUT: puede tardar más de un segundo. Hay que esperar el
+    // PUT; la hoja de opciones guarda una copia del libro al abrirse, así
+    // que abrirla antes del refresco mostraría el estado viejo.
+    const sharePut = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/books/${ownHash}/share`) &&
+        response.request().method() === "PUT",
+    );
     await page
       .getByRole("button", { name: "Compartir a la comunidad" })
       .click();
+    await sharePut;
     // Tras compartir, la estantería se refresca y Opciones ofrece retirar.
-    await page.locator(".shelf-book-more").first().click();
-    await expect(
-      page.getByRole("button", { name: "Dejar de compartir en la comunidad" }),
-    ).toBeVisible({ timeout: 10_000 });
-    await page.keyboard.press("Escape");
+    await expect(async () => {
+      await page.locator(".shelf-book-more").first().click();
+      try {
+        await expect(
+          page.getByRole("button", {
+            name: "Dejar de compartir en la comunidad",
+          }),
+        ).toBeVisible({ timeout: 1_000 });
+      } finally {
+        await page.keyboard.press("Escape");
+      }
+    }).toPass({ timeout: 10_000 });
 
     // La guía viajó en el PUT: capítulos con formas, cero texto.
     expect(shareBodyGuide).toBeTruthy();

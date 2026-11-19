@@ -9,6 +9,14 @@ test.beforeEach(async ({ context }) => {
   await withTestSession(context);
 });
 
+// Sin service worker: en WebKit, `context.route` no intercepta las peticiones
+// que pasan por el SW. En la primera visita el SW hace `clients.claim()` a
+// ~1 s y desde ahí la API simulada deja de responder: el worker real
+// contesta 401, la sesión se da por vencida y el libro recién importado se
+// pierde (Journey 1 o 2 caía en CI según el momento del claim). Estos
+// recorridos no prueban el SW; el modo offline lo cubre el Recorrido 4.
+test.use({ serviceWorkers: "block" });
+
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 
 test.describe("Lecta — Journeys Críticos de Estabilización", () => {

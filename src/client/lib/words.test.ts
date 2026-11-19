@@ -101,6 +101,46 @@ describe("extractWordAtPoint", () => {
     // Clic en x=80 (dentro de la palabra)
     expect(extractWordAtPoint(80, 110, root)?.word).toBe("borde");
   });
+
+  // El navegador deja el caret DESPUÉS de la letra cuando se toca su mitad
+  // derecha: en «perenne.» la última letra da offset = fin de la palabra,
+  // que es también el inicio del «.». Visto en Chromium/Linux (e2e
+  // reader-quote): la presión larga sobre la «e» final no hacía nada.
+  const withWordRect = () => {
+    const origCreateRange = document.createRange;
+    vi.spyOn(document, "createRange").mockImplementation(() => {
+      const range = origCreateRange.call(document);
+      range.getClientRects = () =>
+        [{ left: 50, right: 120, top: 100, bottom: 120, width: 70, height: 20 }] as unknown as DOMRectList;
+      return range;
+    });
+  };
+
+  it("tocar la mitad derecha de la última letra antes de la puntuación devuelve la palabra", () => {
+    const root = render("<p>Una palabra difícil: perenne.</p>");
+    const node = textNode(root.querySelector("p"));
+    const text = node.textContent ?? "";
+    pointCaretAt(node, text.indexOf("perenne") + "perenne".length);
+    withWordRect();
+    expect(extractWordAtPoint(116, 110, root)?.word).toBe("perenne");
+  });
+
+  it("tocar la mitad derecha de la última letra antes de un espacio devuelve la palabra", () => {
+    const root = render("<p>La casa antigua.</p>");
+    const node = textNode(root.querySelector("p"));
+    pointCaretAt(node, (node.textContent ?? "").indexOf("casa") + "casa".length);
+    withWordRect();
+    expect(extractWordAtPoint(116, 110, root)?.word).toBe("casa");
+  });
+
+  it("el hueco tras la palabra sigue siendo zona neutral", () => {
+    const root = render("<p>La casa antigua.</p>");
+    const node = textNode(root.querySelector("p"));
+    pointCaretAt(node, (node.textContent ?? "").indexOf("casa") + "casa".length);
+    withWordRect();
+    // x=125: fuera de la caja (right=120), en el espacio entre palabras.
+    expect(extractWordAtPoint(125, 110, root)).toBeNull();
+  });
 });
 
 describe("wordHitFromRange", () => {
