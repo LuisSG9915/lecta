@@ -553,7 +553,9 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // 3. Verificar diálogo de consentimiento TTS (TtsConsentDialog)
     const ttsDialog = page.locator("[role='dialog']").filter({ hasText: "voz alta" });
     await expect(ttsDialog).toBeVisible({ timeout: 5_000 });
-    await expect(ttsDialog).toContainText("KittenTTS Neural");
+    // El fixture está en español: la voz neural es Piper VITS es_MX
+    // (KittenTTS solo cubre inglés desde la voz híbrida).
+    await expect(ttsDialog).toContainText("Piper VITS es_MX");
     await expect(ttsDialog).toContainText("voz ligera del sistema");
 
     // 4. Descartar el diálogo
