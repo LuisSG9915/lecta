@@ -17,6 +17,11 @@ export type DigestData = {
   books: number;
 };
 
+// Semana sin actividad (o lectura fallida, que también deja todo en 0): el
+// cron no la envía; un resumen vacío se lee como spam.
+export const isEmptyDigest = (data: DigestData) =>
+  data.minutes === 0 && data.words === 0 && data.reviews === 0 && data.books === 0;
+
 export const buildUserDigest = async (
   env: WorkerEnv,
   userId: string,

@@ -8,7 +8,7 @@ import {
   sendErrorDigest,
 } from "./error-signatures";
 import { purgeLandingEvents } from "./landing-events";
-import { buildUserDigest, buildDigestHtml, sendDigestEmail } from "./weekly-digest";
+import { buildUserDigest, buildDigestHtml, isEmptyDigest, sendDigestEmail } from "./weekly-digest";
 
 export { EnrichmentWorkflow };
 
@@ -76,6 +76,7 @@ const handler: ExportedHandler<WorkerEnv> = {
           for (const u of users) {
             try {
               const data = await buildUserDigest(env, u.user_id);
+              if (isEmptyDigest(data)) continue;
               const unsubUrl = u.token
                 ? `${base}/api/digest/unsubscribe?token=${encodeURIComponent(u.token)}`
                 : base;
