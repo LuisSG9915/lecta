@@ -76,12 +76,22 @@ export function extractWordAtPoint(
   const text = node.textContent ?? "";
   const offset = caret.startOffset;
   const segments = [...new Intl.Segmenter(language, { granularity: "word" }).segment(text)];
+  const covering = segments.find(
+    (s) => s.index <= offset && offset < s.index + s.segment.length && s.isWordLike,
+  );
+  // Tocar la mitad derecha de la última letra deja el caret justo DESPUÉS
+  // de la palabra: al final del nodo, o al inicio de la puntuación o el
+  // espacio que la sigue («perenne|.»). La palabra que termina ahí vale,
+  // pero ante un segmento siguiente solo si el toque cae dentro de su
+  // caja (más abajo): el hueco entre palabras sigue siendo zona neutral.
+  const next = covering ? undefined : segments.find((s) => s.index === offset);
   const part =
-    segments.find((s) => s.index <= offset && offset < s.index + s.segment.length && s.isWordLike) ??
-    (segments.find((s) => s.index === offset) === undefined
+    covering ??
+    (next === undefined || !next.isWordLike
       ? segments.filter((s) => s.isWordLike && s.index + s.segment.length === offset).at(-1)
       : undefined);
   if (!part) return null;
+  const strictHit = !covering && next !== undefined;
 
   const word = part.segment;
 
@@ -100,12 +110,13 @@ export function extractWordAtPoint(
     if (rects && rects.length > 0) {
       const hasLayout = Array.from(rects).some((r) => r.width > 0 || r.height > 0);
       if (hasLayout) {
+        const slack = strictHit ? 0 : 0.25;
         const hitInside = Array.from(rects).some(
           (r) =>
-            clientX >= r.left - r.width * 0.25 &&
-            clientX <= r.right + r.width * 0.25 &&
-            clientY >= r.top - r.height * 0.25 &&
-            clientY <= r.bottom + r.height * 0.25,
+            clientX >= r.left - r.width * slack &&
+            clientX <= r.right + r.width * slack &&
+            clientY >= r.top - r.height * slack &&
+            clientY <= r.bottom + r.height * slack,
         );
         if (!hitInside) return null;
       }
