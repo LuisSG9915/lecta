@@ -4660,6 +4660,26 @@ b.lecta-anchor {
   gap: 10px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--rule);
+  /* Queda fijo arriba al desplazar la ficha; -1rem compensa el padding de .word-unified-card. */
+  position: sticky;
+  top: -1rem;
+  z-index: 1;
+  background: var(--surface-elevated);
+}
+
+.word-panel__lemma-note {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.word-panel__lemma-link {
+  background: none;
+  border: none;
+  color: var(--vermilion);
+  text-decoration: underline;
+  min-height: 44px;
+  cursor: pointer;
+  font: inherit;
 }
 
 .word-panel__top-row {
@@ -4720,14 +4740,16 @@ b.lecta-anchor {
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* Botón X siempre visible en móvil y escritorio con área táctil de 38x38px */
+/* Botón X siempre visible en móvil y escritorio con área táctil de 44x44px */
 .word-panel__close-btn {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border-radius: var(--r-pill);
   border: 1px solid var(--rule-strong);
   background: color-mix(in srgb, var(--ink) 8%, transparent);
@@ -4773,7 +4795,8 @@ b.lecta-anchor {
   gap: 6px;
   border: none;
   border-radius: var(--r-pill);
-  padding: 6px 14px;
+  min-height: 44px;
+  padding: 10px 16px;
   font-size: 0.82rem;
   font-weight: 600;
   background: var(--accent-primary);
