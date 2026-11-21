@@ -70,6 +70,37 @@ describe("StaleResetError", () => {
 });
 
 describe("lockResetMarker", () => {
+  it("con la fila existente solo toma el candado: sin INSERT", async () => {
+    const seen: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        seen.push(sql);
+        return sql.includes("FOR UPDATE") ? { rows: [{ reset_at: "1700" }] } : { rows: [] };
+      },
+    };
+    expect(await lockResetMarker(client, "u1")).toBe(1700);
+    expect(seen.some((s) => s.includes("INSERT"))).toBe(false);
+  });
+
+  it("sin fila la crea y vuelve a tomar el candado", async () => {
+    const seen: string[] = [];
+    let created = false;
+    const client = {
+      query: async (sql: string) => {
+        seen.push(sql);
+        if (sql.includes("INSERT")) created = true;
+        return sql.includes("FOR UPDATE") && created ? { rows: [{ reset_at: "0" }] } : { rows: [] };
+      },
+    };
+    expect(await lockResetMarker(client, "u1")).toBe(0);
+    expect(seen.map((s) => s.trim().split(/\s+/)[0])).toEqual([
+      "SAVEPOINT",
+      "SELECT",
+      "INSERT",
+      "SELECT",
+    ]);
+  });
+
   it("sin la tabla del marcador devuelve 0 aunque falle el ROLLBACK TO SAVEPOINT", async () => {
     const seen: string[] = [];
     const client = {

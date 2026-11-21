@@ -80,16 +80,25 @@ export async function lockResetMarker(
 ): Promise<number> {
   await client.query("SAVEPOINT lecta_reset_marker");
   try {
-    await client.query(
-      `INSERT INTO lecta_account_state (user_id, reset_at)
-       VALUES ($1, 0)
-       ON CONFLICT (user_id) DO NOTHING`,
-      [userId],
-    );
-    const res = (await client.query(
-      "SELECT reset_at FROM lecta_account_state WHERE user_id = $1 FOR UPDATE",
-      [userId],
-    )) as { rows?: Array<{ reset_at?: unknown }> };
+    const lock = async () =>
+      (await client.query(
+        "SELECT reset_at FROM lecta_account_state WHERE user_id = $1 FOR UPDATE",
+        [userId],
+      )) as { rows?: Array<{ reset_at?: unknown }> };
+    // Casi siempre la fila ya existe: una sola ida a la base. El INSERT
+    // solo corre la primera vez (y no escribe si otro writer la creó).
+    // No se usa ON CONFLICT DO UPDATE: escribiría la fila en cada
+    // escritura, y una escritura replicada cuesta más que el candado.
+    let res = await lock();
+    if (!res.rows?.length) {
+      await client.query(
+        `INSERT INTO lecta_account_state (user_id, reset_at)
+         VALUES ($1, 0)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId],
+      );
+      res = await lock();
+    }
     const stamp = Number(res.rows?.[0]?.reset_at);
     return Number.isFinite(stamp) && stamp > 0 ? stamp : 0;
   } catch (err) {
