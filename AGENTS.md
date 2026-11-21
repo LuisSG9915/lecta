@@ -805,8 +805,11 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
   worker lo consulta por nombre calificado (`CATALOG = "lecta_dev."`
   en src/worker/lexicon.ts) desde la misma conexión del cluster —
   incluye `lexicon_entries/forms/senses/sources/items`. No duplicar
-  estas tablas en `lecta` (cuesta RUs y diverge); las tablas
-  `lexicon_*` que quedaron en `lecta` están dormidas. Ojo: las pruebas
+  estas tablas en `lecta` (cuesta RUs y diverge). Las copias dormidas
+  (`lexicon_*` y `gutenberg_books`, ~1,05 M filas) se borraron de `lecta`
+  el 2026-11-21 con `scripts/drop-dormant-prod-catalog.mjs`; desde
+  entonces `gutenberg-index.mjs --remote` y los `sync-*-prod.mjs` ya no
+  tienen tabla destino (el índice se carga en `lecta_dev`). Ojo: las pruebas
   destructivas sobre esas tablas en dev pegan a prod.
 - `lecta_user_words.sense_entry_id` guarda ids del catálogo de
   `lecta_dev`; filas viejas en prod pueden tener ids del catálogo
