@@ -64,9 +64,13 @@ const INFRA_PATTERNS = [
 export function isSessionInfraError(err: unknown): boolean {
   if (!err) return false;
   if (err instanceof SessionInfraError) return true;
-  const anyErr = err as { code?: unknown; message?: unknown };
+  const anyErr = err as { code?: unknown; message?: unknown; body?: { code?: unknown } };
   const code = String(anyErr.code ?? "");
   if (INFRA_CODES.has(code)) return true;
+  // Better Auth atrapa el error de la base al leer la sesión y lanza un
+  // APIError 500 sin causa: FAILED_TO_GET_SESSION es su forma de «la base
+  // no respondió», no una sesión inválida (esa devuelve null).
+  if (anyErr.body?.code === "FAILED_TO_GET_SESSION") return true;
   const msg = String(anyErr.message ?? "");
   return INFRA_PATTERNS.some((pattern) => pattern.test(msg));
 }

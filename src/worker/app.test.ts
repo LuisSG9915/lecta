@@ -679,15 +679,30 @@ describe("app.onError", () => {
 
 describe("Infraestructura de sesión (503 vs 401)", () => {
   it("responde 503 con DB_UNAVAILABLE cuando la base de datos no está disponible", async () => {
+    // Cookie firmada con el secreto: Better Auth la acepta y va a la base
+    // a buscar la sesión. Una sin firma válida se descarta antes de tocar
+    // la base (401), así que no prueba la caída de infraestructura.
+    const secret = "secreto-de-prueba-503-0123456789abcdef";
+    const token = "token-de-prueba";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(token));
+    const signature = btoa(String.fromCharCode(...new Uint8Array(mac)));
     const res = await app.request(
       "/api/annotations",
       {
         headers: {
-          cookie: "better-auth.session_token=token-invalido-de-prueba",
+          cookie: `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`,
         },
       },
       {
         DATABASE_URL: "postgres://usuario:pass@unreachable.invalid:5432/db",
+        BETTER_AUTH_SECRET: secret,
       },
     );
     expect(res.status).toBe(503);
