@@ -120,6 +120,15 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL,
+    advanced: {
+      database: {
+        // La instancia vive una petición, así que la validación de esquema
+        // (introspección del catálogo, 0,4–1,2 s y ~260 lecturas de
+        // comentarios) se repetía en cada una: era la sentencia más cara
+        // del cluster. El esquema lo garantiza `pnpm db:auth`.
+        validateSchema: false,
+      },
+    },
     session: {
       cookieCache: {
         enabled: true,
