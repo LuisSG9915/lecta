@@ -248,6 +248,13 @@ let host: HTMLDivElement;
 let root: Root;
 
 const flush = () => act(() => new Promise((r) => setTimeout(r, 0)));
+// Espera con sondeo (tope ~2 s): un solo `setTimeout(0)` puede vencer antes de
+// la tarea de jsdom que despacha `popstate` cuando la máquina va cargada.
+const waitUntil = async (condition: () => boolean, attempts = 100) => {
+  for (let i = 0; i < attempts && !condition(); i += 1) {
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+  }
+};
 const popBack = () =>
   act(() => {
     history.replaceState({}, "");
@@ -369,6 +376,7 @@ describe("App · aviso de conflicto de posición", () => {
   it("atrás cierra solo la capa del aviso y deja el libro abierto", async () => {
     await openConflict();
     await popOneEntry();
+    await waitUntil(() => host.querySelector(".dialog-scrim") === null);
     expect(host.querySelector(".dialog-scrim")).toBeNull();
     expect(host.querySelector(".reader-stub")).toBeTruthy();
   });
@@ -471,7 +479,7 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
   });
 
   const waitWelcome = async () => {
-    for (let i = 0; i < 50 && !host.querySelector(".welcome"); i += 1) await flush();
+    await waitUntil(() => host.querySelector(".welcome") !== null);
   };
 
   it("sin sesión y en línea muestra la bienvenida y no la estantería", async () => {
