@@ -1,0 +1,1015 @@
+// Libros de la cuenta y la comunidad: `/api/books*` (subida, descarga, guía,
+// portada, compartir, adjuntar y reparar). Extraído de app.ts (R2 de la deuda
+// de complejidad).
+import { Hono } from "hono";
+import type { Context } from "hono";
+import { getConnectionString, isMissingColumnError, isMissingTableError, withClient, type WorkerEnv } from "./db";
+import { requireLectaPlus, type PlanVariables } from "./plan-middleware";
+import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
+import { extractEpubMeta, extractEpubCover, isHashLikeIdentifier } from "../shared/epub-meta";
+import { genreFromSubjects, isBookGenre } from "../shared/book-genres";
+import { sanitizePaperBookGuide } from "../shared/paper-guide";
+import { invalidateCommunityGuides, publishedGuideHashes } from "./community-guides";
+import { getSession } from "./session";
+import { purgeKindleBookCache } from "./kindle/cache";
+import { HASH_PATTERN, checkUserBooksQuota, deleteUserBookRecord, listUserBookFlags, recordUserBook, setUserBookCover, type BookFlags } from "./book-store";
+import { isResetBlocked, readResetAck, resetBlockedResponse, staleResetAt, StaleResetError, withResetGuard } from "./reset-guard";
+
+export const books = new Hono<{ Bindings: WorkerEnv }>();
+
+const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`;
+const bookCoverKey = (userId: string, hash: string) => `covers/${userId}/${hash}.jpg`;
+// Guías de papel comunitarias (modelo A1): un solo objeto por sha256,
+// fuera del espacio `books/` de cualquier usuario — jamás contiene el
+// EPUB, solo el índice de capítulos y sus listas de palabras.
+const guideKey = (hash: string) => `guides/${hash}.json`;
+
+books.get("/api/books", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
+
+  const listed = await booksBucket.list({ prefix: `books/${session.user.id}/` });
+
+  const books = listed.objects.map((object) => {
+    const hash = object.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+    const rawTitle = object.customMetadata?.title ?? "";
+    const cleanTitle = isHashLikeIdentifier(rawTitle) ? "" : rawTitle;
+    const author = object.customMetadata?.author ?? "";
+    const name = object.customMetadata?.name ?? "";
+    const sections = Number(object.customMetadata?.sections) || 0;
+    const language = object.customMetadata?.language ?? "";
+    const hasCover = object.customMetadata?.hasCover === "true";
+    const repairAttemptedAt = object.customMetadata?.repairAttemptedAt;
+
+    return {
+      hash,
+      uploaded: object.uploaded,
+      name: name && !isHashLikeIdentifier(name) ? name : (cleanTitle ? `${cleanTitle}.epub` : ""),
+      title: cleanTitle,
+      author,
+      sections,
+      language,
+      hasCover,
+      repairAttemptedAt,
+    };
+  });
+
+  // Flags por cuenta que viven en la fila `user_books` (el customMetadata
+  // de R2 no se actualiza sin resubir): `shared` marca libros ofrecidos
+  // a la comunidad y `paper_only` las copias comunitarias que solo abren
+  // el modo papel. Columnas 024 ausentes → mapa vacío, nada cambia.
+  try {
+    // Una sola consulta a user_books para flags, guías paper_only, filas de
+    // la era user-books/ y libros solo-metadatos (antes eran cuatro).
+    const summary = await listUserBooksSummary(context.env, session.user.id);
+    const flags = new Map<string, BookFlags>();
+    for (const row of summary) {
+      flags.set(String(row.book_id), {
+        shared: row.shared === true || row.shared === 1,
+        paperOnly: row.paper_only === true || row.paper_only === 1,
+        genre: String(row.genre ?? ""),
+      });
+    }
+    for (const book of books) {
+      const flag = flags.get(book.hash);
+      if (flag?.shared) (book as { shared?: boolean }).shared = true;
+      if (flag?.paperOnly) (book as { paperOnly?: boolean }).paperOnly = true;
+      if (flag?.genre) (book as { genre?: string }).genre = flag.genre;
+    }
+    // Las entradas paper_only son guías (modelo A1): no hay objeto EPUB
+    // en `books/{userId}/`, así que la lista de R2 no las trae. Se
+    // agregan desde la fila para que la estantería las vea remotas.
+    const listed = new Set(books.map((book) => book.hash));
+    for (const row of summary.filter((r) => r.paper_only === true || r.paper_only === 1)) {
+      if (listed.has(row.book_id)) continue;
+      books.push({
+        hash: row.book_id,
+        uploaded: new Date(Number(row.created_at) || Date.now()),
+        name: row.title ? `${row.title}.epub` : "",
+        title: row.title,
+        author: row.author,
+        sections: 0,
+        language: row.language,
+        hasCover: false,
+        repairAttemptedAt: undefined,
+        paperOnly: true,
+      } as (typeof books)[number]);
+      listed.add(row.book_id);
+    }
+    // Era `user-books/` (sync BYO-EPUB anterior): esas filas apuntan
+    // fuera del prefijo books/{userId}/ y la lista de R2 no las trae.
+    // Sin ellas la estantería se ve vacía aunque la cuenta tenga libros.
+    for (const row of summary.filter(
+      (r) => !String(r.r2_key ?? "").startsWith("books/") && r.has_file !== false,
+    )) {
+      if (listed.has(row.book_id)) continue;
+      if (flags.get(row.book_id)?.paperOnly) continue;
+      const title = isHashLikeIdentifier(row.title) ? "" : row.title;
+      books.push({
+        hash: row.book_id,
+        uploaded: new Date(Number(row.updated_at) || Date.now()),
+        name: title ? `${title}.epub` : "",
+        title,
+        author: row.author,
+        sections: 0,
+        language: row.language,
+        hasCover: false,
+        repairAttemptedAt: undefined,
+        shared: flags.get(row.book_id)?.shared || undefined,
+        genre: flags.get(row.book_id)?.genre || undefined,
+      } as (typeof books)[number]);
+      listed.add(row.book_id);
+    }
+    // 027: libros propios de cuentas free (solo metadatos). Se listan con
+    // hasFile: false para que el cliente pida adjuntar el archivo.
+    for (const row of summary.filter((r) => r.has_file === false)) {
+      if (listed.has(row.book_id)) continue;
+      const title = isHashLikeIdentifier(row.title) ? "" : row.title;
+      books.push({
+        hash: row.book_id,
+        uploaded: new Date(Number(row.created_at) || Date.now()),
+        name: title ? `${title}.epub` : "",
+        title,
+        author: row.author,
+        sections: 0,
+        language: row.language,
+        hasCover: false,
+        repairAttemptedAt: undefined,
+        hasFile: false,
+      } as (typeof books)[number]);
+      listed.add(row.book_id);
+    }
+  } catch {
+    // La lista de libros no depende de la comunidad.
+  }
+
+  const repairObjs = listed.objects
+    .filter((object) => {
+      const title = object.customMetadata?.title ?? "";
+      const repairAttemptedAt = object.customMetadata?.repairAttemptedAt;
+      return (!title || isHashLikeIdentifier(title)) && !repairAttemptedAt;
+    })
+    .slice(0, 5);
+
+  let executionCtx: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
+  try {
+    executionCtx = context.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
+
+  if (repairObjs.length > 0 && executionCtx?.waitUntil) {
+    executionCtx.waitUntil(
+      Promise.all(
+        repairObjs.map(async (repairObj) => {
+          try {
+            const key = repairObj.key;
+            const hash = key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+            const r2Obj = await booksBucket.get(key);
+            if (!r2Obj) return;
+            const data = new Uint8Array(await r2Obj.arrayBuffer());
+            const meta = await extractEpubMeta(data);
+            const nowStr = String(Date.now());
+
+            let hasCover = repairObj.customMetadata?.hasCover === "true";
+            if (!hasCover) {
+              const coverResult = await extractEpubCover(data).catch(() => null);
+              if (coverResult && coverResult.data.byteLength <= 300_000) {
+                await booksBucket.put(bookCoverKey(session.user.id, hash), coverResult.data, {
+                  httpMetadata: { contentType: coverResult.mediaType || "image/jpeg" },
+                });
+                hasCover = true;
+              }
+            }
+
+            const repTitle = (meta?.title && !isHashLikeIdentifier(meta.title))
+              ? meta.title.slice(0, 200)
+              : (repairObj.customMetadata?.title ?? "");
+            const repAuthor = (meta?.author ?? repairObj.customMetadata?.author ?? "").slice(0, 200);
+            const repSections = meta?.sections ? String(meta.sections) : (repairObj.customMetadata?.sections ?? "");
+            const repLang = (meta?.language ?? repairObj.customMetadata?.language ?? "").slice(0, 10);
+            const repName = repTitle ? `${repTitle}.epub` : (repairObj.customMetadata?.name ?? "");
+
+            const updatedCustomMetadata: Record<string, string> = {
+              ...repairObj.customMetadata,
+              repairAttemptedAt: nowStr,
+              hasCover: hasCover ? "true" : "false",
+            };
+            if (repName) updatedCustomMetadata.name = repName;
+            if (repTitle) updatedCustomMetadata.title = repTitle;
+            if (repAuthor) updatedCustomMetadata.author = repAuthor;
+            if (repSections) updatedCustomMetadata.sections = repSections;
+            if (repLang) updatedCustomMetadata.language = repLang;
+
+            await booksBucket.put(key, data, {
+              httpMetadata: { contentType: "application/epub+zip" },
+              customMetadata: updatedCustomMetadata,
+            });
+
+            if (repTitle) {
+              await recordUserBook(context.env, {
+                userId: session.user.id,
+                bookId: hash,
+                title: repTitle,
+                author: repAuthor,
+                r2Key: key,
+                sizeBytes: data.byteLength,
+                sha256: hash,
+                hasCover,
+                resetAck: readResetAck(context),
+              });
+            }
+          } catch {
+            // Ignora fallos silenciosos en segundo plano
+          }
+        }),
+      ),
+    );
+  }
+
+  return context.json({ books });
+});
+
+const handleBookUpload = async (
+  context: Context<{ Bindings: WorkerEnv; Variables: PlanVariables }>,
+  declaredHash?: string,
+) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = context.get("session");
+  if (!session) return context.json({ error: "Inicia sesión para guardar libros." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
+  const data = new Uint8Array(await context.req.arrayBuffer());
+  if (!data.byteLength || data.byteLength > EPUB_MAX_BYTES)
+    return context.json({ error: "Archivo vacío o demasiado grande (máximo 50 MB)." }, 400);
+  if (!checkEpubHeader(data).ok)
+    return context.json({ error: "El archivo no es un EPUB válido." }, 400);
+
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+  if (declaredHash) {
+    if (!HASH_PATTERN.test(declaredHash)) {
+      return context.json({ error: "Identificador de libro inválido." }, 400);
+    }
+    if (hex !== declaredHash) {
+      return context.json({ error: "El contenido no coincide con el identificador declarado." }, 400);
+    }
+  }
+
+  const hash = declaredHash ?? hex;
+
+  // Verificación de cuota por cuenta antes de escribir en R2
+  const quota = await checkUserBooksQuota(context.env, session.user.id, hash, data.byteLength);
+  if (!quota.allowed) {
+    return context.json({ error: quota.reason ?? "Storage quota exceeded for this account" }, 413);
+  }
+
+  const meta = context.req.query();
+  let title = meta.title?.slice(0, 200) ?? "";
+  let author = meta.author?.slice(0, 200) ?? "";
+  let sections = /^\d{1,5}$/.test(meta.sections ?? "") ? meta.sections! : "";
+  let name = meta.name?.slice(0, 200) ?? "";
+  let language = meta.language?.slice(0, 10) ?? "";
+  // Género editorial de la lista cerrada BOOK_GENRES; "" = sin clasificar.
+  let genre = isBookGenre(meta.genre) ? meta.genre : "";
+
+  if (!title || !language || !genre) {
+    const extracted = await extractEpubMeta(data).catch(() => null);
+    if (extracted?.title) {
+      title = title || extracted.title.slice(0, 200);
+      author = author || (extracted.author?.slice(0, 200) ?? "");
+      sections = sections || (extracted.sections ? String(extracted.sections) : "");
+      name = name || `${title}.epub`;
+      language = language || (extracted.language?.slice(0, 10) ?? "");
+    }
+    genre = genre || genreFromSubjects(extracted?.subjects ?? []);
+  }
+
+  let hasCover = false;
+  const coverResult = await extractEpubCover(data).catch(() => null);
+  if (coverResult && coverResult.data.byteLength <= 300_000) {
+    await booksBucket.put(bookCoverKey(session.user.id, hash), coverResult.data, {
+      httpMetadata: { contentType: coverResult.mediaType || "image/jpeg" },
+    });
+    hasCover = true;
+  }
+
+  const r2Key = bookKey(session.user.id, hash);
+  await booksBucket.put(r2Key, data, {
+    httpMetadata: { contentType: "application/epub+zip" },
+    customMetadata: {
+      name,
+      title,
+      author,
+      sections,
+      language,
+      hasCover: hasCover ? "true" : "false",
+    },
+  });
+
+  // La fila corre en la transacción guardada: si un reinicio comiteó
+  // mientras subía el archivo, no queda ni la fila ni el objeto en R2.
+  try {
+    await recordUserBook(context.env, {
+      userId: session.user.id,
+      bookId: hash,
+      title: title || name.replace(/\.epub$/i, "") || hash,
+      author,
+      language,
+      genre,
+      r2Key,
+      sizeBytes: data.byteLength,
+      sha256: hash,
+      hasCover,
+      resetAck: readResetAck(context),
+    });
+  } catch (err) {
+    if (err instanceof StaleResetError) {
+      await booksBucket.delete(r2Key).catch(() => undefined);
+      if (hasCover)
+        await booksBucket.delete(bookCoverKey(session.user.id, hash)).catch(() => undefined);
+      return resetBlockedResponse(context, err.resetAt);
+    }
+    throw err;
+  }
+
+  return context.json({ ok: true, hash });
+};
+
+books.put("/api/books/:hash", requireLectaPlus, (context) => handleBookUpload(context, context.req.param("hash")));
+books.post("/api/books/:hash", requireLectaPlus, (context) => handleBookUpload(context, context.req.param("hash")));
+books.post("/api/books", requireLectaPlus, (context) => handleBookUpload(context));
+
+// Catálogo comunitario: una entrada por book_id aunque lo compartan
+// varios lectores, ordenado por la primera vez que apareció. Debe
+// registrarse ANTES de `/api/books/:hash`: si no, «community» se traga
+// como hash y el catálogo nunca responde.
+books.get("/api/books/community", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver la comunidad." }, 401);
+
+  // Las copias del propio lector no aparecen: ya las tiene — mostrarlas
+  // solo daba un 409 («Ese libro ya es tuyo») al pulsar «Usar en papel».
+  // `genre` (migración 025) se pide aparte: sin la columna la consulta
+  // base sigue sirviendo el catálogo — solo sale sin género.
+  const communitySql = (extraCols: string, placeholder: string) =>
+    `SELECT book_id,
+       MAX(title) AS title, MAX(author) AS author, MAX(language) AS language,
+       MAX(size_bytes) AS size_bytes, BOOL_OR(has_cover) AS has_cover,
+       MIN(shared_at) AS shared_at, COUNT(DISTINCT user_id)::int AS sharers${extraCols}
+     FROM user_books
+     WHERE shared = true AND user_id <> ${placeholder}
+     GROUP BY book_id
+     ORDER BY shared_at DESC
+     LIMIT 200`;
+  const sqlPg = communitySql(", MAX(genre) AS genre", "$1");
+  const sqlPgBase = communitySql("", "$1");
+
+  const collect = (
+    rows: Array<Record<string, unknown>>,
+  ) =>
+    rows.map((row) => ({
+      hash: String(row.book_id),
+      title: String(row.title ?? ""),
+      author: String(row.author ?? ""),
+      language: String(row.language ?? ""),
+      sizeBytes: Number(row.size_bytes ?? 0),
+      // Modelo A1: las entradas comunitarias son guías de papel — la
+      // portada siempre es la tipográfica generada en el cliente.
+      hasCover: false,
+      sharers: Number(row.sharers ?? 1),
+      genre: String(row.genre ?? ""),
+    }));
+
+  const finish = async (rows: Array<Record<string, unknown>>) => {
+    const books = collect(rows);
+    const guides = await publishedGuideHashes(context.env.BOOKS);
+    if (!guides) return books;
+    return books.filter((book) => guides.has(book.hash));
+  };
+
+  if (getConnectionString(context.env)) {
+    let res = await withClient(context.env, (client) =>
+      client.query(sqlPg, [session.user.id]),
+    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+    if (res === null) {
+      // Falta `genre` (pre-025): reintenta sin la columna — la comunidad
+      // sale sin género en vez de vacía. Si falta `shared` (pre-024)
+      // la consulta base también falla y sí devuelve vacío.
+      res = await withClient(context.env, (client) =>
+        client.query(sqlPgBase, [session.user.id]),
+      ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+      if (res === null) return context.json({ books: [] });
+    }
+    return context.json({ books: await finish(res?.rows ?? []) });
+  }
+  return context.json({ books: [] });
+});
+
+books.get("/api/books/:hash", requireLectaPlus, async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = context.get("session");
+  if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  // Defensa del modelo A1: una entrada paper_only no tiene EPUB — la
+  // guía es todo lo que existe y se sirve por /:hash/guide. Si la fila
+  // lo marca, la descarga del libro se niega aunque alguien hubiera
+  // subido un objeto a su llave.
+  const flags = await listUserBookFlags(context.env, session.user.id).catch(
+    () => new Map(),
+  );
+  if (flags.get(hash)?.paperOnly)
+    return context.json(
+      { error: "Esta entrada es una guía de papel, no un libro descargable." },
+      403,
+    );
+
+  const object = await booksBucket.get(bookKey(session.user.id, hash));
+  if (object) {
+    return new Response(object.body, {
+      headers: { "content-type": "application/epub+zip" },
+    });
+  }
+
+  // Compatibilidad era `user-books/`: la fila user_books guarda la llave
+  // real del archivo; la ruta convencional cubre filas anteriores a ella.
+  // Solo se sirven llaves dentro del espacio propio del usuario.
+  const r2Key = await readUserBookR2Key(context.env, session.user.id, hash);
+  const legacyPrefix = `user-books/${session.user.id}/`;
+  const candidates = [r2Key, `${legacyPrefix}${hash}.epub`].filter(
+    (key): key is string =>
+      typeof key === "string" && key.startsWith(legacyPrefix),
+  );
+  for (const key of candidates) {
+    const fallback = await booksBucket.get(key);
+    if (fallback) {
+      return new Response(fallback.body, {
+        headers: { "content-type": "application/epub+zip" },
+      });
+    }
+  }
+  return context.json({ error: "Libro no encontrado." }, 404);
+});
+
+// Descarga de la guía de papel: para quien la adjuntó (fila propia) o
+// para cualquier lector mientras el libro siga compartido. El objeto
+// vive fuera del espacio de usuarios — sirve el JSON tal cual.
+books.get("/api/books/:hash/guide", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver guías." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const flags = await listUserBookFlags(context.env, session.user.id).catch(
+    () => new Map(),
+  );
+  const donor = flags.has(hash) ? null : await findCommunityDonor(context.env, hash);
+  if (!flags.has(hash) && (!donor || donor === "unavailable"))
+    return context.json({ error: "Guía no encontrada." }, 404);
+
+  const object = await booksBucket.get(guideKey(hash));
+  if (!object) return context.json({ error: "Guía no encontrada." }, 404);
+  return new Response(object.body, {
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "private, max-age=86400, immutable",
+    },
+  });
+});
+
+books.delete("/api/books/:hash", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para borrar libros." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  await booksBucket.delete(bookKey(session.user.id, hash));
+  await booksBucket.delete(bookCoverKey(session.user.id, hash));
+  try {
+    await deleteUserBookRecord(context.env, session.user.id, hash, readResetAck(context));
+  } catch (err) {
+    if (err instanceof StaleResetError) return resetBlockedResponse(context, err.resetAt);
+    throw err;
+  }
+  // Purgar artefactos Kindle cacheados del libro (K4)
+  try {
+    context.executionCtx.waitUntil(purgeKindleBookCache(booksBucket, hash));
+  } catch {
+    void purgeKindleBookCache(booksBucket, hash);
+  }
+  return context.json({ ok: true });
+});
+
+books.put("/api/books/:hash/cover", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para guardar portadas." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const contentType = context.req.header("content-type") || "image/jpeg";
+  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType.toLowerCase())) {
+    return context.json({ error: "Formato de imagen no soportado (use JPEG, PNG o WebP)." }, 400);
+  }
+
+  const data = new Uint8Array(await context.req.arrayBuffer());
+  if (!data.byteLength || data.byteLength > 300_000) {
+    return context.json({ error: "Portada vacía o demasiado grande (máximo 300 KB)." }, 400);
+  }
+
+  await booksBucket.put(bookCoverKey(session.user.id, hash), data, {
+    httpMetadata: { contentType },
+  });
+
+  try {
+    await setUserBookCover(context.env, session.user.id, hash, true, readResetAck(context));
+  } catch (err) {
+    if (err instanceof StaleResetError) {
+      await booksBucket.delete(bookCoverKey(session.user.id, hash)).catch(() => undefined);
+      return resetBlockedResponse(context, err.resetAt);
+    }
+    throw err;
+  }
+
+  // Intentar actualizar también customMetadata del libro en R2
+  try {
+    const epubObj = await booksBucket.get(bookKey(session.user.id, hash));
+    if (epubObj) {
+      const epubData = new Uint8Array(await epubObj.arrayBuffer());
+      await booksBucket.put(bookKey(session.user.id, hash), epubData, {
+        httpMetadata: epubObj.httpMetadata,
+        customMetadata: {
+          ...epubObj.customMetadata,
+          hasCover: "true",
+        },
+      });
+    }
+  } catch {
+    // Best-effort
+  }
+
+  return context.json({ ok: true });
+});
+
+books.get("/api/books/:hash/cover", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver portadas." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const object = await booksBucket.get(bookCoverKey(session.user.id, hash));
+  if (!object) return context.json({ error: "Portada no encontrada." }, 404);
+
+  return new Response(object.body, {
+    headers: {
+      "content-type": object.httpMetadata?.contentType || "image/jpeg",
+      "cache-control": "private, max-age=86400, immutable",
+    },
+  });
+});
+
+// ------------------------------------------------------------------
+// Biblioteca comunitaria «solo papel» (migración 024, modelo A1)
+//
+// El lector marca su EPUB como compartido (`shared`) y sube la GUÍA
+// de papel generada en su dispositivo: `guides/{hash}.json` guarda el
+// índice de capítulos y la lista alfabética de formas — cero texto del
+// autor, cero portada. Otras cuentas la ven en «Comunidad» y la
+// adjuntan como entrada propia `paper_only` (size_bytes=0, sin cuota):
+// abre el índice del modo papel y jamás el lector, porque el EPUB
+// nunca sale del espacio privado del donante. El catálogo deduplica
+// por `book_id` (= sha256 del archivo origen).
+// ------------------------------------------------------------------
+
+// Fila de user_books para GET /api/books. Las columnas opcionales llegan
+// según las migraciones aplicadas (024 shared/paper_only, 025 genre, 027
+// has_file); sin ellas el campo es undefined y se trata como antes (flag
+// apagado / con archivo).
+type UserBookSummaryRow = {
+  book_id: string;
+  title: string;
+  author: string;
+  language: string;
+  r2_key: string;
+  created_at: unknown;
+  updated_at: unknown;
+  shared?: unknown;
+  paper_only?: unknown;
+  genre?: unknown;
+  has_file?: unknown;
+};
+
+// Reparto en JS (GET /api/books): paper_only = guías de la comunidad (la fila
+// ES la entrada remota); r2_key fuera de `books/` = la era `user-books/` del
+// sync BYO-EPUB viejo, que la lista de R2 no alcanza (sus paper_only se
+// filtran por flags); has_file = false = libros propios solo con metadatos
+// (027, plan free).
+async function listUserBooksSummary(
+  env: WorkerEnv,
+  userId: string,
+): Promise<UserBookSummaryRow[]> {
+  if (!getConnectionString(env)) return [];
+  const base = "book_id, title, author, language, r2_key, created_at, updated_at";
+  // De la más completa a la más antigua: una columna ausente (42703) baja un
+  // escalón. Sin ni siquiera la base → lista vacía, como antes.
+  const tiers = [
+    `${base}, shared, paper_only, genre, has_file`,
+    `${base}, shared, paper_only, genre`,
+    `${base}, shared, paper_only`,
+    base,
+  ];
+  for (const columns of tiers) {
+    try {
+      const res = await withClient(env, (client) =>
+        client.query<UserBookSummaryRow>(
+          `SELECT ${columns} FROM user_books WHERE user_id = $1`,
+          [userId],
+        ),
+      );
+      return res?.rows ?? [];
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+    }
+  }
+  return [];
+}
+
+// La llave R2 real del archivo según su fila user_books — la era
+// `user-books/` la guarda explícita; lectura tolerante a tabla ausente
+// (devuelve null y el llamador usa la ruta convencional).
+async function readUserBookR2Key(
+  env: WorkerEnv,
+  userId: string,
+  bookId: string,
+): Promise<string | null> {
+  const sqlPg = `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`;
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<{ r2_key: string }>(sqlPg, [userId, bookId]),
+    ).catch((err) => (isMissingTableError(err) ? null : Promise.reject(err)));
+    if (res) return res.rows[0]?.r2_key ?? null;
+    if (res === null) return null;
+  }
+  return null;
+}
+
+// Fila donante del catálogo: cualquier copia compartida del mismo
+// book_id sirve — el archivo es idéntico (sha256).
+type CommunityDonor = {
+  user_id: string;
+  title: string;
+  author: string;
+  language: string;
+};
+
+async function findCommunityDonor(
+  env: WorkerEnv,
+  bookId: string,
+): Promise<CommunityDonor | null | "unavailable"> {
+  const sqlPg = `SELECT user_id, title, author, language
+     FROM user_books
+     WHERE book_id = $1 AND shared = true
+     ORDER BY shared_at ASC
+     LIMIT 1`;
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<CommunityDonor>(sqlPg, [bookId]),
+    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+    if (res === null) return "unavailable";
+    return res?.rows[0] ?? null;
+  }
+  return null;
+}
+
+// Compartir / dejar de compartir tu propio libro. `genre` viaja solo
+// cuando el lector lo declara al compartir (undefined = no tocar la
+// columna): la elección manual pisa a la detectada del EPUB.
+const setBookShared = async (
+  env: WorkerEnv,
+  context: Context,
+  userId: string,
+  bookId: string,
+  shared: boolean,
+  genre?: string,
+): Promise<Response> => {
+  const now = Date.now();
+  const runUpdate = (
+    client: { query: (sql: string, params?: unknown[]) => Promise<{ rowCount?: number }> },
+    includeGenre: boolean,
+  ) =>
+    client.query(
+      includeGenre
+        ? `UPDATE user_books SET shared = $3, shared_at = $4, updated_at = $5, genre = $6
+           WHERE user_id = $1 AND book_id = $2`
+        : `UPDATE user_books SET shared = $3, shared_at = $4, updated_at = $5
+           WHERE user_id = $1 AND book_id = $2`,
+      includeGenre
+        ? [userId, bookId, shared, shared ? now : 0, now, genre]
+        : [userId, bookId, shared, shared ? now : 0, now],
+    );
+  if (getConnectionString(env)) {
+    try {
+      const updated = await withResetGuard(env, readResetAck(context), userId, async (client) => {
+        // Sin la columna (pre-025) se reintenta sin género: compartir
+        // no puede fallar por un metadato complementario.
+        const res = await runUpdate(client, genre !== undefined).catch((err: unknown) =>
+          genre !== undefined && isMissingColumnError(err)
+            ? runUpdate(client, false)
+            : Promise.reject(err),
+        );
+        return res.rowCount ?? 0;
+      });
+      if (isResetBlocked(updated)) return resetBlockedResponse(context, updated.blockedAt);
+      if (updated === undefined)
+        return context.json({ error: "El almacenamiento no está configurado." }, 503);
+      if (updated === 0) return context.json({ error: "Libro no encontrado." }, 404);
+      return context.json({ ok: true, shared });
+    } catch (err) {
+      if (isMissingColumnError(err))
+        return context.json({ error: "La comunidad aún no está disponible." }, 503);
+      throw err;
+    }
+  }
+  return context.json({ error: "El almacenamiento no está configurado." }, 503);
+};
+
+books.put("/api/books/:hash/share", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para compartir libros." }, 401);
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  // Modelo A1: el cuerpo trae la guía de papel generada en el
+  // dispositivo del dueño (índice + formas por capítulo, cero texto).
+  // Se valida y se guarda en `guides/{hash}.json` — el EPUB jamás se
+  // copia ni sale del espacio privado del donante.
+  const body = (await context.req.json().catch(() => null)) as {
+    guide?: unknown;
+    genre?: unknown;
+  } | null;
+  if (body?.guide !== undefined) {
+    const booksBucket = context.env.BOOKS;
+    if (!booksBucket)
+      return context.json({ error: "El almacenamiento no está configurado." }, 503);
+    const guide = sanitizePaperBookGuide(body.guide, hash);
+    if (!guide)
+      return context.json({ error: "La guía del libro no es válida." }, 400);
+    await booksBucket.put(guideKey(hash), JSON.stringify(guide), {
+      httpMetadata: { contentType: "application/json" },
+    });
+    // La guía ya es visible para el listado comunitario: la caché del
+    // isolate debe olvidarla en la siguiente petición.
+    invalidateCommunityGuides();
+  }
+  // Género declarado al compartir: solo valores de BOOK_GENRES; un
+  // string ajeno se normaliza a "" (la columna queda sin clasificar,
+  // jamás guarda texto libre). Clave ausente = no tocar la columna.
+  const genre =
+    typeof body?.genre === "string"
+      ? isBookGenre(body.genre)
+        ? body.genre
+        : ""
+      : undefined;
+  return setBookShared(context.env, context, session.user.id, hash, true, genre);
+});
+
+books.delete("/api/books/:hash/share", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para compartir libros." }, 401);
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+  return setBookShared(context.env, context, session.user.id, hash, false);
+});
+
+// Portada de una entrada comunitaria: con el modelo A1 las guías no
+// traen la portada del donante (la imagen es del editorial). La
+// estantería dibuja siempre la portada tipográfica de Lecta — esta
+// ruta queda como 404 explícito para clientes viejos.
+books.get("/api/books/community/:hash/cover", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver portadas." }, 401);
+  return context.json({ error: "Portada no encontrada." }, 404);
+});
+
+// Adjuntar (modelo A1): NO se copia el EPUB ni la portada del donante.
+// Se lee la guía `guides/{hash}.json`, se inserta la fila paper_only
+// del usuario (size_bytes=0, sin cuota) y se devuelve la guía en la
+// respuesta para que el cliente la guarde en IndexedDB — ~40 kB y el
+// modo papel queda disponible offline desde el primer toque.
+books.post("/api/books/community/:hash/attach", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para guardar libros." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const donor = await findCommunityDonor(context.env, hash);
+  if (donor === "unavailable")
+    return context.json({ error: "La comunidad aún no está disponible." }, 503);
+  if (!donor) return context.json({ error: "Ese libro ya no está en la comunidad." }, 404);
+  if (donor.user_id === session.user.id)
+    return context.json({ error: "Ese libro ya es tuyo." }, 409);
+
+  const guideObject = await booksBucket.get(guideKey(hash));
+  if (!guideObject)
+    return context.json({ error: "La guía de este libro ya no está disponible." }, 404);
+  const guide = sanitizePaperBookGuide(
+    await guideObject.json().catch(() => null),
+    hash,
+  );
+  if (!guide)
+    return context.json({ error: "La guía de este libro ya no está disponible." }, 404);
+
+  // Idempotente: si la fila ya existe, se devuelve la guía de todos
+  // modos — el dispositivo puede haberla perdido (IndexedDB limpiada).
+  if (getConnectionString(context.env)) {
+    const existing = await withClient(context.env, (client) =>
+      client.query(
+        `SELECT 1 FROM user_books WHERE user_id = $1 AND book_id = $2`,
+        [session.user.id, hash],
+      ),
+    ).catch(() => null);
+    if (existing?.rows?.length)
+      return context.json({ ok: true, hash, already: true, guide });
+  }
+
+  const now = Date.now();
+  const title = guide.title || donor.title || "";
+  const author = guide.author || donor.author || "";
+  const language = guide.language || donor.language || "";
+  const insertRow = (client: { query: (sql: string, p?: unknown[]) => Promise<{ rowCount?: number }> }) =>
+    client.query(
+      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, shared, shared_at, paper_only, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, 0, true, $10, $11)
+       ON CONFLICT (user_id, book_id) DO NOTHING`,
+      [
+        session.user.id,
+        hash,
+        title,
+        author,
+        language,
+        guideKey(hash),
+        0,
+        hash,
+        false,
+        now,
+        now,
+      ],
+    );
+
+  if (getConnectionString(context.env)) {
+    try {
+      const inserted = await withResetGuard(
+        context.env,
+        readResetAck(context),
+        session.user.id,
+        insertRow,
+      );
+      if (isResetBlocked(inserted))
+        return resetBlockedResponse(context, inserted.blockedAt);
+      if (inserted === undefined)
+        return context.json({ error: "El almacenamiento no está configurado." }, 503);
+      return context.json({ ok: true, hash, guide });
+    } catch (err) {
+      if (isMissingColumnError(err))
+        return context.json({ error: "La comunidad aún no está disponible." }, 503);
+      throw err;
+    }
+  }
+  return context.json({ error: "El almacenamiento no está configurado." }, 503);
+});
+
+books.post("/api/books/:hash/repair", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para reparar libros." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const key = bookKey(session.user.id, hash);
+  const r2Obj = await booksBucket.get(key);
+  if (!r2Obj) return context.json({ error: "Libro no encontrado." }, 404);
+
+  const data = new Uint8Array(await r2Obj.arrayBuffer());
+  const meta = await extractEpubMeta(data);
+  const nowStr = String(Date.now());
+
+  let hasCover = r2Obj.customMetadata?.hasCover === "true";
+  if (!hasCover) {
+    const coverResult = await extractEpubCover(data).catch(() => null);
+    if (coverResult && coverResult.data.byteLength <= 300_000) {
+      await booksBucket.put(bookCoverKey(session.user.id, hash), coverResult.data, {
+        httpMetadata: { contentType: coverResult.mediaType || "image/jpeg" },
+      });
+      hasCover = true;
+    }
+  }
+
+  const repTitle = (meta?.title && !isHashLikeIdentifier(meta.title))
+    ? meta.title.slice(0, 200)
+    : (r2Obj.customMetadata?.title ?? "");
+  const repAuthor = (meta?.author ?? r2Obj.customMetadata?.author ?? "").slice(0, 200);
+  const repSections = meta?.sections ? String(meta.sections) : (r2Obj.customMetadata?.sections ?? "");
+  const repLang = (meta?.language ?? r2Obj.customMetadata?.language ?? "").slice(0, 10);
+  const repName = repTitle ? `${repTitle}.epub` : (r2Obj.customMetadata?.name ?? "");
+
+  const updatedCustomMetadata: Record<string, string> = {
+    ...r2Obj.customMetadata,
+    repairAttemptedAt: nowStr,
+    hasCover: hasCover ? "true" : "false",
+  };
+  if (repName) updatedCustomMetadata.name = repName;
+  if (repTitle) updatedCustomMetadata.title = repTitle;
+  if (repAuthor) updatedCustomMetadata.author = repAuthor;
+  if (repSections) updatedCustomMetadata.sections = repSections;
+  if (repLang) updatedCustomMetadata.language = repLang;
+
+  await booksBucket.put(key, data, {
+    httpMetadata: { contentType: "application/epub+zip" },
+    customMetadata: updatedCustomMetadata,
+  });
+
+  try {
+    await recordUserBook(context.env, {
+      userId: session.user.id,
+      bookId: hash,
+      title: repTitle,
+      author: repAuthor,
+      r2Key: key,
+      sizeBytes: data.byteLength,
+      sha256: hash,
+      hasCover,
+      resetAck: readResetAck(context),
+    });
+  } catch (err) {
+    if (err instanceof StaleResetError) return resetBlockedResponse(context, err.resetAt);
+    throw err;
+  }
+
+  return context.json({
+    title: repTitle,
+    author: repAuthor,
+    language: repLang || "es",
+    sectionCount: Number(repSections) || 0,
+    hasCover,
+  });
+});
