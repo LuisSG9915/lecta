@@ -38,14 +38,5 @@ export const KITTEN_VOICE_ORDER = [
   "expr-voice-5-f",
   "expr-voice-5-m",
 ] as const;
-/** `speed_priors` del config.json oficial: la velocidad pedida se multiplica por esto. */
-export const KITTEN_SPEED_PRIORS: Readonly<Record<(typeof KITTEN_VOICE_ORDER)[number], number>> = {
-  "expr-voice-2-f": 0.8,
-  "expr-voice-2-m": 0.8,
-  "expr-voice-3-f": 0.8,
-  "expr-voice-3-m": 0.8,
-  "expr-voice-4-f": 0.8,
-  "expr-voice-4-m": 0.9,
-  "expr-voice-5-f": 0.8,
-  "expr-voice-5-m": 0.8,
-};
+// Los `speed_priors` del config.json oficial (0.8 casi siempre) NO se aplican: con ellos la
+// voz sale a ~88 palabras/min, demasiado lenta; la velocidad la decide el ajuste del usuario.

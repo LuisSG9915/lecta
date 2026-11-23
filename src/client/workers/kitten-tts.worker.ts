@@ -9,7 +9,7 @@
 // Pipeline Piper:  normalizeSpanishText → SpanishG2P → Encoder → input/input_lengths/scales.
 
 import type { KittenVoiceId } from "../lib/ttsTypes";
-import { effectiveSpeed, parseVoiceTable, styleRow, type KittenVoiceTable } from "../lib/kittenVoicesData";
+import { parseVoiceTable, styleRow, type KittenVoiceTable } from "../lib/kittenVoicesData";
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
 import {
@@ -414,7 +414,7 @@ async function runKittenInference(
   if (!kittenVoices) {
     throw new Error("Faltan las voces de KittenTTS: vuelve a descargar la voz neural.");
   }
-  // Estilo = fila min(len(texto), 399) de la voz; velocidad × speed_prior (KittenTTS oficial).
+  // Estilo = fila min(len(texto), 399) de la voz; velocidad tal cual (sin speed_priors: ver kittenModel.ts).
   const voiceEmbedding = styleRow(kittenVoices, voiceId, Array.from(cleanText).length);
 
   const inputNames = kittenSession.inputNames;
@@ -456,7 +456,7 @@ async function runKittenInference(
   if (inputNames.includes(speedName) || inputNames.length > 2) {
     feeds[speedName] = new ort.Tensor(
       "float32",
-      new Float32Array([effectiveSpeed(voiceId, speed)]),
+      new Float32Array([speed]),
       [1],
     );
   }

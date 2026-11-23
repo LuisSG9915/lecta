@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  KITTEN_SPEED_PRIORS,
   KITTEN_VOICES_BYTES,
   KITTEN_VOICES_SHA256,
   KITTEN_VOICE_DIMS,
@@ -12,7 +11,6 @@ import {
 } from "./kittenModel";
 import {
   KITTEN_VOICE_ALIASES,
-  effectiveSpeed,
   parseVoiceTable,
   resolveVoiceId,
   styleRow,
@@ -63,12 +61,5 @@ describe("kittenVoicesData", () => {
     expect(resolveVoiceId("expr-voice-4-m")).toBe("expr-voice-4-m");
     expect(resolveVoiceId("nada")).toBe("expr-voice-2-f");
     for (const alias of Object.values(KITTEN_VOICE_ALIASES)) expect(KITTEN_VOICE_ORDER).toContain(alias);
-  });
-
-  it("effectiveSpeed multiplica por el speed_prior de la voz (0.8, y 0.9 en expr-voice-4-m)", () => {
-    expect(effectiveSpeed("expr-voice-2-f", 1)).toBeCloseTo(0.8);
-    expect(effectiveSpeed("Hugo", 1)).toBeCloseTo(0.9);
-    expect(effectiveSpeed("expr-voice-5-f", 1.5)).toBeCloseTo(1.2);
-    expect(Object.keys(KITTEN_SPEED_PRIORS).sort()).toEqual([...KITTEN_VOICE_ORDER].sort());
   });
 });

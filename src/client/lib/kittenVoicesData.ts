@@ -1,5 +1,4 @@
 import {
-  KITTEN_SPEED_PRIORS,
   KITTEN_VOICES_BYTES,
   KITTEN_VOICE_DIMS,
   KITTEN_VOICE_ORDER,
@@ -66,9 +65,4 @@ export function styleRow(
   if (!rows) throw new Error("La tabla de voces no tiene la voz pedida");
   const row = Math.max(0, Math.min(Math.floor(textLength), KITTEN_VOICE_ROWS - 1));
   return rows.subarray(row * KITTEN_VOICE_DIMS, (row + 1) * KITTEN_VOICE_DIMS);
-}
-
-/** Velocidad que recibe el modelo: la pedida × el `speed_prior` de la voz. */
-export function effectiveSpeed(voiceId: string, speed: number): number {
-  return speed * KITTEN_SPEED_PRIORS[resolveVoiceId(voiceId)];
 }
