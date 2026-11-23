@@ -51,18 +51,26 @@ export function parseVoiceTable(buffer: ArrayBuffer): KittenVoiceTable {
   return table;
 }
 
+const styleCache = new WeakMap<Float32Array, Float32Array>();
+
 /**
- * Estilo de una síntesis: la fila `min(longitud del texto, 399)` de la voz, igual que
- * KittenTTS (`voices[voice][min(len(text), rows - 1)]`). La longitud se cuenta en
- * code points, como el `len` de Python.
+ * Estilo de una síntesis: el PROMEDIO de las 400 filas de la voz, constante. KittenTTS
+ * indexa la fila por la longitud del texto, pero las filas de una misma voz se parecen
+ * solo 0.86–0.98 (coseno): al cambiar de oración cambiaba el timbre y sonaba «otra
+ * persona». El promedio da una sola voz estable y voz limpia con textos de cualquier
+ * longitud (medido: mismas métricas espectrales que la fila exacta).
  */
-export function styleRow(
-  table: KittenVoiceTable,
-  voiceId: string,
-  textLength: number,
-): Float32Array {
+export function voiceStyle(table: KittenVoiceTable, voiceId: string): Float32Array {
   const rows = table.get(resolveVoiceId(voiceId));
   if (!rows) throw new Error("La tabla de voces no tiene la voz pedida");
-  const row = Math.max(0, Math.min(Math.floor(textLength), KITTEN_VOICE_ROWS - 1));
-  return rows.subarray(row * KITTEN_VOICE_DIMS, (row + 1) * KITTEN_VOICE_DIMS);
+  const cached = styleCache.get(rows);
+  if (cached) return cached;
+  const mean = new Float32Array(KITTEN_VOICE_DIMS);
+  for (let r = 0; r < KITTEN_VOICE_ROWS; r += 1) {
+    const offset = r * KITTEN_VOICE_DIMS;
+    for (let i = 0; i < KITTEN_VOICE_DIMS; i += 1) mean[i] += rows[offset + i];
+  }
+  for (let i = 0; i < KITTEN_VOICE_DIMS; i += 1) mean[i] /= KITTEN_VOICE_ROWS;
+  styleCache.set(rows, mean);
+  return mean;
 }

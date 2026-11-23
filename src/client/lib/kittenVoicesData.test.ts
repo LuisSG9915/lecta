@@ -13,7 +13,7 @@ import {
   KITTEN_VOICE_ALIASES,
   parseVoiceTable,
   resolveVoiceId,
-  styleRow,
+  voiceStyle,
 } from "./kittenVoicesData";
 
 const VOICE_FLOATS = KITTEN_VOICE_ROWS * KITTEN_VOICE_DIMS;
@@ -44,15 +44,16 @@ describe("kittenVoicesData", () => {
     for (const rows of table.values()) expect(rows.length).toBe(VOICE_FLOATS);
   });
 
-  it("styleRow elige la fila por la longitud del texto y la recorta a la última", () => {
+  it("voiceStyle devuelve el promedio constante de las filas de la voz", () => {
     const table = syntheticTable();
-    const first = KITTEN_VOICE_ORDER[0];
-    expect(styleRow(table, first, 104)[0]).toBe(104);
-    expect(styleRow(table, first, 104)).toHaveLength(KITTEN_VOICE_DIMS);
-    expect(styleRow(table, first, 0)[0]).toBe(0);
-    expect(styleRow(table, first, 5000)[0]).toBe(KITTEN_VOICE_ROWS - 1);
-    expect(styleRow(table, first, -3)[0]).toBe(0);
-    expect(styleRow(table, "expr-voice-3-m", 7)[0]).toBe(3 * 1000 + 7);
+    const mean = (KITTEN_VOICE_ROWS - 1) / 2; // filas 0..399 valen voz*1000 + fila
+    const style = voiceStyle(table, KITTEN_VOICE_ORDER[0]);
+    expect(style).toHaveLength(KITTEN_VOICE_DIMS);
+    expect(style[0]).toBeCloseTo(mean, 3);
+    expect(style[KITTEN_VOICE_DIMS - 1]).toBeCloseTo(mean, 3);
+    expect(voiceStyle(table, "expr-voice-3-m")[5]).toBeCloseTo(3 * 1000 + mean, 2);
+    // Memoizado: misma instancia, y no depende del texto.
+    expect(voiceStyle(table, "Bella")).toBe(style);
   });
 
   it("resolveVoiceId acepta alias, ids y cae a expr-voice-2-f con lo desconocido", () => {

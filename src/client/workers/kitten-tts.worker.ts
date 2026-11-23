@@ -9,7 +9,7 @@
 // Pipeline Piper:  normalizeSpanishText → SpanishG2P → Encoder → input/input_lengths/scales.
 
 import type { KittenVoiceId } from "../lib/ttsTypes";
-import { parseVoiceTable, styleRow, type KittenVoiceTable } from "../lib/kittenVoicesData";
+import { parseVoiceTable, voiceStyle, type KittenVoiceTable } from "../lib/kittenVoicesData";
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
 import {
@@ -414,8 +414,9 @@ async function runKittenInference(
   if (!kittenVoices) {
     throw new Error("Faltan las voces de KittenTTS: vuelve a descargar la voz neural.");
   }
-  // Estilo = fila min(len(texto), 399) de la voz; velocidad tal cual (sin speed_priors: ver kittenModel.ts).
-  const voiceEmbedding = styleRow(kittenVoices, voiceId, Array.from(cleanText).length);
+  // Estilo = promedio constante de la voz (mismo timbre en todas las oraciones; ver
+  // voiceStyle); velocidad tal cual (sin speed_priors: ver kittenModel.ts).
+  const voiceEmbedding = voiceStyle(kittenVoices, voiceId);
 
   const inputNames = kittenSession.inputNames;
   const inputIdName =

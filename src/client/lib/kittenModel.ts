@@ -16,7 +16,7 @@ export const KITTEN_MODEL_BYTES = 24_369_971;
 
 // Tabla de voces oficial de Kitten 0.8 (voices.npz de KittenML/kitten-tts-nano-0.8-int8).
 // Los vectores de la 0.1 que vivían en el código NO sirven con este modelo: la voz sale
-// como estática. Cada voz trae 400 filas de estilo; se usa la de min(len(texto), 399).
+// como estática. Cada voz trae 400 filas de estilo; se usa su promedio (ver voiceStyle).
 // Archivo estático (public/tts/), no R2: `scripts/kitten-voices-pack.mjs` lo genera.
 // Se guarda en la misma caché que el modelo (con su propio `x-model-sha256`), así quien
 // ya bajó los 24 MB solo baja estos 3,2 MB. Si cambia el contenido, sube la versión del
