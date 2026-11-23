@@ -164,6 +164,7 @@ import { ReaderFloatingBars } from "./reader/ReaderFloatingBars";
 import { ReaderFloatingLane } from "./reader/ReaderFloatingLane";
 import { ReaderFocusLayers } from "./reader/ReaderFocusLayers";
 import { ReaderNotices } from "./reader/ReaderNotices";
+import { ReaderReturnBars } from "./reader/ReaderReturnBars";
 import { ReaderSelectionBar, type ReaderSelectionButton } from "./reader/ReaderSelectionBar";
 import ReaderSettingsSheet from "./reader/ReaderSettingsSheet";
 import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
@@ -3512,45 +3513,14 @@ export default function Reader({
           </div>
         ) : null}
 
-        {returnPoint ? (
-          <div className="reader-return">
-            <button
-              type="button"
-              className="reader-return-btn"
-              onClick={goBack}
-            >
-              ‹ Volver a donde estaba
-            </button>
-            <button
-              type="button"
-              className="reader-return-dismiss"
-              onClick={() => setReturnPoint(null)}
-              aria-label="Descartar regreso"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
-
-        {returnPositions.length > 0 ? (
-          <div className="reader-return">
-            <button
-              type="button"
-              className="reader-return-btn"
-              onClick={handleReturnFromFootnote}
-            >
-              ← Volver a la lectura
-            </button>
-            <button
-              type="button"
-              className="reader-return-dismiss"
-              onClick={() => setReturnPositions([])}
-              aria-label="Descartar retorno"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
+        <ReaderReturnBars
+          hasReturnPoint={returnPoint !== null}
+          onGoBack={goBack}
+          onDismissReturnPoint={() => setReturnPoint(null)}
+          hasFootnoteReturn={returnPositions.length > 0}
+          onReturnFromFootnote={handleReturnFromFootnote}
+          onDismissFootnoteReturn={() => setReturnPositions([])}
+        />
 
         <ReaderFloatingBars
           settings={settings}

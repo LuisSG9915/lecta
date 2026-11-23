@@ -885,16 +885,18 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
 
 ## Deuda de complejidad (2026-11)
 
-- **`Reader.tsx` (2026-11-23: 4 110 → 3 789 líneas)**. R1 y R2 ya existían con otros nombres:
+- **`Reader.tsx` (2026-11-23: 4 110 → 3 713 líneas)**. R1 y R2 ya existían con otros nombres:
   hooks `useReaderTts`, `useReaderSelection`, `useReaderAnchoring` y ~55 `useReader*` menores;
   subcomponentes `ReaderDockHost`, `ReaderSelectionBar`, `ReaderOverlays`, `ReaderChapterHeader`
   (no crear `ReaderTtsDock`/`ReaderSelectionOverlay`: duplicarían). Hechas esta sesión:
   F1 `useReaderSelectionMenu` (efecto `selectionchange`), F2 `useReaderKnowledge`
   (análisis, predicción y evidencia), F3 `useReaderVocabRefresh` (efecto `vocabVersion`).
-  **Pendiente**: F4 `loadBook` → `useReaderBookLoader` (~285 líneas, riesgo alto: exige
-  `e2e/smoke-journeys.spec.ts` y `e2e/reader-position.spec.ts`), F5 avisos y calibración
-  → `useReaderNotices`, F6 botones laterales a componente. Meta realista de R3: ~1 200–1 500
-  líneas (solo el JSX ocupa ~590).
+  F5 `useReaderNoticeActions` (aceptar/descartar avisos de calibración y ayuda), F6
+  `reader/ReaderReturnBars` (avisos «Volver…»). e2e `smoke-journeys` + `reader-position` 7/7 tras F6.
+  **F4 descartada por ahora** (`loadBook`, ~280 líneas): asigna 15 refs y llama a 19 setters; la regla
+  `react-hooks/immutability` impide asignar `ref.current` desde un hook, así que saldría con una
+  interfaz de ~50 parámetros o `eslint-disable`. Solo se reabre con un rediseño (p. ej. reducir
+  los refs a un único objeto de estado del libro). Meta realista de R3: ~1 200–1 500 líneas.
 - **Cada extracción mueve la línea de `applyPreviewKnownSignal(currentLang, beta)`**:
   actualizar `"line"` en `docs/auditoria/claims.json` (ancla `code-anchor` sobre `Reader.tsx`)
   en el mismo commit, con un grep de esa expresión.
