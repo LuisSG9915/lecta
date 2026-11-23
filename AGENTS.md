@@ -885,16 +885,33 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
 
 ## Deuda de complejidad (2026-11)
 
-- `Reader.tsx` (4 934 líneas) y `app.ts` worker (3 716) son componentes/módulos
-  monolíticos. Concentran estado, efectos, callbacks y JSX. `Vocabulary.tsx` ya se
-  partió (plan v2 del Cuaderno, Fase 5, 2026-11-10: 4 085 → 864 líneas, ver abajo).
-- **Plan de refactor (incremental, cada fase con `pnpm gate` verde)**:
-  - Fase R1 — hooks de estado: `useReaderTts`, `useReaderSelection`, `useReaderAnchoring`.
-  - Fase R2 — subcomponentes: `ReaderTtsDock`, `ReaderSelectionOverlay`, `ReaderChapterHeader`.
-  - Fase R3 — orquestador: Reader.tsx queda como compositor (~800 líneas).
+- **`Reader.tsx` (2026-11-23: 4 110 → 3 789 líneas)**. R1 y R2 ya existían con otros nombres:
+  hooks `useReaderTts`, `useReaderSelection`, `useReaderAnchoring` y ~55 `useReader*` menores;
+  subcomponentes `ReaderDockHost`, `ReaderSelectionBar`, `ReaderOverlays`, `ReaderChapterHeader`
+  (no crear `ReaderTtsDock`/`ReaderSelectionOverlay`: duplicarían). Hechas esta sesión:
+  F1 `useReaderSelectionMenu` (efecto `selectionchange`), F2 `useReaderKnowledge`
+  (análisis, predicción y evidencia), F3 `useReaderVocabRefresh` (efecto `vocabVersion`).
+  **Pendiente**: F4 `loadBook` → `useReaderBookLoader` (~285 líneas, riesgo alto: exige
+  `e2e/smoke-journeys.spec.ts` y `e2e/reader-position.spec.ts`), F5 avisos y calibración
+  → `useReaderNotices`, F6 botones laterales a componente. Meta realista de R3: ~1 200–1 500
+  líneas (solo el JSX ocupa ~590).
+- **Cada extracción mueve la línea de `applyPreviewKnownSignal(currentLang, beta)`**:
+  actualizar `"line"` en `docs/auditoria/claims.json` (ancla `code-anchor` sobre `Reader.tsx`)
+  en el mismo commit, con un grep de esa expresión.
+- **Regla `react-hooks/immutability`**: un hook no puede asignar `ref.current` de sus
+  argumentos; las escrituras a refs del lector van en un callback que define `Reader.tsx`
+  (ver `onWordsLoaded` de `useReaderVocabRefresh`). No pasar `prettier --write` a `Reader.tsx`:
+  reformatea el archivo entero.
+- **`app.ts` worker (3 731 → 220 líneas, 2026-11-23)**: es el compositor; monta sub-apps Hono
+  en el mismo punto donde estaban los bloques (el orden de rutas y de `app.use` no cambió):
+  `account.ts`, `ops.ts`, `vocab-sync.ts`, `user-books.ts`, `lexicon-routes.ts`, `ai-routes.ts`, `books.ts`.
+  Módulos de apoyo: `background.ts` (`runInBackground`), `catalog-ids.ts`, `book-store.ts`
+  (cuota, registro y borrado de `user_books`, `HASH_PATTERN`), `ai-cache.ts`, `ai-units.ts`.
+  `app.ts` reexporta lo que importan las pruebas (`computeAiCacheKey`, `getCachedAiText`, `setCachedAiText`, `clearExplainPassageCache`, `ExplainInPassageResponse`, `consumeRateUnits`).
+  Las rutas con `requireLectaPlus` lo siguen declarando por ruta, nunca con `app.use`.
 - Cada fase se valida con tests unitarios del hook extraído y, para R2/R3, con
   `e2e/smoke-journeys.spec.ts` y `e2e/reader-position.spec.ts`.
-- **No mezclar con cambios funcionales**: una fase = un PR/commit aislado.
+- **No mezclar con cambios funcionales**: una fase = un commit aislado.
 - **Estructura del Cuaderno tras partir `Vocabulary.tsx`** (sin cambios funcionales;
   `Vocabulary.tsx` es el compositor: monta los hooks, decide qué vista pintar y
   guarda lo pequeño que cruza vistas — pestaña, citas, avisos de deshacer, taller):
