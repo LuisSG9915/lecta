@@ -162,6 +162,35 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
 - **Límites que no se pueden arreglar**: en **iOS** (Safari/WebView) la voz se detiene al bloquear la pantalla — el toggle va deshabilitado con aviso (`IS_IOS`). La **voz del sistema** (`speechSynthesis`) se pausa al ocultarse la pestaña en Android e iOS: el background solo se promete con voz neural en Chrome Android.
 - **Sin verificar en dispositivo real** (2026-11-17): hace falta probar por adb (neural + background + bloquear pantalla: audio sigue, controles de lockscreen, el capítulo avanza). El avance de capítulo oculto **no depende del rAF**: `useReaderSectionLoader` hace `setState("ready")` síncrono (el efecto `[state, sectionIndex]` de `useReaderTts` dispara `onSectionRendered` sin pintar) y el callback de restauración ya usa `document.hidden ? setTimeout(cb, 50) : requestAnimationFrame(cb)` (fallback previo al plan de audiolibro). Con la pestaña audible (keep-alive + neural) Chrome no estrangula los timers.
 
+## Voz neural (Kitten): voces, estilo y respaldo por velocidad
+
+- **Voces 0.8 como asset estático** (2026-11-23): los vectores de voz del código eran de la 0.1 y daban
+  estática con el modelo 0.8. La tabla oficial (8 voces × 400 filas × 256 float32, 3 276 800 bytes) vive en
+  `public/tts/kitten-voices-v1.bin`, generada con `node scripts/kitten-voices-pack.mjs [voices.npz]` (sin
+  argumento baja el de Hugging Face; imprime el SHA-256 para `KITTEN_VOICES_SHA256` en `kittenModel.ts`).
+  El motor la baja con `ensureKittenVoices` (tamaño + SHA-256 antes de guardar), la guarda en la misma caché
+  del modelo (`lecta-kitten-tts-v2`, con su `x-model-sha256`) y se la manda al worker en `INIT`
+  (`voicesBuffer`); quien ya tenía los 24 MB solo baja estos 3,2 MB. Sin voces el worker falla con error
+  claro: jamás vuelve a vectores propios. `_headers` `/tts/*` inmutable, `!/tts/*` en `run_worker_first` y
+  fuera del precaché del SW (`vite.config.ts`). Si cambia el contenido, subir el nombre a `-v2.bin`.
+- **Estilo constante**: `voiceStyle` usa el PROMEDIO de las 400 filas de la voz. KittenTTS oficial indexa la
+  fila por la longitud del texto, pero las filas de una voz se parecen solo 0.86–0.98 (coseno): el timbre
+  cambiaba de oración a oración («otra persona»). Calidad espectral medida igual a la fila exacta.
+- **Sin `speed_priors`**: el config oficial los trae en 0.8 (0.9 en `expr-voice-4-m`); aplicados daban ~88
+  palabras/min. La velocidad la decide el ajuste del usuario.
+- **Respaldo por velocidad** (`ttsController.ts`, `kittenTtsEngine.getSynthRtf`): RTF = synthMs/audioMs;
+  mediana de las 3 primeras oraciones válidas tras el calentamiento (la 1.ª y las de <1 s no cuentan). Si
+  > `NEURAL_SLOW_RTF` (1.2) pasa a la voz del sistema con aviso, libera el worker y no toca
+  `settings.engine`. La bandera (`neuralSlowDemoted`) vive en el módulo (la pestaña), no en el controlador;
+  `setKittenVoice`/`setEngine("kitten-neural")` la borran y apagan la medición hasta recargar. Medido en un
+  Android real (LMR-LX9, Chrome): RTF 1.6–3.0 con un hilo WASM (un Mac: ~0.43), pausas de ~20 s y móvil
+  caliente; el respaldo saltó a los ~95 s y la voz del sistema siguió leyendo. Pendiente: decidir antes
+  (p. ej. cortar si una sola muestra pasa de 2.5) y multihilo (exige COOP/COEP; riesgo con Turnstile).
+- **Cómo medirlo en un Android**: `adb forward tcp:9223 localabstract:chrome_devtools_remote_<pid de Chrome>`
+  (el socket sin pid suele ser de otro navegador) y Playwright `connectOverCDP`; enganchar
+  `AudioBuffer.prototype.copyToChannel` o los `message` del Worker para ver `synthMs`/`audioMs`. Para
+  comparar la forma de onda: cruces por cero ~0.06 y energía >6 kHz ≈ 0 = voz limpia; ~0.27 y ~23 % = estática.
+
 ## Ficha de palabra (WordPanel)
 
 - **Dos variantes de `/api/ai/explain-in-passage`.** El servidor elige el prompt
