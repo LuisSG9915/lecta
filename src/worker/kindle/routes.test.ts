@@ -586,6 +586,44 @@ describe("Kindle Routes (/k and /kindle)", () => {
     });
   });
 
+  describe("POST /k/login: CSRF y freno", () => {
+    const credentials = () => {
+      const formData = new FormData();
+      formData.append("email", "good@example.com");
+      formData.append("password", "correct");
+      return formData;
+    };
+
+    it("rechaza con 403 un formulario de otro sitio sin llamar a Better Auth", async () => {
+      const crossSite: Record<string, string>[] = [
+        { origin: "https://evil.test" },
+        { "sec-fetch-site": "cross-site" },
+      ];
+      for (const headers of crossSite) {
+        const res = await app.request(
+          "/k/login",
+          { method: "POST", body: credentials(), headers },
+          env,
+        );
+        expect(res.status).toBe(403);
+      }
+      expect(authHandlerMock).not.toHaveBeenCalled();
+    });
+
+    it("responde 429 cuando el freno se agota", async () => {
+      const limit = vi.fn(async () => ({ success: false }));
+      const res = await app.request(
+        "/k/login",
+        { method: "POST", body: credentials(), headers: { "cf-connecting-ip": "1.2.3.4" } },
+        { ...env, AUTH_LIMITER: { limit } },
+      );
+      expect(res.status).toBe(429);
+      expect(res.headers.get("Retry-After")).toBe("60");
+      expect(limit).toHaveBeenCalledWith({ key: "klogin:1.2.3.4" });
+      expect(authHandlerMock).not.toHaveBeenCalled();
+    });
+  });
+
   describe("GET /k/logout", () => {
     it("elimina la cookie de sesión y redirige a /k", async () => {
       authHandlerMock.mockResolvedValue(new Response("{}", { status: 200 }));

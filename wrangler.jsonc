@@ -49,6 +49,18 @@
 			"!/inicio/fonts/*"
 		]
 	},
+	// Freno del acceso (src/worker/auth-rate-limit.ts): 10 POST por minuto e IP
+	// en /api/auth/* y otros 10 en /k/login. Cuenta por ubicación de Cloudflare.
+	"ratelimits": [
+		{
+			"name": "AUTH_LIMITER",
+			"namespace_id": "1001",
+			"simple": {
+				"limit": 10,
+				"period": 60
+			}
+		}
+	],
 	"r2_buckets": [
 		{
 			"binding": "BOOKS",

@@ -21,6 +21,8 @@ export type WorkerEnv = {
   STRIPE_PRICE_MONTHLY_ID?: string;
   STRIPE_PRICE_YEARLY_ID?: string;
   BOOKS?: R2Bucket;
+  /** Workers Rate Limiting: freno de /api/auth/* y /k/login (auth-rate-limit.ts). */
+  AUTH_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
   /** «Series y películas»: SubDL (subtítulos) y OMDb (metadatos/póster). */
   SUBDL_API_KEY?: string;
   OMDB_API_KEY?: string;

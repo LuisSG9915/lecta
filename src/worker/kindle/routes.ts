@@ -13,6 +13,7 @@ import {
 } from "../plan-middleware";
 import { hasLectaPlus } from "../../shared/plan";
 import { createScopedAuth, closePoolSafe } from "../auth";
+import { checkAuthRateLimit, isCrossSiteForm } from "../auth-rate-limit";
 import { findEntries, findEntriesForForms } from "../lexicon";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
 
@@ -1360,6 +1361,21 @@ kindleRoutes.get("/login", async (c) => {
 
 // 2. Iniciar sesión - Procesar credenciales con Better Auth
 kindleRoutes.post("/login", async (c) => {
+  // Login CSRF: un formulario de otro sitio no puede meter a nadie en una
+  // cuenta ajena (el origin de la petición interna de abajo es nuestro).
+  if (isCrossSiteForm(c.req.raw)) {
+    return c.html(renderLoginView({ user: null, error: "Solicitud no válida." }), 403);
+  }
+  if (!(await checkAuthRateLimit(c.env, c.req.raw, "klogin"))) {
+    c.header("Retry-After", "60");
+    return c.html(
+      renderLoginView({
+        user: null,
+        error: "Demasiados intentos. Espera un minuto y vuelve a probar.",
+      }),
+      429,
+    );
+  }
   const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";

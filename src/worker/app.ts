@@ -95,6 +95,7 @@ export {
   buildCharacterCardsPrompt,
 } from "./ai";
 import { createScopedAuth, closePoolSafe, purgeR2Prefix } from "./auth";
+import { checkAuthRateLimit, isLimitedAuthRequest } from "./auth-rate-limit";
 import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
 import { isFsrsCardShape } from "../shared/reading-data";
@@ -418,6 +419,16 @@ app.on(["GET", "HEAD"], "/models/:filename", async (c) => {
 });
 
 app.on(["GET", "POST"], "/api/auth/*", async (context) => {
+  if (
+    isLimitedAuthRequest(context.req.method, context.req.path) &&
+    !(await checkAuthRateLimit(context.env, context.req.raw, "auth"))
+  ) {
+    return context.json(
+      { code: "RATE_LIMITED", message: "Demasiados intentos. Espera un minuto y vuelve a probar." },
+      429,
+      { "Retry-After": "60" },
+    );
+  }
   if (!getConnectionString(context.env))
     return context.json({ error: "La autenticación no está configurada." }, 503);
   const baseURL = context.env.BETTER_AUTH_URL ?? new URL(context.req.url).origin;
