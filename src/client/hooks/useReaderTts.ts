@@ -354,6 +354,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     ttsSnap.status,
     ttsSnap.sleepTimerEndsAt,
     ttsSnap.sleepAtChapterEnd,
+    ttsSnap.activeEngine,
     docHidden,
     sleepTimerActive,
     backgroundAudio,
@@ -507,7 +508,12 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
       mediaSessionReset();
       return;
     }
-    if (!ctl.canPlayInBackground?.()) return;
+    // Tras el respaldo a la voz del sistema ya no hay audio en segundo plano: soltar el <audio>
+    // silencioso y la sesión de medios.
+    if (!ctl.canPlayInBackground?.()) {
+      mediaSessionReset();
+      return;
+    }
     if (ttsSnap.status === "speaking" || ttsSnap.status === "preparing") startSilentKeepAlive();
     syncMediaSession(
       ttsSnap,

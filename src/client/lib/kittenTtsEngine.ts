@@ -103,6 +103,10 @@ interface PendingJob {
 }
 
 /** Última síntesis reportada por el worker (diagnóstico RTF por motor). */
+/** Muestras válidas de RTF que se promedian y duración mínima de audio para contar. */
+export const RTF_SAMPLES_NEEDED = 3;
+export const RTF_MIN_AUDIO_MS = 1000;
+
 export interface LastSynthStats {
   engine: TtsEngineKind;
   synthMs: number;
@@ -183,6 +187,11 @@ export class KittenTtsEngine {
   // Trabajos esperando respuesta del Web Worker
   private pendingJobs = new Map<string, PendingJob>();
   private lastSynthStats: LastSynthStats | null = null;
+  // Velocidad de síntesis (synthMs/audioMs) de las primeras oraciones de este worker:
+  // la 1.ª es calentamiento y las de <1 s de audio pesan el arranque, no el ritmo.
+  private rtfSamples: number[] = [];
+  private rtfWarmedUp = false;
+  private rtfEngine: TtsEngineKind | null = null;
 
   // Lookahead Buffer: guarda promesas de AudioBuffer listas o en proceso (LRU de 8 oraciones)
   private lookaheadCache = new Map<string, Promise<AudioBuffer>>();
@@ -263,6 +272,9 @@ export class KittenTtsEngine {
     }
     this.ready = false;
     this.initPromise = null;
+    this.rtfSamples = [];
+    this.rtfWarmedUp = false;
+    this.rtfEngine = null;
     this.lookaheadCache.clear();
     for (const [, job] of this.pendingJobs) {
       if (job.timer) clearTimeout(job.timer);
@@ -303,6 +315,31 @@ export class KittenTtsEngine {
 
   getModelProgress(engine: TtsEngineKind = "kitten"): ModelDownloadProgress {
     return this.progressByEngine[engine];
+  }
+
+  /**
+   * RTF (tiempo de síntesis / duración del audio) como mediana de las primeras
+   * `RTF_SAMPLES_NEEDED` oraciones válidas del worker; null hasta tenerlas. Un RTF > 1
+   * significa que el dispositivo no sintetiza en tiempo real (pausas entre oraciones).
+   */
+  getSynthRtf(): number | null {
+    if (this.rtfSamples.length < RTF_SAMPLES_NEEDED) return null;
+    const sorted = [...this.rtfSamples].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+
+  private recordRtf(engine: TtsEngineKind, synthMs: number, audioMs: number): void {
+    if (this.rtfEngine !== engine) {
+      this.rtfEngine = engine;
+      this.rtfSamples = [];
+      this.rtfWarmedUp = false;
+    }
+    if (!this.rtfWarmedUp) {
+      this.rtfWarmedUp = true;
+      return;
+    }
+    if (audioMs < RTF_MIN_AUDIO_MS || this.rtfSamples.length >= RTF_SAMPLES_NEEDED) return;
+    this.rtfSamples.push(synthMs / audioMs);
   }
 
   /** Diagnóstico: ms de inferencia vs ms de audio de la última síntesis. */
@@ -540,6 +577,7 @@ export class KittenTtsEngine {
             synthMs: msg.synthMs,
             audioMs: Math.round((cleanSamples.length / sampleRate) * 1000),
           };
+          this.recordRtf(pending.engine, msg.synthMs, this.lastSynthStats.audioMs);
         }
         const ctx = this.getAudioContext();
 

@@ -128,6 +128,25 @@ export type TtsController = {
   dispose?(): void;
 };
 
+// Respaldo por velocidad: si la voz HD sintetiza más lento que el tiempo real en este
+// dispositivo (RTF > NEURAL_SLOW_RTF, ver kittenTtsEngine.getSynthRtf) se pasa a la voz del
+// sistema. La bandera vive en el módulo (la pestaña), no en el controlador: este se rehace
+// al cambiar de sección o de ajustes y volvería a probar la voz HD con otra pausa larga.
+// No toca settings.engine: la voz que eligió el usuario se conserva.
+export const NEURAL_SLOW_RTF = 1.2;
+export const NEURAL_SLOW_NOTICE = "La voz HD va lenta en este dispositivo; sigo con la voz del sistema.";
+let neuralSlowDemoted = false;
+// El usuario volvió a elegir la voz HD tras el cambio: se respeta y no se vuelve a medir.
+let neuralSpeedCheckOff = false;
+let neuralSlowNoticeShown = false;
+
+/** Solo pruebas: borra el estado de pestaña del respaldo por velocidad. */
+export function resetNeuralSlowDemotion(): void {
+  neuralSlowDemoted = false;
+  neuralSpeedCheckOff = false;
+  neuralSlowNoticeShown = false;
+}
+
 export function createTtsController(deps: TtsControllerDeps): TtsController {
   let snap: TtsSnapshot = TTS_IDLE;
   let ctx: TtsTargetContext | null = null;
@@ -169,6 +188,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     if (!isFeatureFlagEnabled("neuralTts")) {
       return null;
     }
+    if (neuralSlowDemoted) return null;
     const lang = deps.language().toLowerCase();
     const isTestMock = Boolean(deps.kittenEngine);
     let kind: TtsEngineKind | null;
@@ -337,7 +357,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         void synthLookahead
           .then((buf) => {
             if (destroyed) return;
+            if (neuralSlowDemoted) return;
             lookaheadBuffers.set(targetIdx, buf);
+            checkNeuralSpeed();
           })
           .catch(() => {
             // Error en pre-síntesis se ignora; speakCurrent reintentará o caerá a browser
@@ -346,6 +368,33 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
             lookaheadPending.delete(targetIdx);
           });
       }
+    }
+  };
+
+  /**
+   * Tras cada síntesis neural: si el dispositivo no va en tiempo real, pasa a la voz del
+   * sistema. La oración que ya suena termina (su audio está en la RAM del hilo principal) y
+   * la siguiente sale por el sistema; si se estaba esperando una síntesis, se corta y se
+   * habla esa misma oración con el sistema. El worker se libera: es lo que calienta el móvil.
+   */
+  const checkNeuralSpeed = () => {
+    if (destroyed || neuralSlowDemoted || neuralSpeedCheckOff) return;
+    const engine = deps.kittenEngine ?? kittenTtsEngine;
+    const rtf = engine.getSynthRtf?.();
+    if (rtf == null || rtf <= NEURAL_SLOW_RTF) return;
+    neuralSlowDemoted = true;
+    syncKeepAlive(false);
+    lookaheadBuffers.clear();
+    lookaheadPending.clear();
+    engine.releaseWorkerMemory?.();
+    if (!neuralSlowNoticeShown) {
+      neuralSlowNoticeShown = true;
+      deps.onNotice?.(NEURAL_SLOW_NOTICE);
+    }
+    publish({ activeEngine: "browser" });
+    if (snap.status === "speaking" && !engine.isPlaying()) {
+      engine.stop();
+      speakCurrent();
     }
   };
 
@@ -420,6 +469,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
             if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
             lookaheadBuffers.set(cursor, buf);
             engine.play(buf, 1.0, onEnded);
+            checkNeuralSpeed();
           })
           .catch((err) => {
             if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
@@ -807,6 +857,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     },
 
     setKittenVoice(voiceId: KittenVoiceId) {
+      // Elección explícita de voz HD: se respeta (no se vuelve a medir hasta recargar).
+      neuralSlowDemoted = false;
+      neuralSpeedCheckOff = true;
       settings = { ...settings, kittenVoice: voiceId, engine: "kitten-neural" };
       saveTtsSettings(settings);
       publish({ kittenVoice: voiceId, engine: "kitten-neural", activeEngine: "kitten-neural" });
@@ -829,6 +882,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     },
 
     setEngine(engine: TtsEngineMode) {
+      if (engine === "kitten-neural") {
+        neuralSlowDemoted = false;
+        neuralSpeedCheckOff = true;
+      }
       settings = { ...settings, engine };
       saveTtsSettings(settings);
       const active = shouldUseKitten() ? "kitten-neural" : "browser";

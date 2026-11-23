@@ -23,7 +23,9 @@ import {
 } from "./ttsGuards";
 import {
   createTtsController,
+  NEURAL_SLOW_NOTICE,
   playSentencesLoop,
+  resetNeuralSlowDemotion,
   sentenceStillValid,
   stopAllTtsPlayback,
   TtsAudioController,
@@ -1043,6 +1045,147 @@ describe("ttsController", () => {
       vi.advanceTimersByTime(KITTEN_IDLE_TIMEOUT_MS + 100);
       expect(releaseSpy).toHaveBeenCalled();
       Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      engine.dispose();
+    });
+  });
+
+  describe("respaldo por velocidad de síntesis (voz HD → voz del sistema)", () => {
+    afterEach(() => resetNeuralSlowDemotion());
+
+    const setup = async (rtf: number | null | (() => number | null)) => {
+      resetNeuralSlowDemotion();
+      consent();
+      saveTtsSettings({ ...loadTtsSettings(), engine: "kitten-neural", backgroundAudio: true });
+      const ended: Array<() => void> = [];
+      let playing = false;
+      const fakeKitten = {
+        isSupported: () => true,
+        isReady: () => true,
+        synthesize: vi.fn(async () => ({ sampleRate: 24000, length: 100, duration: 0.2 }) as AudioBuffer),
+        synthesizeLookahead: undefined,
+        play: vi.fn((_buf: AudioBuffer, _rate: number, onEnd: () => void) => {
+          playing = true;
+          ended.push(onEnd);
+        }),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(() => {
+          playing = false;
+        }),
+        setKeepAlive: vi.fn(),
+        releaseWorkerMemory: vi.fn(),
+        getSynthRtf: vi.fn(() => (typeof rtf === "function" ? rtf() : rtf)),
+        isPlaying: () => playing,
+        getModelProgress: () => ({ status: "ready" as const, percent: 100 }),
+      };
+      const { deps, speakers } = makeDeps([section("<p>Sentence zero. Sentence one. Sentence two.</p>")]);
+      deps.language = () => "en";
+      const notices: string[] = [];
+      deps.onNotice = (m) => void notices.push(m);
+      deps.kittenEngine = fakeKitten as unknown as KittenTtsEngine;
+      const ctl = createTtsController(deps);
+      ctl.start(CTX, 0);
+      await flush();
+      return { ctl, deps, fakeKitten, speakers, notices, ended };
+    };
+
+    it("con RTF > 1,2 pasa a la voz del sistema: avisa una vez, libera el worker y sigue en la siguiente oración", async () => {
+      const { ctl, fakeKitten, speakers, notices } = await setup(1.6);
+      expect(notices).toEqual([NEURAL_SLOW_NOTICE]);
+      expect(fakeKitten.releaseWorkerMemory).toHaveBeenCalledTimes(1);
+      expect(fakeKitten.setKeepAlive).toHaveBeenLastCalledWith(false);
+      expect(ctl.snapshot().activeEngine).toBe("browser");
+      // La voz que eligió el usuario se conserva.
+      expect(loadTtsSettings().engine).toBe("kitten-neural");
+      // Se estaba esperando la síntesis de la oración actual: se corta y esa misma oración
+      // sale por el sistema (sin perder la posición); la HD nunca llega a sonar.
+      expect(fakeKitten.stop).toHaveBeenCalled();
+      expect(fakeKitten.play).not.toHaveBeenCalled();
+      expect(speakers[0].spoken).toEqual(["Sentence zero."]);
+      speakers[0].ended();
+      expect(speakers[0].spoken).toEqual(["Sentence zero.", "Sentence one."]);
+      expect(ctl.canPlayInBackground?.()).toBe(false);
+    });
+
+    it("si la oración ya está sonando, la deja terminar y la siguiente sale por el sistema", async () => {
+      let calls = 0;
+      // Las 2 síntesis adelantadas aún sin muestras; la comprobación tras empezar a sonar: lento.
+      const { ctl, fakeKitten, speakers, notices, ended } = await setup(() => (++calls <= 2 ? null : 1.6));
+      expect(fakeKitten.play).toHaveBeenCalledTimes(1);
+      expect(notices).toEqual([NEURAL_SLOW_NOTICE]);
+      expect(fakeKitten.releaseWorkerMemory).toHaveBeenCalledTimes(1);
+      expect(fakeKitten.stop).not.toHaveBeenCalled(); // no se corta lo que suena
+      expect(ctl.snapshot().activeEngine).toBe("browser");
+      expect(speakers[0]?.spoken ?? []).toEqual([]);
+      ended[0]();
+      expect(speakers[0].spoken).toEqual(["Sentence one."]);
+    });
+
+    it("con RTF ≤ 1,2 se queda en la voz HD y no avisa", async () => {
+      const { ctl, fakeKitten, notices } = await setup(0.8);
+      expect(notices).toEqual([]);
+      expect(fakeKitten.releaseWorkerMemory).not.toHaveBeenCalled();
+      expect(ctl.snapshot().activeEngine).toBe("kitten-neural");
+    });
+
+    it("sin muestras suficientes (RTF null) no decide nada", async () => {
+      const { ctl, notices } = await setup(null);
+      expect(notices).toEqual([]);
+      expect(ctl.snapshot().activeEngine).toBe("kitten-neural");
+    });
+
+    it("el cambio dura la pestaña: un controlador nuevo arranca ya con la voz del sistema", async () => {
+      const { ctl } = await setup(1.6);
+      ctl.stop("user");
+      const { deps, speakers } = makeDeps([section("<p>Alpha. Beta.</p>")]);
+      deps.language = () => "en";
+      const again = createTtsController(deps);
+      again.start(CTX, 0);
+      await flush();
+      expect(speakers[0].spoken).toEqual(["Alpha."]);
+    });
+
+    it("si el usuario vuelve a elegir una voz HD se respeta y no se vuelve a medir", async () => {
+      const { ctl, fakeKitten, notices } = await setup(1.6);
+      expect(ctl.snapshot().activeEngine).toBe("browser");
+      fakeKitten.releaseWorkerMemory.mockClear();
+      ctl.setKittenVoice?.("expr-voice-3-f");
+      await flush();
+      expect(ctl.snapshot().activeEngine).toBe("kitten-neural");
+      expect(fakeKitten.releaseWorkerMemory).not.toHaveBeenCalled();
+      expect(notices).toHaveLength(1);
+    });
+  });
+
+  describe("motor: RTF de las primeras oraciones", () => {
+    const feed = (engine: KittenTtsEngine, synthMs: number, audioMs: number, kind: "kitten" | "piper" = "kitten") =>
+      (engine as unknown as { recordRtf: (k: string, s: number, a: number) => void }).recordRtf(kind, synthMs, audioMs);
+
+    it("ignora la 1.ª (calentamiento) y las de menos de 1 s, y da la mediana de 3 válidas", () => {
+      const engine = new KittenTtsEngine();
+      feed(engine, 9000, 2000); // calentamiento: no cuenta
+      expect(engine.getSynthRtf()).toBeNull();
+      feed(engine, 400, 500); // <1 s de audio: no cuenta
+      feed(engine, 2000, 2000); // 1.0
+      feed(engine, 4000, 2000); // 2.0
+      expect(engine.getSynthRtf()).toBeNull(); // faltan muestras
+      feed(engine, 3000, 2000); // 1.5
+      expect(engine.getSynthRtf()).toBeCloseTo(1.5);
+      feed(engine, 100, 5000); // ya decidido: no cambia la ventana inicial
+      expect(engine.getSynthRtf()).toBeCloseTo(1.5);
+      engine.dispose();
+    });
+
+    it("al cambiar de motor o liberar el worker reinicia la medición", () => {
+      const engine = new KittenTtsEngine();
+      for (let i = 0; i < 4; i += 1) feed(engine, 1000, 2000);
+      expect(engine.getSynthRtf()).toBeCloseTo(0.5);
+      feed(engine, 9000, 2000, "piper"); // otro motor: reinicia y esta es su calentamiento
+      expect(engine.getSynthRtf()).toBeNull();
+      for (let i = 0; i < 3; i += 1) feed(engine, 1000, 2000, "piper");
+      expect(engine.getSynthRtf()).toBeCloseTo(0.5);
+      engine.releaseWorkerMemory();
+      expect(engine.getSynthRtf()).toBeNull();
       engine.dispose();
     });
   });
