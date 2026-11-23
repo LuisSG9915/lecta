@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 import { createHash, webcrypto } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   KITTEN_CACHE_NAME,
   KITTEN_MODEL_SHA256,
   KITTEN_MODEL_URL,
+  ensureKittenVoices,
   getKittenModelBuffer,
+  getKittenVoicesBuffer,
   kittenTtsEngine,
 } from "./kittenTtsEngine";
+import { KITTEN_VOICES_BYTES, KITTEN_VOICES_SHA256, KITTEN_VOICES_URL } from "./kittenModel";
 
 const MODEL_BYTES = 12 * 1024 * 1024; // > 10 MB, el mínimo anti-truncamiento
 
@@ -236,4 +241,56 @@ describe("KittenTTS Network, Cache & Storage Isolation (Fase 2)", () => {
       expect(await kittenTtsEngine.isModelDownloaded(KITTEN_MODEL_URL)).toBe(false);
     });
   });
+  describe("voces de Kitten 0.8 (asset estático)", () => {
+    const voices = () =>
+      new Uint8Array(readFileSync(resolve(__dirname, "../../../public/tts/kitten-voices-v1.bin")));
+    const asBuffer = (bytes: Uint8Array) =>
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+
+    it("descarga, verifica y guarda con su sello; la segunda vez sale de la caché", async () => {
+      const bytes = voices();
+      const fetchMock = vi.fn(async () => new Response(asBuffer(bytes), { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const first = await ensureKittenVoices();
+      expect(first?.byteLength).toBe(KITTEN_VOICES_BYTES);
+      expect(fakeCacheStorage.get(KITTEN_VOICES_URL)?.headers.get("x-model-sha256")).toBe(
+        KITTEN_VOICES_SHA256,
+      );
+
+      const second = await ensureKittenVoices();
+      expect(second?.byteLength).toBe(KITTEN_VOICES_BYTES);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("no guarda un binario alterado ni uno de otro tamaño", async () => {
+      const tampered = voices();
+      tampered[1000] ^= 0xff;
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(asBuffer(tampered), { status: 200 })));
+      expect(await ensureKittenVoices()).toBeNull();
+      expect(fakeCacheStorage.has(KITTEN_VOICES_URL)).toBe(false);
+
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array(1024), { status: 200 })));
+      expect(await ensureKittenVoices()).toBeNull();
+      expect(fakeCacheStorage.has(KITTEN_VOICES_URL)).toBe(false);
+    });
+
+    it("no guarda una respuesta de error (404 del SPA, red caída)", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 404 })));
+      expect(await ensureKittenVoices()).toBeNull();
+      vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("offline"))));
+      expect(await ensureKittenVoices()).toBeNull();
+      expect(fakeCacheStorage.size).toBe(0);
+    });
+
+    it("descarta de la caché una entrada con otro sello", async () => {
+      fakeCacheStorage.set(
+        KITTEN_VOICES_URL,
+        new Response(asBuffer(voices()), { status: 200, headers: { "x-model-sha256": "viejo" } }),
+      );
+      expect(await getKittenVoicesBuffer()).toBeNull();
+      expect(fakeCacheStorage.has(KITTEN_VOICES_URL)).toBe(false);
+    });
+  });
+
 });

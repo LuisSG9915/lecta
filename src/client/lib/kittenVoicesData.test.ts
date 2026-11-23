@@ -1,165 +1,74 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  KITTEN_SPEED_PRIORS,
+  KITTEN_VOICES_BYTES,
+  KITTEN_VOICES_SHA256,
+  KITTEN_VOICE_DIMS,
+  KITTEN_VOICE_ORDER,
+  KITTEN_VOICE_ROWS,
+} from "./kittenModel";
+import {
   KITTEN_VOICE_ALIASES,
-  KITTEN_VOICE_EMBEDDINGS,
-  getVoiceEmbedding,
-  isRealVoiceEmbedding,
-  loadVoicesFromNpz,
-  parseNpzVoices,
-  registerVoiceEmbedding,
+  effectiveSpeed,
+  parseVoiceTable,
+  resolveVoiceId,
+  styleRow,
 } from "./kittenVoicesData";
 
+const VOICE_FLOATS = KITTEN_VOICE_ROWS * KITTEN_VOICE_DIMS;
+
+/** Tabla sintética: cada fila vale `voz * 1000 + fila`, para reconocerla al leerla. */
+function syntheticTable() {
+  const floats = new Float32Array(KITTEN_VOICE_ORDER.length * VOICE_FLOATS);
+  for (let v = 0; v < KITTEN_VOICE_ORDER.length; v += 1)
+    for (let r = 0; r < KITTEN_VOICE_ROWS; r += 1)
+      floats.fill(v * 1000 + r, v * VOICE_FLOATS + r * KITTEN_VOICE_DIMS, v * VOICE_FLOATS + (r + 1) * KITTEN_VOICE_DIMS);
+  return parseVoiceTable(floats.buffer);
+}
+
 describe("kittenVoicesData", () => {
-  it("contiene los tensores de 256 dimensiones reales de las 8 voces oficiales", () => {
-    const voiceIds = Object.keys(KITTEN_VOICE_EMBEDDINGS) as (keyof typeof KITTEN_VOICE_EMBEDDINGS)[];
-    expect(voiceIds).toHaveLength(8);
-
-    for (const id of voiceIds) {
-      const vec = KITTEN_VOICE_EMBEDDINGS[id];
-      expect(vec).toHaveLength(256);
-      expect(isRealVoiceEmbedding(vec)).toBe(true);
-
-      // Verificar que los tensores NO son sintéticos oscilatorios uniformes (Math.sin/cos)
-      let nonZero = 0;
-      let min = Infinity;
-      let max = -Infinity;
-      for (const val of vec) {
-        expect(Number.isFinite(val)).toBe(true);
-        if (val !== 0) nonZero++;
-        if (val < min) min = val;
-        if (val > max) max = val;
-      }
-      expect(nonZero).toBe(256);
-      expect(min).toBeLessThan(0);
-      expect(max).toBeGreaterThan(0);
-    }
+  it("el asset publicado coincide con el tamaño y el SHA-256 que espera el cliente", () => {
+    const bytes = readFileSync(resolve(__dirname, "../../../public/tts/kitten-voices-v1.bin"));
+    expect(bytes.length).toBe(KITTEN_VOICES_BYTES);
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(KITTEN_VOICES_SHA256);
   });
 
-  it("getVoiceEmbedding devuelve un Float32Array y resuelve aliases", () => {
-    const embBella = getVoiceEmbedding("bella");
-    const emb2f = getVoiceEmbedding("expr-voice-2-f");
-
-    expect(embBella).toBeInstanceOf(Float32Array);
-    expect(embBella).toHaveLength(256);
-    expect(embBella).toBe(emb2f); // Debe devolver la instancia cacheada
-
-    const embBruno = getVoiceEmbedding("Bruno");
-    const emb3m = getVoiceEmbedding("expr-voice-3-m");
-    expect(embBruno).toBe(emb3m);
+  it("parseVoiceTable rechaza un binario de tamaño distinto", () => {
+    expect(() => parseVoiceTable(new ArrayBuffer(KITTEN_VOICES_BYTES - 4))).toThrow(/tamaño inválido/);
   });
 
-  it("soporta todas las 8 alias oficiales", () => {
-    const aliases = ["bella", "jasper", "luna", "bruno", "rosie", "hugo", "kiki", "leo"];
-    for (const alias of aliases) {
-      expect(KITTEN_VOICE_ALIASES[alias]).toBeDefined();
-      const emb = getVoiceEmbedding(alias);
-      expect(emb).toHaveLength(256);
-    }
+  it("parseVoiceTable parte el binario en una vista por voz, en el orden fijo", () => {
+    const table = syntheticTable();
+    expect([...table.keys()]).toEqual([...KITTEN_VOICE_ORDER]);
+    for (const rows of table.values()) expect(rows.length).toBe(VOICE_FLOATS);
   });
 
-  it("registerVoiceEmbedding permite registrar o sobrescribir embeddings válidos de 256 dims", () => {
-    const customVec = new Float32Array(256);
-    for (let i = 0; i < 256; i++) {
-      customVec[i] = (i % 2 === 0 ? 0.1 : -0.1) * (i + 1);
-    }
-
-    const ok = registerVoiceEmbedding("custom-voice", customVec);
-    expect(ok).toBe(true);
-
-    const retrieved = getVoiceEmbedding("custom-voice");
-    expect(retrieved).toBeInstanceOf(Float32Array);
-    expect(retrieved).toHaveLength(256);
-    expect(retrieved[0]).toBeCloseTo(0.1, 5);
-
-    // Debe rechazar vectores de dimensión incorrecta
-    const invalidShort = new Float32Array(128);
-    expect(registerVoiceEmbedding("invalid", invalidShort)).toBe(false);
+  it("styleRow elige la fila por la longitud del texto y la recorta a la última", () => {
+    const table = syntheticTable();
+    const first = KITTEN_VOICE_ORDER[0];
+    expect(styleRow(table, first, 104)[0]).toBe(104);
+    expect(styleRow(table, first, 104)).toHaveLength(KITTEN_VOICE_DIMS);
+    expect(styleRow(table, first, 0)[0]).toBe(0);
+    expect(styleRow(table, first, 5000)[0]).toBe(KITTEN_VOICE_ROWS - 1);
+    expect(styleRow(table, first, -3)[0]).toBe(0);
+    expect(styleRow(table, "expr-voice-3-m", 7)[0]).toBe(3 * 1000 + 7);
   });
 
-  it("parseNpzVoices y loadVoicesFromNpz parsean archivos .npz oficiales de NumPy", () => {
-    // Construir un archivo ZIP/NPZ en memoria con un archivo test-voice.npy
-    const filename = "test-voice.npy";
-    const headerStr = "{'descr': '<f4', 'fortran_order': False, 'shape': (1, 256), }";
-    const padLen = 64 - ((10 + headerStr.length) % 64);
-    const headerPadded = headerStr + " ".repeat(padLen - 1) + "\n";
-    const headerBytes = new TextEncoder().encode(headerPadded);
-    const headerLen = headerBytes.length;
-
-    const dataFloats = new Float32Array(256);
-    for (let i = 0; i < 256; i++) {
-      dataFloats[i] = (i % 2 === 0 ? 0.05 : -0.05) * ((i % 10) + 1);
-    }
-
-    const npyTotalLen = 10 + headerLen + 256 * 4;
-    const npyBuf = new Uint8Array(npyTotalLen);
-    npyBuf.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0], 0);
-    new DataView(npyBuf.buffer).setUint16(8, headerLen, true);
-    npyBuf.set(headerBytes, 10);
-    new Uint8Array(npyBuf.buffer, 10 + headerLen).set(new Uint8Array(dataFloats.buffer));
-
-    // Cabecera local ZIP
-    const fnBytes = new TextEncoder().encode(filename);
-    const zipHeaderLen = 30 + fnBytes.length;
-    const zipBuf = new Uint8Array(zipHeaderLen + npyTotalLen);
-    const dv = new DataView(zipBuf.buffer);
-    dv.setUint32(0, 0x04034b50, true);
-    dv.setUint16(4, 20, true);
-    dv.setUint16(6, 0, true);
-    dv.setUint16(8, 0, true); // Stored (sin compresión)
-    dv.setUint32(18, npyTotalLen, true);
-    dv.setUint32(22, npyTotalLen, true);
-    dv.setUint16(26, fnBytes.length, true);
-    dv.setUint16(28, 0, true);
-    zipBuf.set(fnBytes, 30);
-    zipBuf.set(npyBuf, 30 + fnBytes.length);
-
-    const parsed = parseNpzVoices(zipBuf.buffer);
-    expect(parsed["test-voice"]).toBeDefined();
-    expect(parsed["test-voice"]).toHaveLength(256);
-    expect(parsed["test-voice"][0]).toBeCloseTo(0.05, 5);
-
-    const loaded = loadVoicesFromNpz(zipBuf.buffer);
-    expect(loaded).toBe(true);
-    expect(getVoiceEmbedding("test-voice")[0]).toBeCloseTo(0.05, 5);
+  it("resolveVoiceId acepta alias, ids y cae a expr-voice-2-f con lo desconocido", () => {
+    expect(resolveVoiceId("Bella")).toBe("expr-voice-2-f");
+    expect(resolveVoiceId("  LEO ")).toBe("expr-voice-5-m");
+    expect(resolveVoiceId("expr-voice-4-m")).toBe("expr-voice-4-m");
+    expect(resolveVoiceId("nada")).toBe("expr-voice-2-f");
+    for (const alias of Object.values(KITTEN_VOICE_ALIASES)) expect(KITTEN_VOICE_ORDER).toContain(alias);
   });
 
-  it("parseNpzVoices soporta offsets no alineados a múltiplos de 4 sin lanzar RangeError", () => {
-    // Nombre con longitud impar para forzar dataStart impar (30 + 5 = 35, no múltiplo de 4)
-    const filename = "v.npy";
-    const headerStr = "{'descr': '<f4', 'fortran_order': False, 'shape': (1, 256), }";
-    const padLen = 64 - ((10 + headerStr.length) % 64);
-    const headerPadded = headerStr + " ".repeat(padLen - 1) + "\n";
-    const headerBytes = new TextEncoder().encode(headerPadded);
-    const headerLen = headerBytes.length;
-
-    const dataFloats = new Float32Array(256);
-    dataFloats[0] = 0.42;
-
-    const npyTotalLen = 10 + headerLen + 256 * 4;
-    const npyBuf = new Uint8Array(npyTotalLen);
-    npyBuf.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0], 0);
-    new DataView(npyBuf.buffer).setUint16(8, headerLen, true);
-    npyBuf.set(headerBytes, 10);
-    new Uint8Array(npyBuf.buffer, 10 + headerLen).set(new Uint8Array(dataFloats.buffer));
-
-    const fnBytes = new TextEncoder().encode(filename);
-    expect(fnBytes.length % 2).toBe(1); // Longitud impar (5)
-    expect((30 + fnBytes.length) % 4).not.toBe(0); // Offset 35, no divisible por 4
-
-    const zipHeaderLen = 30 + fnBytes.length;
-    const zipBuf = new Uint8Array(zipHeaderLen + npyTotalLen);
-    const dv = new DataView(zipBuf.buffer);
-    dv.setUint32(0, 0x04034b50, true);
-    dv.setUint32(18, npyTotalLen, true);
-    dv.setUint32(22, npyTotalLen, true);
-    dv.setUint16(26, fnBytes.length, true);
-    dv.setUint16(28, 0, true);
-    zipBuf.set(fnBytes, 30);
-    zipBuf.set(npyBuf, 30 + fnBytes.length);
-
-    expect(() => parseNpzVoices(zipBuf.buffer)).not.toThrow();
-    const parsed = parseNpzVoices(zipBuf.buffer);
-    expect(parsed["v"]).toBeDefined();
-    expect(parsed["v"][0]).toBeCloseTo(0.42, 5);
+  it("effectiveSpeed multiplica por el speed_prior de la voz (0.8, y 0.9 en expr-voice-4-m)", () => {
+    expect(effectiveSpeed("expr-voice-2-f", 1)).toBeCloseTo(0.8);
+    expect(effectiveSpeed("Hugo", 1)).toBeCloseTo(0.9);
+    expect(effectiveSpeed("expr-voice-5-f", 1.5)).toBeCloseTo(1.2);
+    expect(Object.keys(KITTEN_SPEED_PRIORS).sort()).toEqual([...KITTEN_VOICE_ORDER].sort());
   });
 });

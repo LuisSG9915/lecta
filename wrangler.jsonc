@@ -45,6 +45,7 @@
 			"!/icons/*",
 			"!/lexicon/*",
 			"!/libros/*",
+			"!/tts/*",
 			"!/inicio/web/*",
 			"!/inicio/fonts/*"
 		]

@@ -9,10 +9,15 @@
 // Pipeline Piper:  normalizeSpanishText → SpanishG2P → Encoder → input/input_lengths/scales.
 
 import type { KittenVoiceId } from "../lib/ttsTypes";
-import { getVoiceEmbedding, registerVoiceEmbedding } from "../lib/kittenVoicesData";
+import { effectiveSpeed, parseVoiceTable, styleRow, type KittenVoiceTable } from "../lib/kittenVoicesData";
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
-import { KITTEN_CACHE_NAME, KITTEN_MODEL_URL } from "../lib/kittenModel";
+import {
+  KITTEN_CACHE_NAME,
+  KITTEN_MODEL_URL,
+  KITTEN_VOICES_SHA256,
+  KITTEN_VOICES_URL,
+} from "../lib/kittenModel";
 import {
   PIPER_CACHE_NAME,
   PIPER_CONFIG_URL,
@@ -39,7 +44,8 @@ export type WorkerRequest =
       modelBuffer?: ArrayBuffer;
       /** JSON del `.onnx.json` de Piper (phoneme_id_map, escalas, sample rate). */
       configBuffer?: ArrayBuffer;
-      voicesData?: Record<string, unknown>;
+      /** Tabla de voces oficial de Kitten 0.8 (public/tts/kitten-voices-v1.bin). */
+      voicesBuffer?: ArrayBuffer;
     }
   | {
       type: "SYNTHESIZE" | "synthesize";
@@ -112,6 +118,7 @@ let ortModule: OrtModule | null = null;
 // Una sola sesión ONNX viva a la vez (RAM de móvil).
 let kittenSession: OnnxInferenceSession | null = null;
 let piperSession: OnnxInferenceSession | null = null;
+let kittenVoices: KittenVoiceTable | null = null;
 let piperConfig: PiperModelConfig | null = null;
 
 function postWorkerMessage(message: WorkerResponse, transfer?: Transferable[]): void {
@@ -298,6 +305,26 @@ async function createSessionFromCache(
   return createSessionFromBuffer(buf);
 }
 
+/**
+ * Tabla de voces de Kitten desde CacheStorage (el motor la guarda junto al modelo con
+ * su `x-model-sha256`). Sin ella NO se sintetiza: los vectores de la 0.1 daban estática.
+ */
+async function loadKittenVoicesFromCache(): Promise<KittenVoiceTable | null> {
+  if (typeof caches === "undefined") return null;
+  try {
+    const cache = await caches.open(KITTEN_CACHE_NAME);
+    const match = await cache.match(KITTEN_VOICES_URL);
+    if (!match || match.status !== 200) return null;
+    if ((match.headers.get("x-model-sha256") || "").toLowerCase() !== KITTEN_VOICES_SHA256) {
+      await cache.delete(KITTEN_VOICES_URL);
+      return null;
+    }
+    return parseVoiceTable(await match.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 async function loadPiperConfigFromCache(): Promise<PiperModelConfig | null> {
   if (typeof caches === "undefined") return null;
   try {
@@ -383,7 +410,12 @@ async function runKittenInference(
 
   const ort = await configureOrtWasmEnv();
   const tokenIds = prepareKittenInputIds(cleanText);
-  const voiceEmbedding = getVoiceEmbedding(voiceId);
+  if (!kittenVoices) kittenVoices = await loadKittenVoicesFromCache();
+  if (!kittenVoices) {
+    throw new Error("Faltan las voces de KittenTTS: vuelve a descargar la voz neural.");
+  }
+  // Estilo = fila min(len(texto), 399) de la voz; velocidad × speed_prior (KittenTTS oficial).
+  const voiceEmbedding = styleRow(kittenVoices, voiceId, Array.from(cleanText).length);
 
   const inputNames = kittenSession.inputNames;
   const inputIdName =
@@ -422,7 +454,11 @@ async function runKittenInference(
   }
 
   if (inputNames.includes(speedName) || inputNames.length > 2) {
-    feeds[speedName] = new ort.Tensor("float32", new Float32Array([speed]), [1]);
+    feeds[speedName] = new ort.Tensor(
+      "float32",
+      new Float32Array([effectiveSpeed(voiceId, speed)]),
+      [1],
+    );
   }
 
   const results = await kittenSession.run(feeds as never);
@@ -627,12 +663,8 @@ if (typeof self !== "undefined") {
       case "init": {
         const engine: TtsEngineKind = msg.engine ?? "kitten";
         try {
-          if (msg.voicesData) {
-            for (const [vId, vData] of Object.entries(msg.voicesData)) {
-              if (vData instanceof Float32Array || Array.isArray(vData)) {
-                registerVoiceEmbedding(vId, vData as Float32Array | number[]);
-              }
-            }
+          if (msg.voicesBuffer) {
+            kittenVoices = parseVoiceTable(msg.voicesBuffer);
           }
 
           if (engine === "piper") {

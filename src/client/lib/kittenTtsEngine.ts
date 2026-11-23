@@ -10,6 +10,9 @@ import {
   KITTEN_MODEL_BYTES,
   KITTEN_MODEL_SHA256,
   KITTEN_MODEL_URL,
+  KITTEN_VOICES_BYTES,
+  KITTEN_VOICES_SHA256,
+  KITTEN_VOICES_URL,
   LEGACY_KITTEN_CACHE_NAMES,
 } from "./kittenModel";
 import {
@@ -687,10 +690,18 @@ export class KittenTtsEngine {
             }
           } else {
             const buffer = await getKittenModelBuffer();
+            // Voces 0.8: quien ya tenía el modelo las baja aquí, una sola vez (3,2 MB).
+            const voicesBuffer = (await ensureKittenVoices()) ?? undefined;
             if (buffer) {
-              worker.postMessage({ type: "INIT", engine: "kitten", modelBuffer: buffer } satisfies WorkerRequest, [buffer]);
+              worker.postMessage(
+                { type: "INIT", engine: "kitten", modelBuffer: buffer, voicesBuffer } satisfies WorkerRequest,
+                voicesBuffer ? [buffer, voicesBuffer] : [buffer],
+              );
             } else {
-              worker.postMessage({ type: "INIT", engine: "kitten", modelUrl: KITTEN_MODEL_URL } satisfies WorkerRequest);
+              worker.postMessage(
+                { type: "INIT", engine: "kitten", modelUrl: KITTEN_MODEL_URL, voicesBuffer } satisfies WorkerRequest,
+                voicesBuffer ? [voicesBuffer] : [],
+              );
             }
           }
         } catch {
@@ -756,6 +767,11 @@ export class KittenTtsEngine {
       };
       onProgress?.(p);
     });
+    // Sin las voces el modelo no sirve (ver kittenModel.ts): se bajan sin barra propia.
+    if (!(await ensureKittenVoices())) {
+      this.progress = { status: "error", percent: 0, errorMessage: "No se pudieron descargar las voces de KittenTTS" };
+      throw new Error("No se pudieron descargar las voces de KittenTTS");
+    }
   }
 
   async init(
@@ -1315,6 +1331,57 @@ export async function getKittenModelBuffer(
   expectedSha256: string = KITTEN_MODEL_SHA256,
 ): Promise<ArrayBuffer | null> {
   return getCachedModelBuffer(KITTEN_CACHE_NAME, modelUrl, expectedSha256);
+}
+
+/** Voces de Kitten 0.8 desde CacheStorage, validadas por sello y tamaño exacto. */
+export async function getKittenVoicesBuffer(): Promise<ArrayBuffer | null> {
+  if (typeof caches === "undefined") return null;
+  try {
+    const cache = await caches.open(KITTEN_CACHE_NAME);
+    const res = await cache.match(KITTEN_VOICES_URL);
+    if (!res || res.status !== 200) return null;
+    const hash = (res.headers.get("x-model-sha256") || "").toLowerCase();
+    const buffer = await res.arrayBuffer();
+    if (hash !== KITTEN_VOICES_SHA256 || buffer.byteLength !== KITTEN_VOICES_BYTES) {
+      await cache.delete(KITTEN_VOICES_URL);
+      return null;
+    }
+    return buffer;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Garantiza las voces en caché: las lee, o las baja, verifica (tamaño + SHA-256) y
+ * guarda con su sello. Nunca guarda un binario que no coincida. Devuelve una copia
+ * nueva (transferible al worker) o null si no se pudo.
+ */
+export async function ensureKittenVoices(): Promise<ArrayBuffer | null> {
+  const cached = await getKittenVoicesBuffer();
+  if (cached) return cached;
+  if (typeof caches === "undefined" || typeof fetch === "undefined") return null;
+  try {
+    const res = await fetch(KITTEN_VOICES_URL);
+    if (!res.ok) return null;
+    const bytes = await res.arrayBuffer();
+    if (bytes.byteLength !== KITTEN_VOICES_BYTES) return null;
+    if ((await sha256Hex(bytes)) !== KITTEN_VOICES_SHA256) return null;
+    const cache = await caches.open(KITTEN_CACHE_NAME);
+    await cache.put(
+      KITTEN_VOICES_URL,
+      new Response(bytes.slice(0), {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Length": String(bytes.byteLength),
+          "x-model-sha256": KITTEN_VOICES_SHA256,
+        },
+      }),
+    );
+    return bytes;
+  } catch {
+    return null;
+  }
 }
 
 export async function downloadKittenModel(

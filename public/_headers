@@ -92,6 +92,13 @@
 /dict/*
   Cache-Control: public, max-age=31536000, immutable
 
+# Voces de Kitten TTS 0.8 (kitten-voices-v1.bin): descarga opcional con la voz
+# neural, versionada en el nombre, así que inmutable por URL. No va en /models/
+# (esa ruta sale de R2) ni se precachea (ver vite.config.ts).
+/tts/*
+  Content-Type: application/octet-stream
+  Cache-Control: public, max-age=31536000, immutable
+
 /lexicon/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 

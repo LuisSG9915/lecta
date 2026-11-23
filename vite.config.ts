@@ -273,6 +273,9 @@ function swManifest(): Plugin {
           )
             continue;
           if (path === "/sw-manifest.json") continue;
+          // Las voces de Kitten (/tts/) son una descarga opcional con la voz neural
+          // (3,2 MB): precachearlas se las bajaría a quien nunca la activó.
+          if (path.indexOf("/tts/") === 0) continue;
           // La landing (/inicio/) no es parte de la app: no se precachea.
           if (path.indexOf("/inicio/") === 0) continue;
           assets.push(path);
