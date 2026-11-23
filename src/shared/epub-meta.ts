@@ -60,6 +60,9 @@ async function readZipEntryText(
   return new TextDecoder().decode(raw);
 }
 
+/** Tope por entrada descomprimida (mismo valor que el lector del Kindle). */
+export const MAX_UNCOMPRESSED_ENTRY_BYTES = 10 * 1024 * 1024;
+
 async function readZipEntryBytes(
   bytes: Uint8Array,
   view: DataView,
@@ -79,13 +82,34 @@ async function readZipEntryBytes(
     return raw;
   }
   if (entry.compressionMethod === 8) {
+    // Se lee por trozos y se corta al pasar el tope: un zip bomb de pocos
+    // KB inflaría cientos de MB y tumbaría el isolate (128 MB).
     try {
       const ds = new DecompressionStream("deflate-raw");
       const writer = ds.writable.getWriter();
-      void writer.write(raw as unknown as BufferSource);
-      void writer.close();
-      const decompressed = await new Response(ds.readable).arrayBuffer();
-      return new Uint8Array(decompressed);
+      const writePromise = writer.write(raw as unknown as BufferSource).then(() => writer.close());
+      const reader = ds.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      let totalLength = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalLength += value.byteLength;
+        if (totalLength > MAX_UNCOMPRESSED_ENTRY_BYTES) {
+          await reader.cancel().catch(() => {});
+          writePromise.catch(() => {});
+          return null;
+        }
+        chunks.push(value);
+      }
+      await writePromise.catch(() => {});
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return result;
     } catch {
       return null;
     }

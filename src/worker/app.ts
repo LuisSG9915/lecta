@@ -154,6 +154,29 @@ app.use(
   }),
 );
 
+// Tope para el resto de la API. 4 MB cubre el lote de sync más grande
+// legítimo (500 anotaciones de hasta ~4,7 K caracteres ≈ 2,3 MB); las
+// subidas de EPUB y portadas llevan el suyo, y `/api/lexicon/batch` es
+// público y no necesita más que 2000 formas.
+export const API_BODY_MAX_BYTES = 4 * 1024 * 1024;
+export const LEXICON_BATCH_MAX_BYTES = 128 * 1024;
+const BOOK_COVER_MAX_BYTES = 300_000;
+
+export function apiBodyLimitFor(path: string): number {
+  if (path === "/api/lexicon/batch") return LEXICON_BATCH_MAX_BYTES;
+  if (/^\/api\/books\/[^/]+\/cover$/.test(path)) return BOOK_COVER_MAX_BYTES;
+  if (/^\/api\/books(\/[^/]+)?$/.test(path) || /^\/api\/user\/books\/[^/]+\/file$/.test(path))
+    return EPUB_MAX_BYTES;
+  return API_BODY_MAX_BYTES;
+}
+
+app.use("/api/*", (c, next) =>
+  bodyLimit({
+    maxSize: apiBodyLimitFor(c.req.path),
+    onError: (ctx) => ctx.json({ error: "Payload too large" }, 413),
+  })(c, next),
+);
+
 app.onError((err, c) => {
   const pathname = new URL(c.req.url).pathname;
   // Nunca el objeto crudo: puede llevar `detail` con valores de filas o

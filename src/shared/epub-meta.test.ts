@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   detectBookLanguage,
@@ -7,22 +8,29 @@ import {
   extractEpubMeta,
   humanizeFilename,
   isHashLikeIdentifier,
+  MAX_UNCOMPRESSED_ENTRY_BYTES,
 } from "./epub-meta";
 
-function createTestZip(files: Record<string, string | Uint8Array>): Uint8Array {
-  const fileEntries: Array<{ name: string; data: Uint8Array; offset: number }> = [];
+// Las entradas en `deflated` se guardan con deflate (método 8).
+function createTestZip(
+  files: Record<string, string | Uint8Array>,
+  deflated: ReadonlySet<string> = new Set(),
+): Uint8Array {
+  const fileEntries: Array<{ name: string; data: Uint8Array; offset: number; method: number }> = [];
   const parts: Uint8Array[] = [];
   let currentOffset = 0;
 
   for (const [name, content] of Object.entries(files)) {
-    const data = typeof content === "string" ? new TextEncoder().encode(content) : content;
+    const plain = typeof content === "string" ? new TextEncoder().encode(content) : content;
+    const method = deflated.has(name) ? 8 : 0;
+    const data = method === 8 ? new Uint8Array(deflateRawSync(plain)) : plain;
     const nameBytes = new TextEncoder().encode(name);
     const localHeader = new Uint8Array(30 + nameBytes.length);
     const view = new DataView(localHeader.buffer);
     view.setUint32(0, 0x04034b50, true);
     view.setUint16(4, 20, true);
     view.setUint16(6, 0, true);
-    view.setUint16(8, 0, true); // no compression
+    view.setUint16(8, method, true);
     view.setUint16(10, 0, true);
     view.setUint16(12, 0, true);
     view.setUint32(14, 0, true); // crc
@@ -32,7 +40,7 @@ function createTestZip(files: Record<string, string | Uint8Array>): Uint8Array {
     view.setUint16(28, 0, true);
     localHeader.set(nameBytes, 30);
 
-    fileEntries.push({ name, data, offset: currentOffset });
+    fileEntries.push({ name, data, offset: currentOffset, method });
     parts.push(localHeader, data);
     currentOffset += localHeader.length + data.length;
   }
@@ -48,7 +56,7 @@ function createTestZip(files: Record<string, string | Uint8Array>): Uint8Array {
     view.setUint16(4, 20, true);
     view.setUint16(6, 20, true);
     view.setUint16(8, 0, true);
-    view.setUint16(10, 0, true);
+    view.setUint16(10, entry.method, true);
     view.setUint16(12, 0, true);
     view.setUint16(14, 0, true);
     view.setUint32(16, 0, true);
@@ -144,6 +152,28 @@ describe("extractEpubMeta", () => {
 });
 
 describe("extractEpubCover", () => {
+  const container = `<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>`;
+  const opf = `<package version="3.0"><manifest><item id="cov" href="cover.png" media-type="image/png" properties="cover-image"/></manifest></package>`;
+
+  it("descomprime una portada con deflate", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
+    const zip = createTestZip(
+      { "META-INF/container.xml": container, "content.opf": opf, "cover.png": png },
+      new Set(["cover.png"]),
+    );
+    expect((await extractEpubCover(zip))?.data).toEqual(png);
+  });
+
+  it("descarta una entrada que se infla por encima del tope (zip bomb)", async () => {
+    const bomb = new Uint8Array(MAX_UNCOMPRESSED_ENTRY_BYTES + 1);
+    const zip = createTestZip(
+      { "META-INF/container.xml": container, "content.opf": opf, "cover.png": bomb },
+      new Set(["cover.png"]),
+    );
+    expect(zip.byteLength).toBeLessThan(64 * 1024);
+    expect(await extractEpubCover(zip)).toBeNull();
+  });
+
   it("extrae portada de EPUB 3 (properties='cover-image')", async () => {
     const fakeCoverBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG header
     const containerXml = `<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>`;

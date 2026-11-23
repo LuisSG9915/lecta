@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app, computeAiCacheKey, getCachedAiText, setCachedAiText } from "./app";
+import {
+  API_BODY_MAX_BYTES,
+  LEXICON_BATCH_MAX_BYTES,
+  apiBodyLimitFor,
+  app,
+  computeAiCacheKey,
+  getCachedAiText,
+  setCachedAiText,
+} from "./app";
+import { EPUB_MAX_BYTES } from "../shared/epub-check";
 import type { WorkerEnv } from "./db";
 import * as dbModule from "./db";
 import * as sessionModule from "./session";
@@ -109,6 +118,45 @@ describe("POST /api/lexicon/batch", () => {
       {},
     );
     expect(response.status).toBe(503);
+  });
+
+  it("corta con 413 un cuerpo de más de 128 KB antes de parsearlo", async () => {
+    const response = await app.request("/api/lexicon/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ forms: ["x".repeat(200 * 1024)] }),
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "Payload too large" });
+  });
+});
+
+describe("tope de cuerpo de la API", () => {
+  it("elige el tope por ruta", () => {
+    expect(apiBodyLimitFor("/api/lexicon/batch")).toBe(LEXICON_BATCH_MAX_BYTES);
+    expect(apiBodyLimitFor("/api/books")).toBe(EPUB_MAX_BYTES);
+    expect(apiBodyLimitFor("/api/books/abc")).toBe(EPUB_MAX_BYTES);
+    expect(apiBodyLimitFor("/api/user/books/abc/file")).toBe(EPUB_MAX_BYTES);
+    expect(apiBodyLimitFor("/api/books/abc/cover")).toBe(300_000);
+    expect(apiBodyLimitFor("/api/vocab")).toBe(API_BODY_MAX_BYTES);
+  });
+
+  it("corta con 413 una subida de EPUB de más de 50 MB sin llegar al handler", async () => {
+    const response = await app.request("/api/books", {
+      method: "POST",
+      headers: { "content-length": String(EPUB_MAX_BYTES + 1) },
+      body: new Uint8Array(16),
+    });
+    expect(response.status).toBe(413);
+  });
+
+  it("corta con 413 un lote de sync de más de 4 MB", async () => {
+    const response = await app.request("/api/vocab", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: "x".repeat(API_BODY_MAX_BYTES + 1),
+    });
+    expect(response.status).toBe(413);
   });
 });
 
