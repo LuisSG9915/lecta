@@ -105,6 +105,8 @@ interface PendingJob {
 /** Última síntesis reportada por el worker (diagnóstico RTF por motor). */
 /** Muestras válidas de RTF que se promedian y duración mínima de audio para contar. */
 export const RTF_SAMPLES_NEEDED = 3;
+/** Con 2 muestras ya se decide, pero solo si AMBAS son lentas (se usa la menor). */
+export const RTF_MIN_DECISION_SAMPLES = 2;
 export const RTF_MIN_AUDIO_MS = 1000;
 
 export interface LastSynthStats {
@@ -318,14 +320,16 @@ export class KittenTtsEngine {
   }
 
   /**
-   * RTF (tiempo de síntesis / duración del audio) como mediana de las primeras
-   * `RTF_SAMPLES_NEEDED` oraciones válidas del worker; null hasta tenerlas. Un RTF > 1
+   * RTF (tiempo de síntesis / duración del audio) de las primeras oraciones válidas del
+   * worker: la menor de 2 o la mediana de 3; null hasta tener `RTF_MIN_DECISION_SAMPLES`. Un RTF > 1
    * significa que el dispositivo no sintetiza en tiempo real (pausas entre oraciones).
    */
   getSynthRtf(): number | null {
-    if (this.rtfSamples.length < RTF_SAMPLES_NEEDED) return null;
+    const n = this.rtfSamples.length;
+    if (n < RTF_MIN_DECISION_SAMPLES) return null;
     const sorted = [...this.rtfSamples].sort((a, b) => a - b);
-    return sorted[Math.floor(sorted.length / 2)];
+    // 2 muestras: la menor (decide solo si las dos son lentas); 3: la mediana.
+    return n < RTF_SAMPLES_NEEDED ? sorted[0] : sorted[Math.floor(n / 2)];
   }
 
   private recordRtf(engine: TtsEngineKind, synthMs: number, audioMs: number): void {

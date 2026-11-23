@@ -179,13 +179,12 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
 - **Sin `speed_priors`**: el config oficial los trae en 0.8 (0.9 en `expr-voice-4-m`); aplicados daban ~88
   palabras/min. La velocidad la decide el ajuste del usuario.
 - **Respaldo por velocidad** (`ttsController.ts`, `kittenTtsEngine.getSynthRtf`): RTF = synthMs/audioMs;
-  mediana de las 3 primeras oraciones válidas tras el calentamiento (la 1.ª y las de <1 s no cuentan). Si
+  con 2 oraciones válidas tras el calentamiento usa la menor (decide solo si ambas son lentas) y con 3 la mediana (la 1.ª y las de <1 s no cuentan). Si
   > `NEURAL_SLOW_RTF` (1.2) pasa a la voz del sistema con aviso, libera el worker y no toca
   `settings.engine`. La bandera (`neuralSlowDemoted`) vive en el módulo (la pestaña), no en el controlador;
   `setKittenVoice`/`setEngine("kitten-neural")` la borran y apagan la medición hasta recargar. Medido en un
   Android real (LMR-LX9, Chrome): RTF 1.6–3.0 con un hilo WASM (un Mac: ~0.43), pausas de ~20 s y móvil
-  caliente; el respaldo saltó a los ~95 s y la voz del sistema siguió leyendo. Pendiente: decidir antes
-  (p. ej. cortar si una sola muestra pasa de 2.5) y multihilo (exige COOP/COEP; riesgo con Turnstile).
+  caliente; con 3 muestras el respaldo saltó a los ~95 s; con 2 debería ser ~30 s. Pendiente: multihilo (exige COOP/COEP; riesgo con Turnstile).
 - **Cómo medirlo en un Android**: `adb forward tcp:9223 localabstract:chrome_devtools_remote_<pid de Chrome>`
   (el socket sin pid suele ser de otro navegador) y Playwright `connectOverCDP`; enganchar
   `AudioBuffer.prototype.copyToChannel` o los `message` del Worker para ver `synthMs`/`audioMs`. Para

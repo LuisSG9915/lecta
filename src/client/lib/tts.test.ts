@@ -1161,15 +1161,16 @@ describe("ttsController", () => {
     const feed = (engine: KittenTtsEngine, synthMs: number, audioMs: number, kind: "kitten" | "piper" = "kitten") =>
       (engine as unknown as { recordRtf: (k: string, s: number, a: number) => void }).recordRtf(kind, synthMs, audioMs);
 
-    it("ignora la 1.ª (calentamiento) y las de menos de 1 s, y da la mediana de 3 válidas", () => {
+    it("ignora la 1.ª (calentamiento) y las de menos de 1 s; con 2 válidas da la menor y con 3 la mediana", () => {
       const engine = new KittenTtsEngine();
       feed(engine, 9000, 2000); // calentamiento: no cuenta
       expect(engine.getSynthRtf()).toBeNull();
       feed(engine, 400, 500); // <1 s de audio: no cuenta
-      feed(engine, 2000, 2000); // 1.0
       feed(engine, 4000, 2000); // 2.0
-      expect(engine.getSynthRtf()).toBeNull(); // faltan muestras
+      expect(engine.getSynthRtf()).toBeNull(); // con 1 aún no se decide
       feed(engine, 3000, 2000); // 1.5
+      expect(engine.getSynthRtf()).toBeCloseTo(1.5); // 2 muestras: la menor
+      feed(engine, 2000, 2000); // 1.0 → mediana de {2.0, 1.5, 1.0}
       expect(engine.getSynthRtf()).toBeCloseTo(1.5);
       feed(engine, 100, 5000); // ya decidido: no cambia la ventana inicial
       expect(engine.getSynthRtf()).toBeCloseTo(1.5);
