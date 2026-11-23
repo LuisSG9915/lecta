@@ -47,7 +47,7 @@ function withFakeClient(client: { query: Q } | undefined) {
 function asOwner(email = "DUENO@lecta.mx") {
   return vi
     .spyOn(sessionModule, "getSessionUser")
-    .mockResolvedValue({ id: "u-owner", email } as never);
+    .mockResolvedValue({ id: "u-owner", email, emailVerified: true } as never);
 }
 
 afterEach(() => {
@@ -67,6 +67,16 @@ describe("GET /api/admin/access", () => {
 
     vi.spyOn(sessionModule, "getSessionUser").mockResolvedValue(null);
     res = await admin.request("/api/admin/access", {}, OWNER_ENV);
+    expect(res.status).toBe(404);
+  });
+
+  it("404 con el correo del dueño sin verificar (registro previo ajeno)", async () => {
+    vi.spyOn(sessionModule, "getSessionUser").mockResolvedValue({
+      id: "u-intruso",
+      email: "dueno@lecta.mx",
+      emailVerified: false,
+    } as never);
+    const res = await admin.request("/api/admin/access", {}, OWNER_ENV);
     expect(res.status).toBe(404);
   });
 

@@ -899,6 +899,7 @@ describe("GET /api/error-reports", () => {
   it("devuelve el agregado al dueño", async () => {
     vi.spyOn(sessionModule, "getSessionUser").mockResolvedValue({
       email: "DUENO@example.com",
+      emailVerified: true,
     } as unknown as Awaited<ReturnType<typeof sessionModule.getSessionUser>>);
     const query = vi.fn().mockResolvedValue({
       rows: [

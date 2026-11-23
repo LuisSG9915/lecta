@@ -45,8 +45,10 @@ export type OwnerUser = { id: string; email?: string | null };
 
 /**
  * Devuelve el usuario de la sesión si —y solo si— su correo es el de
- * `LECTA_OWNER_EMAIL`. Sin variable configurada, sin sesión o con otro
- * correo devuelve null y quien llama responde 404. Quien llame decide
+ * `LECTA_OWNER_EMAIL` y está verificado. Sin verificación, cualquiera
+ * podría registrar ese correo con contraseña antes que el dueño y entrar
+ * al panel. Sin variable configurada, sin sesión, con otro correo o sin
+ * verificar devuelve null y quien llama responde 404. Quien llame decide
  * si traga el error de infraestructura de sesión: /api/error-reports
  * lo convierte en 404 y las rutas de admin prefieren propagarlo para
  * que onError responda 503 (la base caída no es «no eres el dueño»).
@@ -58,7 +60,7 @@ export async function ownerUser(
   if (!owner) return null;
   const user = await getSessionUser(context);
   const email = user?.email?.toLowerCase();
-  if (!email || email !== owner) return null;
+  if (!email || email !== owner || user?.emailVerified !== true) return null;
   return user as OwnerUser;
 }
 

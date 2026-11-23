@@ -122,7 +122,7 @@ first only for `/api/*`, `/k`, `/k/*`, `/kindle`, `/kindle/*`, `/models/*`
   the raw error; `SessionInfraError` / `DB_UNAVAILABLE` map to 503.
 - HTML responses get `no-store`, `nosniff` and `[kindle/routes.ts:kindleHtmlCspFor]` CSP.
 - `/api/error-reports` and `/api/admin/*` answer 404 unless the session email
-  equals `LECTA_OWNER_EMAIL` (`[admin.ts:ownerUser]`).
+  equals `LECTA_OWNER_EMAIL` and is verified (`[admin.ts:ownerUser]`).
 - `POST /api/client-errors` always answers 204; signature persistence runs in
   `waitUntil` and swallows its errors.
 - `/models/:filename` rejects `..` and `/`; serves `models/{filename}` with
