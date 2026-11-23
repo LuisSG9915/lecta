@@ -10,6 +10,7 @@ import {
 import { consumeFreeAiCourtesy, refundFreeAiCourtesy } from "./free-courtesy";
 import { billing } from "./billing";
 import { account } from "./account";
+import { userBooks } from "./user-books";
 import { toCatalogId, toSenseOrder } from "./catalog-ids";
 import { vocabSync } from "./vocab-sync";
 import { ops } from "./ops";
@@ -91,7 +92,7 @@ import {
   calibrationBankVersion,
   type CalibrationProfile,
 } from "../shared/calibration-bank";
-import { checkEpubHeader, checkEpubBuffer, EPUB_MAX_BYTES } from "../shared/epub-check";
+import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta, extractEpubCover, isHashLikeIdentifier } from "../shared/epub-meta";
 import { genreFromSubjects, isBookGenre } from "../shared/book-genres";
 import { sanitizePaperBookGuide } from "../shared/paper-guide";
@@ -99,7 +100,7 @@ import {
   invalidateCommunityGuides,
   publishedGuideHashes,
 } from "./community-guides";
-import { getSession, getSessionUser, SessionInfraError } from "./session";
+import { getSession, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
@@ -119,6 +120,27 @@ import {
   kindleHtmlCspFor,
 } from "./kindle/routes";
 import { purgeKindleBookCache } from "./kindle/cache";
+import {
+  HASH_PATTERN,
+  MAX_USER_BOOKS,
+  MAX_USER_STORAGE_BYTES,
+  checkUserBooksQuota,
+  deleteUserBookRecord,
+  listUserBookFlags,
+  recordUserBook,
+  setUserBookCover,
+  type BookFlags,
+} from "./book-store";
+
+// Reexportados: las pruebas y otros módulos los importan desde ./app.
+export {
+  MAX_USER_BOOKS,
+  MAX_USER_STORAGE_BYTES,
+  checkUserBooksQuota,
+  deleteUserBookRecord,
+  recordUserBook,
+  setUserBookCover,
+};
 import {
   isResetBlocked,
   readResetAck,
@@ -1687,203 +1709,12 @@ const PAGE_RECAP_UNITS_PER_HOUR = 40;
 const TRANSLATE_UNITS_PER_HOUR = 60;
 const COMPANION_NOTE_UNITS_PER_HOUR = 12;
 
-export const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024; // 500 MB por cuenta
-export const MAX_USER_BOOKS = 100;
-
-export async function checkUserBooksQuota(
-  env: WorkerEnv,
-  userId: string,
-  bookId: string,
-  newFileBytes: number,
-): Promise<{ allowed: boolean; reason?: string }> {
-  let totalBytes = 0;
-  let bookCount = 0;
-
-  if (getConnectionString(env)) {
-    const res = await withClient(env, (client) =>
-      client.query<{ total_bytes: string | number; book_count: string | number }>(
-        `SELECT
-           COALESCE(SUM(size_bytes), 0)::bigint AS total_bytes,
-           COUNT(*)::int AS book_count
-         FROM user_books
-         WHERE user_id = $1 AND book_id != $2`,
-        [userId, bookId],
-      ),
-    );
-    if (res?.rows[0]) {
-      totalBytes = Number(res.rows[0].total_bytes);
-      bookCount = Number(res.rows[0].book_count);
-    }
-  }
-
-  if (bookCount >= MAX_USER_BOOKS) {
-    return { allowed: false, reason: "Storage quota exceeded: maximum books limit reached (100)" };
-  }
-  if (totalBytes + newFileBytes > MAX_USER_STORAGE_BYTES) {
-    return { allowed: false, reason: "Storage quota exceeded for this account" };
-  }
-
-  return { allowed: true };
-}
-
-export async function recordUserBook(
-  env: WorkerEnv,
-  book: {
-    userId: string;
-    bookId: string;
-    title: string;
-    author: string;
-    language?: string;
-    // Género editorial (BOOK_GENRES); "" = sin clasificar. En conflicto
-    // solo pisa si trae valor: la elección manual del lector al
-    // compartir sobrevive a una resubida sin género.
-    genre?: string;
-    r2Key: string;
-    sizeBytes: number;
-    sha256: string;
-    hasCover?: boolean;
-    // Marca de reinicio que el cliente declara; definida, la fila se
-    // escribe dentro de la transacción guardada (StaleResetError si un
-    // reinicio remoto la invalida).
-    resetAck?: number;
-  },
-): Promise<void> {
-  const now = Date.now();
-  const hasCoverVal = book.hasCover ? true : false;
-  if (getConnectionString(env)) {
-    // Tolera la columna `language` ausente (despliegue antes de la
-    // migración 022): el error se traga y la fila no se registra, como
-    // cuando falta la conexión.
-    // Con resetAck la fila corre dentro de la transacción guardada: un
-    // sello más nuevo aborta con StaleResetError en vez de resucitar.
-    // Dos variantes: con `genre` (migración 025 aplicada) y sin ella
-    // (worker desplegado antes de migrar) — el género es metadato
-    // complementario y jamás debe tirar la fila del libro.
-    const sqlBase = `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT (user_id, book_id) DO UPDATE SET
-           title = EXCLUDED.title,
-           author = EXCLUDED.author,
-           language = EXCLUDED.language,
-           r2_key = EXCLUDED.r2_key,
-           size_bytes = EXCLUDED.size_bytes,
-           sha256 = EXCLUDED.sha256,
-           has_cover = EXCLUDED.has_cover,
-           updated_at = EXCLUDED.updated_at`;
-    const sqlGenre = `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, genre, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         ON CONFLICT (user_id, book_id) DO UPDATE SET
-           title = EXCLUDED.title,
-           author = EXCLUDED.author,
-           language = EXCLUDED.language,
-           r2_key = EXCLUDED.r2_key,
-           size_bytes = EXCLUDED.size_bytes,
-           sha256 = EXCLUDED.sha256,
-           has_cover = EXCLUDED.has_cover,
-           genre = CASE WHEN EXCLUDED.genre <> '' THEN EXCLUDED.genre ELSE user_books.genre END,
-           updated_at = EXCLUDED.updated_at`;
-    // Tercera variante (027): la subida deja el archivo en R2, así que la
-    // fila pasa a has_file = true aunque antes fuera solo de metadatos.
-    const sqlGenreFile = `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, genre, has_file, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12)
-         ON CONFLICT (user_id, book_id) DO UPDATE SET
-           title = EXCLUDED.title,
-           author = EXCLUDED.author,
-           language = EXCLUDED.language,
-           r2_key = EXCLUDED.r2_key,
-           size_bytes = EXCLUDED.size_bytes,
-           sha256 = EXCLUDED.sha256,
-           has_cover = EXCLUDED.has_cover,
-           genre = CASE WHEN EXCLUDED.genre <> '' THEN EXCLUDED.genre ELSE user_books.genre END,
-           has_file = EXCLUDED.has_file,
-           updated_at = EXCLUDED.updated_at`;
-    const baseParams = [
-      book.userId,
-      book.bookId,
-      book.title,
-      book.author,
-      book.language ?? "",
-      book.r2Key,
-      book.sizeBytes,
-      book.sha256,
-      hasCoverVal,
-      now,
-      now,
-    ];
-    const genreParams = [...baseParams.slice(0, 9), book.genre ?? "", ...baseParams.slice(9)];
-    // Cadena ante 42703: genre + has_file → genre → base.
-    const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
-      client
-        .query(sqlGenreFile, genreParams)
-        .catch((err: unknown) =>
-          isMissingColumnError(err)
-            ? client.query(sqlGenre, genreParams)
-            : Promise.reject(err),
-        )
-        .catch((err: unknown) =>
-          isMissingColumnError(err)
-            ? client.query(sqlBase, baseParams)
-            : Promise.reject(err),
-        );
-    const res = await (book.resetAck === undefined
-      ? withClient(env, insert)
-      : withResetGuard(env, book.resetAck, book.userId, insert)
-    ).catch((err: unknown) => {
-      if (err instanceof StaleResetError) throw err;
-      return undefined;
-    });
-    if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
-  }
-}
-
-export async function setUserBookCover(
-  env: WorkerEnv,
-  userId: string,
-  bookId: string,
-  hasCover: boolean,
-  resetAck?: number,
-): Promise<void> {
-  const now = Date.now();
-  if (getConnectionString(env)) {
-    const update = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
-      client.query(
-        `UPDATE user_books SET has_cover = $1, updated_at = $2 WHERE user_id = $3 AND book_id = $4`,
-        [hasCover, now, userId, bookId],
-      );
-    const res = await (resetAck === undefined
-      ? withClient(env, update)
-      : withResetGuard(env, resetAck, userId, update)
-    ).catch((err: unknown) => {
-      if (err instanceof StaleResetError) throw err;
-      return undefined;
-    });
-    if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
-  }
-}
-
-export async function deleteUserBookRecord(
-  env: WorkerEnv,
-  userId: string,
-  bookId: string,
-  resetAck?: number,
-): Promise<void> {
-  if (getConnectionString(env)) {
-    const remove = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
-      client.query(`DELETE FROM user_books WHERE user_id = $1 AND book_id = $2`, [userId, bookId]);
-    const res = await (resetAck === undefined
-      ? withClient(env, remove)
-      : withResetGuard(env, resetAck, userId, remove));
-    if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
-  }
-}
-
 const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`;
 const bookCoverKey = (userId: string, hash: string) => `covers/${userId}/${hash}.jpg`;
 // Guías de papel comunitarias (modelo A1): un solo objeto por sha256,
 // fuera del espacio `books/` de cualquier usuario — jamás contiene el
 // EPUB, solo el índice de capítulos y sus listas de palabras.
 const guideKey = (hash: string) => `guides/${hash}.json`;
-const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 app.get("/api/books", async (context) => {
   const booksBucket = context.env.BOOKS;
@@ -2481,40 +2312,6 @@ app.get("/api/books/:hash/cover", async (context) => {
 // por `book_id` (= sha256 del archivo origen).
 // ------------------------------------------------------------------
 
-type BookFlags = { shared: boolean; paperOnly: boolean; genre: string };
-
-// Flags que viven en la fila (el customMetadata de R2 no se actualiza
-// sin resubir el archivo). `genre` (025) se pide primero en la misma
-// consulta; sin la columna se reintenta con las de la 024 — los flags
-// base no se pierden por un género que aún no existe.
-async function listUserBookFlags(
-  env: WorkerEnv,
-  userId: string,
-): Promise<Map<string, BookFlags>> {
-  const flags = new Map<string, BookFlags>();
-  const sqlPgGenre = `SELECT book_id, shared, paper_only, genre FROM user_books WHERE user_id = $1`;
-  const sqlPgBase = `SELECT book_id, shared, paper_only FROM user_books WHERE user_id = $1`;
-  const collect = (rows: Array<{ book_id: unknown; shared: unknown; paper_only: unknown; genre?: unknown }>) => {
-    for (const row of rows) {
-      flags.set(String(row.book_id), {
-        shared: row.shared === true || row.shared === 1,
-        paperOnly: row.paper_only === true || row.paper_only === 1,
-        genre: String(row.genre ?? ""),
-      });
-    }
-  };
-  if (getConnectionString(env)) {
-    const query = (sql: string) =>
-      withClient(env, (client) =>
-        client.query<{ book_id: unknown; shared: unknown; paper_only: unknown; genre?: unknown }>(sql, [userId]),
-      ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
-    const res = (await query(sqlPgGenre)) ?? (await query(sqlPgBase)) ?? undefined;
-    if (res) collect(res.rows);
-    return flags;
-  }
-  return flags;
-}
-
 // Fila de user_books para GET /api/books. Las columnas opcionales llegan
 // según las migraciones aplicadas (024 shared/paper_only, 025 genre, 027
 // has_file); sin ellas el campo es undefined y se trata como antes (flag
@@ -2911,251 +2708,6 @@ app.post("/api/books/:hash/repair", async (context) => {
 
 app.route("/", vocabSync);
 
-// ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en CockroachDB y R2 ----------
-
-// Libro propio solo con metadatos (027): gratis y con sesión. Registra la
-// fila para que la estantería de otro dispositivo vea el libro; el archivo
-// se adjunta allá (emparejado por sha256). Nunca toca r2_key, size_bytes ni
-// has_file de una fila que ya tenga archivo.
-app.put("/api/user/books/:bookId/meta", async (c) => {
-  const user = await getSessionUser(c);
-  if (!user) return c.json({ error: "No autenticado" }, 401);
-  const bookId = c.req.param("bookId");
-  const body = (await c.req.json().catch(() => null)) as {
-    title?: unknown;
-    author?: unknown;
-    language?: unknown;
-    sha256?: unknown;
-  } | null;
-  const text = (value: unknown, max: number) =>
-    typeof value === "string" ? value.trim().slice(0, max) : "";
-  const sha256 = text(body?.sha256, 64).toLowerCase();
-  if (!HASH_PATTERN.test(bookId) || sha256 !== bookId) {
-    return c.json({ error: "El archivo no coincide con el libro." }, 400);
-  }
-  if (!getConnectionString(c.env)) {
-    return c.json({ error: "Servicio temporalmente no disponible" }, 503);
-  }
-  const quota = await checkUserBooksQuota(c.env, user.id, bookId, 0);
-  if (!quota.allowed) {
-    return c.json({ error: quota.reason ?? "Llegaste al límite de libros de tu cuenta." }, 413);
-  }
-  const now = Date.now();
-  const params = [
-    user.id,
-    bookId,
-    text(body?.title, 300),
-    text(body?.author, 200),
-    text(body?.language, 16),
-    sha256,
-    now,
-  ];
-  const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
-    client.query(
-      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_file, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, '', 0, $6, false, $7, $7)
-       ON CONFLICT (user_id, book_id) DO UPDATE SET
-         title = EXCLUDED.title,
-         author = EXCLUDED.author,
-         language = EXCLUDED.language,
-         updated_at = EXCLUDED.updated_at`,
-      params,
-    );
-  let res;
-  try {
-    res = await withResetGuard(c.env, readResetAck(c), user.id, insert);
-  } catch (err) {
-    if (err instanceof StaleResetError) return resetBlockedResponse(c, err.resetAt);
-    if (isMissingColumnError(err)) {
-      return c.json({ error: "Servicio temporalmente no disponible" }, 503);
-    }
-    throw err;
-  }
-  if (isResetBlocked(res)) return resetBlockedResponse(c, res.blockedAt);
-  return c.json({ ok: true, hasFile: false });
-});
-
-app.put("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
-  const user = c.get("session")?.user ?? null;
-  if (!user) return c.json({ error: "No autenticado" }, 401);
-
-  const staleReset = await staleResetAt(c.env, c, user.id);
-  if (staleReset) return resetBlockedResponse(c, staleReset);
-
-  const booksBucket = c.env.BOOKS;
-  if (!booksBucket) {
-    return c.json({ error: "Almacenamiento no configurado" }, 503);
-  }
-
-  const bookId = c.req.param("bookId");
-  const rawTitle = c.req.header("x-book-title");
-  const rawAuthor = c.req.header("x-book-author");
-  const rawLanguage = c.req.header("x-book-language");
-  const title = rawTitle ? decodeURIComponent(rawTitle) : bookId;
-  const author = rawAuthor ? decodeURIComponent(rawAuthor) : "";
-  const language = rawLanguage ? decodeURIComponent(rawLanguage) : "";
-  const sha256 = c.req.header("x-book-sha256") ?? "";
-
-  const buffer = await c.req.arrayBuffer();
-  if (buffer.byteLength === 0 || buffer.byteLength > EPUB_MAX_BYTES) {
-    return c.json({ error: "El archivo EPUB excede el límite permitido" }, 413);
-  }
-
-  const check = checkEpubBuffer(buffer);
-  if (!check.ok) {
-    return c.json({ error: check.reason ?? "Archivo EPUB inválido" }, 400);
-  }
-
-  // Verificar cuota acumulada del usuario
-  const quota = await checkUserBooksQuota(c.env, user.id, bookId, buffer.byteLength);
-  if (!quota.allowed) {
-    return c.json({ error: quota.reason ?? "Storage quota exceeded for this account" }, 413);
-  }
-
-  const r2Key = `user-books/${user.id}/${bookId}.epub`;
-  await booksBucket.put(r2Key, buffer, {
-    httpMetadata: { contentType: "application/epub+zip" },
-    customMetadata: { userId: user.id, bookId, title, author },
-  });
-
-  const now = Date.now();
-  try {
-    await recordUserBook(c.env, {
-      userId: user.id,
-      bookId,
-      title,
-      author,
-      language,
-      r2Key,
-      sizeBytes: buffer.byteLength,
-      sha256,
-      resetAck: readResetAck(c),
-    });
-  } catch (err) {
-    if (err instanceof StaleResetError) {
-      await booksBucket.delete(r2Key).catch(() => undefined);
-      return resetBlockedResponse(c, err.resetAt);
-    }
-    throw err;
-  }
-
-  return c.json({ ok: true, bookId, sizeBytes: buffer.byteLength, updatedAt: now });
-});
-
-app.get("/api/user/books", async (c) => {
-  const user = await getSessionUser(c);
-  if (!user) return c.json({ books: [] });
-
-  // Defensa del modelo A1: las entradas paper_only no son libros
-  // descargables — su «archivo» es la guía (r2_key = guides/…). Si
-  // salieran en esta lista, un sync que bajara lo que falta guardaría
-  // el JSON de la guía como EPUB local.
-  const flags = await listUserBookFlags(c.env, user.id).catch(
-    () => new Map<string, BookFlags>(),
-  );
-  const notPaper = (id: unknown) => !flags.get(String(id))?.paperOnly;
-
-  if (getConnectionString(c.env)) {
-    const rows = await withClient(c.env, async (client) => {
-      const res = await client.query<{
-        id: string;
-        title: string;
-        author: string;
-        sizebytes: number | string;
-        sha256: string;
-        updatedat: number | string;
-      }>(
-        // 027: sin archivo no hay nada que bajar; sin la columna se
-        // reintenta con la consulta anterior.
-        `SELECT book_id AS id, title, author, size_bytes AS sizebytes, sha256, updated_at AS updatedat
-         FROM user_books WHERE user_id = $1 AND has_file = true ORDER BY updated_at DESC`,
-        [user.id],
-      ).catch((err: unknown) =>
-        isMissingColumnError(err)
-          ? client.query<{
-              id: string;
-              title: string;
-              author: string;
-              sizebytes: number | string;
-              sha256: string;
-              updatedat: number | string;
-            }>(
-              `SELECT book_id AS id, title, author, size_bytes AS sizebytes, sha256, updated_at AS updatedat
-               FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC`,
-              [user.id],
-            )
-          : Promise.reject(err),
-      );
-      return res.rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        author: r.author,
-        sizeBytes: Number(r.sizebytes),
-        sha256: r.sha256,
-        updatedAt: Number(r.updatedat),
-      }));
-    });
-    if (rows) return c.json({ books: rows.filter((b) => notPaper(b.id)) });
-  }
-
-
-  return c.json({ books: [] });
-});
-
-app.get("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
-  const user = c.get("session")?.user ?? null;
-  if (!user) return c.json({ error: "No autenticado" }, 401);
-
-  const booksBucket = c.env.BOOKS;
-  if (!booksBucket) {
-    return c.json({ error: "Almacenamiento no configurado" }, 503);
-  }
-
-  const bookId = c.req.param("bookId");
-
-  // Misma defensa A1 que /api/books/:hash — una entrada paper_only no
-  // tiene EPUB; su r2_key apunta a la guía y servirla aquí la haría
-  // pasar por libro descargable.
-  const fileFlags = await listUserBookFlags(c.env, user.id).catch(
-    () => new Map<string, BookFlags>(),
-  );
-  if (fileFlags.get(bookId)?.paperOnly)
-    return c.json(
-      { error: "Esta entrada es una guía de papel, no un libro descargable." },
-      403,
-    );
-
-  let r2Key: string | null = null;
-
-  if (getConnectionString(c.env)) {
-    const res = await withClient(c.env, (client) =>
-      client.query<{ r2_key: string }>(
-        `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`,
-        [user.id, bookId],
-      ),
-    );
-    r2Key = res?.rows[0]?.r2_key ?? null;
-  }
-
-  const keysToTry = [
-    r2Key,
-    `user-books/${user.id}/${bookId}.epub`,
-    `books/${user.id}/${bookId}.epub`,
-  ].filter(Boolean) as string[];
-
-  for (const key of keysToTry) {
-    const obj = await booksBucket.get(key);
-    if (obj) {
-      return new Response(obj.body, {
-        headers: {
-          "Content-Type": "application/epub+zip",
-          "Cache-Control": "private, max-age=3600",
-        },
-      });
-    }
-  }
-
-  return c.json({ error: "Libro no encontrado en la nube" }, 404);
-});
+app.route("/", userBooks);
 
 app.route("/", account);
