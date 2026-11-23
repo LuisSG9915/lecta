@@ -58,6 +58,7 @@ import {
   recordCalibration,
   type CalibrationWord,
 } from "./lib/calibration";
+import { LoadingScreen } from "./components/LoadingScreen";
 import {
   captureDbScope,
   classifyDbError,
@@ -68,6 +69,7 @@ import {
   listBookOps,
   listSavedWords,
   listStoredBooks,
+  markBookOpened,
   loadBookPosition,
   loadSessionValue,
   loadShelfBootstrap,
@@ -412,6 +414,8 @@ export default function App() {
       ownerUserId: sessionUserId ?? null,
     };
     openBookHashRef.current = selection.hash;
+    // Sin esto la estantería destaca el último libro importado, no el abierto.
+    void markBookOpened(selection.hash, captureDbScope()).catch(() => {});
     startSafeViewTransition(() => {
       setShowVocabulary(false);
       setShowAccount(false);
@@ -2156,7 +2160,7 @@ export default function App() {
         (sessionInconclusive || !online ? !optimisticUserId : true)));
 
   if (trialOpen && !book) {
-    return <p className="status">Abriendo «{trialBook?.title}»…</p>;
+    return <LoadingScreen label={`Abriendo «${trialBook?.title ?? ""}»…`} />;
   }
 
   if (showWelcome) {
@@ -2166,7 +2170,7 @@ export default function App() {
         : undefined;
     return (
       <>
-        <Suspense fallback={<p className="status">Abriendo Lecta…</p>}>
+        <Suspense fallback={<LoadingScreen label="Abriendo Lecta…" />}>
           <Welcome
             resetToken={resetToken}
             onResetDone={() => setResetToken(undefined)}
@@ -2192,7 +2196,7 @@ export default function App() {
     <div className="app" data-nav={activeNav}>
       {book && canRenderCurrentBook ? (
         <>
-          <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
+          <Suspense fallback={<LoadingScreen label="Abriendo el libro…" />}>
             <Reader
               key={`${sessionUserId ?? "anon"}:${book.hash}`}
               bookHash={book.hash}
@@ -2222,7 +2226,7 @@ export default function App() {
           </Suspense>
 
           {showVocabulary ? (
-            <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
+            <Suspense fallback={<LoadingScreen label="Abriendo tu cuaderno…" />}>
               <Vocabulary
                 key={sessionUserId ?? "anon"}
                 presentation="overlay"
@@ -2382,7 +2386,7 @@ export default function App() {
 
               {hasVisitedVocab || activeNav === "vocabulary" || showVocabulary ? (
                 <Activity mode={activeNav === "vocabulary" ? "visible" : "hidden"}>
-                  <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
+                  <Suspense fallback={<LoadingScreen label="Abriendo tu cuaderno…" />}>
                     <Vocabulary
                       key={`${sessionUserId ?? "anon"}:${vocabFilterRequest?.nonce ?? 0}`}
                       presentation="page"
@@ -2426,7 +2430,7 @@ export default function App() {
           </ViewTransition>
 
           {paperBook ? (
-            <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
+            <Suspense fallback={<LoadingScreen label="Abriendo el libro…" />}>
               <PaperReading
                 book={paperBook}
                 onClose={closePaper}
@@ -2513,7 +2517,7 @@ export default function App() {
       />
 
       {showJourney ? (
-        <Suspense fallback={<p className="status">Abriendo tu recorrido…</p>}>
+        <Suspense fallback={<LoadingScreen label="Abriendo tu recorrido…" />}>
           <Journey
             key={sessionUserId ?? "anon"}
             onClose={closeJourney}

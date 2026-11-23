@@ -1381,6 +1381,11 @@ export async function loadLatestBook(scope?: DbScope): Promise<StoredBook | unde
   });
 }
 
+/** Marca un libro ya guardado como el último abierto (la estantería lo destaca). */
+export async function markBookOpened(hash: string, scope?: DbScope) {
+  return withDb(scope, (db) => db.put("session", hash, SESSION_KEY));
+}
+
 export async function loadLatestBookHash(scope?: DbScope) {
   return withDb(scope, (db) => db.get("session", SESSION_KEY));
 }

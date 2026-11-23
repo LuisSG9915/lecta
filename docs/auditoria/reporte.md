@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-19T03:00:59.615Z
+Generado: 2026-11-23T13:54:20.076Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `cf47974e412846dc4242ea1a84c63079019eeab8`
+Commit: `8de1ca2482ebc5f040d2cc9e99767e49c80a8550`
 Red: no (solo forma de las referencias)
 
 **Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
@@ -71,8 +71,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/components/reader/ReaderNotices.tsx:101-131`
 
 - ✅ **PASS** · doc-mention: el documento contiene «hasta **40 filas**»
-- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:185 coincide con /PREPARATION_ROWS_CAP = 40/
-  - observado: `{"file":"src/client/lib/section-words.ts","line":185,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:186 coincide con /PREPARATION_ROWS_CAP = 40/
+  - observado: `{"file":"src/client/lib/section-words.ts","line":186,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/settings.ts:418 coincide con /chapterPrimingMode: "auto"/
   - observado: `{"file":"src/client/lib/settings.ts","line":418,"text":"chapterPrimingMode: \"auto\","}`
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:54 coincide con /unknownKeyWordsCount <= 0/
@@ -98,8 +98,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 
 - ✅ **PASS** · doc-mention: el documento contiene «sin selectores duplicados»
 - ✅ **PASS** · code-absent: /selectOptimalChapterPrimingWords|buildChapterPrimingCandidates|computePreChapterWordUtility/ no aparece en src/client/lib/section-words.ts
-- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:96 coincide con /4\.0 - opts\.zipf/
-  - observado: `{"file":"src/client/lib/section-words.ts","line":96,"text":"? Number((4.0 - opts.zipf).toFixed(2))"}`
+- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:97 coincide con /4\.0 - opts\.zipf/
+  - observado: `{"file":"src/client/lib/section-words.ts","line":97,"text":"? Number((4.0 - opts.zipf).toFixed(2))"}`
 - ⚠️ **UNVERIFIED** · referencia yanagisawa2020: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1017/S0272263119000688","url":null}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -142,8 +142,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3979 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":3979,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3580 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":3580,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:814 coincide con /award: false/
@@ -161,11 +161,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
@@ -176,8 +176,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:279 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":279,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2163 coincide con /if \(!existing \|\| existing\.deleted\) return null/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2163,"text":"if (!existing || existing.deleted) return null;"}`
+- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2162-2164 no contiene /if \(!existing \|\| existing\.deleted\) return null/
+  - observado: `{"file":"src/client/lib/idb.ts","asked":2163,"excerpt":["2162:   lemma: string,","2163:   scope?: DbScope,","2164: ): Promise<KnownWord | null> {"]}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`
@@ -313,11 +313,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia lally2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1002/ejsp.674","url":null}`
 
-### ❌ H8-sin-medicion — Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación
+### ⚠️ H8-sin-medicion — Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación
 
 > No hay ninguna medida objetiva de comprensión lectora. La retención del vocabulario sí se calcula (tasa de acierto y palabras con memoria estimada de 7 y 30 días) y al cerrar cada capítulo el lector puede anotar si seguió el hilo; esa autoevaluación se muestra como valoración propia, no como comprensión medida.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-27): MATIZADA** — La comprensión lectora sigue sin medida objetiva. Hay autoevaluación de un toque al cerrar capítulo, guardada por cuenta y mostrada como valoración propia, y la retención de vocabulario (7 y 30 días) ya tiene métrica real. El «Chequeo 30 días» solo ofrece palabras con 30 o más días desde su último repaso. La medida objetiva de comprensión queda pospuesta hasta tener datos de uso.
 - evidencia: `src/client/lib/chapter-follow.ts`
@@ -337,8 +337,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":452,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
-- ❌ **FAIL** · code-anchor: src/client/lib/notebook-model.ts:204-210 no contiene /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
-  - observado: `{"file":"src/client/lib/notebook-model.ts","asked":207,"excerpt":["204: };","205: ","206: export const STATE_RANK: Record<string, number> = { due: 0, new: 1, learning: 2, settled: 3 };","207: ","208: export const matchesFilter = (","209:   word: SavedWord,","210:   filter: FilterId,"]}`
+- ✅ **PASS** · code-anchor: src/client/lib/notebook-model.ts:218 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
+  - observado: `{"file":"src/client/lib/notebook-model.ts","line":218,"text":"export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)

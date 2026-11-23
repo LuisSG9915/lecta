@@ -818,7 +818,17 @@ export default function Shelf({
   };
 
   if (checking) {
-    return <p className="status">Preparando tu estantería…</p>;
+    return (
+      <div className="shelf shelf-main shelf-loading" role="status" aria-live="polite" aria-busy="true">
+        <span className="visually-hidden">Preparando tu estantería…</span>
+        <div className="skeleton skeleton--hero" aria-hidden="true" />
+        <div className="skeleton-row" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="skeleton skeleton--cover" style={{ animationDelay: `${i * 120}ms` }} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   const heroPosition = current ? positionByHash.get(current.hash) : undefined;
@@ -865,7 +875,7 @@ export default function Shelf({
   };
 
   return (
-    <div className="shelf shelf-main" onDragOver={(e) => e.preventDefault()}>
+    <div className="shelf shelf-main shelf-enter" onDragOver={(e) => e.preventDefault()}>
       <input
         ref={fileInputRef}
         className="visually-hidden"

@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-19T03:00:59.615Z",
+  "generatedAt": "2026-11-23T13:54:20.076Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "cf47974e412846dc4242ea1a84c63079019eeab8",
+  "commit": "8de1ca2482ebc5f040d2cc9e99767e49c80a8550",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -245,10 +245,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/section-words.ts:185 coincide con /PREPARATION_ROWS_CAP = 40/",
+          "detail": "src/client/lib/section-words.ts:186 coincide con /PREPARATION_ROWS_CAP = 40/",
           "observed": {
             "file": "src/client/lib/section-words.ts",
-            "line": 185,
+            "line": 186,
             "text": "export const PREPARATION_ROWS_CAP = 40;"
           }
         },
@@ -353,10 +353,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/section-words.ts:96 coincide con /4\\.0 - opts\\.zipf/",
+          "detail": "src/client/lib/section-words.ts:97 coincide con /4\\.0 - opts\\.zipf/",
           "observed": {
             "file": "src/client/lib/section-words.ts",
-            "line": 96,
+            "line": 97,
             "text": "? Number((4.0 - opts.zipf).toFixed(2))"
           }
         },
@@ -519,10 +519,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:3979 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "detail": "src/client/components/Reader.tsx:3580 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 3979,
+            "line": 3580,
             "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
@@ -618,7 +618,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -628,7 +628,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -661,12 +661,16 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2163 coincide con /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
+          "status": "FAIL",
+          "detail": "src/client/lib/idb.ts:2162-2164 no contiene /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2163,
-            "text": "if (!existing || existing.deleted) return null;"
+            "asked": 2163,
+            "excerpt": [
+              "2162:   lemma: string,",
+              "2163:   scope?: DbScope,",
+              "2164: ): Promise<KnownWord | null> {"
+            ]
           }
         },
         {
@@ -1211,7 +1215,7 @@
       "title": "Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación",
       "statement": "No hay ninguna medida objetiva de comprensión lectora. La retención del vocabulario sí se calcula (tasa de acierto y palabras con memoria estimada de 7 y 30 días) y al cerrar cada capítulo el lector puede anotar si seguió el hilo; esa autoevaluación se muestra como valoración propia, no como comprensión medida.",
       "section": "H8",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-27",
@@ -1226,7 +1230,7 @@
           "src/client/lib/notebook-model.ts"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -1279,20 +1283,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/lib/notebook-model.ts:204-210 no contiene /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "status": "PASS",
+          "detail": "src/client/lib/notebook-model.ts:218 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/lib/notebook-model.ts",
-            "asked": 207,
-            "excerpt": [
-              "204: };",
-              "205: ",
-              "206: export const STATE_RANK: Record<string, number> = { due: 0, new: 1, learning: 2, settled: 3 };",
-              "207: ",
-              "208: export const matchesFilter = (",
-              "209:   word: SavedWord,",
-              "210:   filter: FilterId,"
-            ]
+            "line": 218,
+            "text": "export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },
         {

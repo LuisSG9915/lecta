@@ -110,6 +110,7 @@ vi.mock("./components/Shelf", async () => {
 vi.mock("./lib/idb", () => ({
   captureDbScope: vi.fn(() => ({ userId: null as string | null, generation: 0 })),
   isDbScopeActive: vi.fn(() => true),
+  markBookOpened: vi.fn(async () => undefined),
   classifyDbError: vi.fn((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err ?? "");
     const code = msg.includes("otra pestaña") ? "blocked" : "corrupt";
