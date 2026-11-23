@@ -33,6 +33,15 @@ export function legacyHostRedirect(request: Request): Response | null {
   });
 }
 
+/**
+ * Sondas de escáneres de WordPress/PHP. Lecta no sirve PHP: sin este corte el
+ * fallback SPA de assets les responde 200 con el index.html y el escáner sigue.
+ */
+export function isProbePath(pathname: string): boolean {
+  const path = pathname.toLowerCase();
+  return path.startsWith("/wp-") || path.endsWith(".php");
+}
+
 /** Rutas que atiende la app de Hono; lo demás va al binding de assets. */
 export function isWorkerRoute(pathname: string): boolean {
   return (

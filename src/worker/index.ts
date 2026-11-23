@@ -1,5 +1,5 @@
 import { app } from "./app";
-import { isWorkerRoute, legacyHostRedirect } from "./canonical-host";
+import { isProbePath, isWorkerRoute, legacyHostRedirect } from "./canonical-host";
 import { withClient, type WorkerEnv } from "./db";
 import { EnrichmentWorkflow } from "./enrichment-workflow";
 import {
@@ -16,6 +16,9 @@ const handler: ExportedHandler<WorkerEnv> = {
   // `run_worker_first` manda aquí también las páginas (para poder redirigir
   // el host viejo); lo que no es ruta del Worker vuelve a los assets.
   fetch: (request, env, ctx) => {
+    if (isProbePath(new URL(request.url).pathname)) {
+      return new Response("Not found", { status: 404 });
+    }
     const redirect = legacyHostRedirect(request);
     if (redirect) return redirect;
     if (env.ASSETS && !isWorkerRoute(new URL(request.url).pathname)) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CANONICAL_ORIGIN, isWorkerRoute, legacyHostRedirect } from "./canonical-host";
+import { CANONICAL_ORIGIN, isProbePath, isWorkerRoute, legacyHostRedirect } from "./canonical-host";
 import handler from "./index";
 import type { WorkerEnv } from "./db";
 
@@ -42,6 +42,19 @@ describe("isWorkerRoute", () => {
   });
 });
 
+describe("isProbePath", () => {
+  it("reconoce sondas de WordPress y PHP sin tocar rutas reales", () => {
+    expect(isProbePath("/wp-admin/install.php")).toBe(true);
+    expect(isProbePath("/wp-login.php")).toBe(true);
+    expect(isProbePath("/WP-content/x")).toBe(true);
+    expect(isProbePath("/xmlrpc.php")).toBe(true);
+    expect(isProbePath("/")).toBe(false);
+    expect(isProbePath("/inicio/")).toBe(false);
+    expect(isProbePath("/assets/index.js")).toBe(false);
+    expect(isProbePath("/api/health")).toBe(false);
+  });
+});
+
 describe("fetch del Worker", () => {
   const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
   const call = (url: string, env: WorkerEnv) =>
@@ -50,6 +63,15 @@ describe("fetch del Worker", () => {
       env,
       ctx,
     );
+
+  it("responde 404 a las sondas sin tocar assets ni redirigir", async () => {
+    const assets = { fetch: vi.fn() };
+    for (const url of [`${OLD}/wp-admin/install.php`, "https://lectal.app/wp-login.php"]) {
+      const res = await call(url, { ASSETS: assets } as unknown as WorkerEnv);
+      expect(res.status).toBe(404);
+    }
+    expect(assets.fetch).not.toHaveBeenCalled();
+  });
 
   it("redirige el host viejo antes de tocar assets o la app", async () => {
     const assets = { fetch: vi.fn() };
