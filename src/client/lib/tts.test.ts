@@ -1089,7 +1089,7 @@ describe("ttsController", () => {
       return { ctl, deps, fakeKitten, speakers, notices, ended };
     };
 
-    it("con RTF > 1,2 pasa a la voz del sistema: avisa una vez, libera el worker y sigue en la siguiente oración", async () => {
+    it("con RTF > 1,0 pasa a la voz del sistema: avisa una vez, libera el worker y sigue en la siguiente oración", async () => {
       const { ctl, fakeKitten, speakers, notices } = await setup(1.6);
       expect(notices).toEqual([NEURAL_SLOW_NOTICE]);
       expect(fakeKitten.releaseWorkerMemory).toHaveBeenCalledTimes(1);
@@ -1121,7 +1121,13 @@ describe("ttsController", () => {
       expect(speakers[0].spoken).toEqual(["Sentence one."]);
     });
 
-    it("con RTF ≤ 1,2 se queda en la voz HD y no avisa", async () => {
+    it("un RTF límite de 1,1 ya cuenta como lento", async () => {
+      const { ctl, notices } = await setup(1.1);
+      expect(notices).toEqual([NEURAL_SLOW_NOTICE]);
+      expect(ctl.snapshot().activeEngine).toBe("browser");
+    });
+
+    it("con RTF ≤ 1,0 se queda en la voz HD y no avisa", async () => {
       const { ctl, fakeKitten, notices } = await setup(0.8);
       expect(notices).toEqual([]);
       expect(fakeKitten.releaseWorkerMemory).not.toHaveBeenCalled();

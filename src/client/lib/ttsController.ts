@@ -133,7 +133,7 @@ export type TtsController = {
 // sistema. La bandera vive en el módulo (la pestaña), no en el controlador: este se rehace
 // al cambiar de sección o de ajustes y volvería a probar la voz HD con otra pausa larga.
 // No toca settings.engine: la voz que eligió el usuario se conserva.
-export const NEURAL_SLOW_RTF = 1.2;
+export const NEURAL_SLOW_RTF = 1.0;
 export const NEURAL_SLOW_NOTICE = "La voz HD va lenta en este dispositivo; sigo con la voz del sistema.";
 let neuralSlowDemoted = false;
 // El usuario volvió a elegir la voz HD tras el cambio: se respeta y no se vuelve a medir.

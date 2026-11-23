@@ -180,7 +180,7 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
   palabras/min. La velocidad la decide el ajuste del usuario.
 - **Respaldo por velocidad** (`ttsController.ts`, `kittenTtsEngine.getSynthRtf`): RTF = synthMs/audioMs;
   con 2 oraciones válidas tras el calentamiento usa la menor (decide solo si ambas son lentas) y con 3 la mediana (la 1.ª y las de <1 s no cuentan). Si
-  > `NEURAL_SLOW_RTF` (1.2) pasa a la voz del sistema con aviso, libera el worker y no toca
+  > `NEURAL_SLOW_RTF` (1.0: por encima el móvil no sintetiza en tiempo real y la CPU queda al máximo; un Android real daba 1.05–1.2 y 1.6–3.0 según el calor) pasa a la voz del sistema con aviso, libera el worker y no toca
   `settings.engine`. La bandera (`neuralSlowDemoted`) vive en el módulo (la pestaña), no en el controlador;
   `setKittenVoice`/`setEngine("kitten-neural")` la borran y apagan la medición hasta recargar. Medido en un
   Android real (LMR-LX9, Chrome): RTF 1.6–3.0 con un hilo WASM (un Mac: ~0.43), pausas de ~20 s y móvil
