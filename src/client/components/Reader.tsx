@@ -41,11 +41,8 @@ import {
   type SavedWord,
   type SavedBookPosition,
 } from "../lib/idb";
-import { enrichBatch, lookupWord } from "../lib/lexicon";
+import { lookupWord } from "../lib/lexicon";
 import { consolidateEpisodicWord, scheduleCapturedReview, type EpisodicOutcome } from "../lib/reviews";
-import {
-  selectSavedForEnrichment,
-} from "../lib/enrichment-candidates";
 import {
   DEFAULT_THRESHOLD_LEARNER,
   DEFAULT_THRESHOLD_NATIVE,
@@ -224,6 +221,7 @@ import { useReaderResizeRemeasure } from "../hooks/useReaderResizeRemeasure";
 import { useReaderUiState } from "../hooks/useReaderUiState";
 import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
+import { useReaderVocabRefresh } from "../hooks/useReaderVocabRefresh";
 import { useReaderKnowledge } from "../hooks/useReaderKnowledge";
 import { useReaderSelectionMenu } from "../hooks/useReaderSelectionMenu";
 import { ChapterEndCard } from "./reader/ChapterEndCard";
@@ -345,10 +343,6 @@ const WPM_KEY = "readingWpm";
 // y preferencia por libro de no mostrar la tarjeta «Antes de leer».
 
 const previewHiddenKey = (hash: string) => `previewHidden:${hash}`;
-// El lote de palabras guardadas sin definición es una pasada única
-// por apertura de libro, acotado por el cuaderno real del lector —
-// no es gasto recurrente como el de secciones, así que conserva más.
-const SAVED_ENRICH_CAP = 20;
 
 const clampNumber = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -2161,46 +2155,24 @@ export default function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookHash, file]);
 
-  // Cuando la sincronización trae palabras nuevas, remarcamos sin
-  // remontar el lector (así no se pierde la posición). De paso se
-  // recarga la evidencia de conocimiento, por si también bajó.
-  useEffect(() => {
-    if (!language || state !== "ready") return;
-    void (async () => {
-      const scope = captureDbScope();
-      const storedWords = await listSavedWords(language, scope);
+  // Refresco de palabras al sincronizar — extraído a useReaderVocabRefresh (R1/F3).
+  useReaderVocabRefresh({
+    vocabVersion,
+    language,
+    state,
+    onWordsLoaded: (storedWords) => {
       savedWordsRef.current = storedWords;
       savedForms.current = savedFormLevels(storedWords);
       setSavedKeys(
         new Set(storedWords.map((word) => wordKey(word.language, word.form))),
       );
-      recordDominated(storedWords, language, scope);
-      await refreshProfile(
-        { savedForms, evidenceRef, pendingKnowledgeRef, knowledgeMapRef, adjustRef, baseThresholdRef, profileRef },
-        language,
-        scope,
-      );
-      // Guardadas sin definición: un solo lote por apertura del
-      // libro — el lector ya dijo que no las sabe, completarlas vale
-      // más que perseguir candidatas del análisis.
-      if (!savedEnrichSentRef.current) {
-        savedEnrichSentRef.current = true;
-        const aiOn = await loadUseAi(scope).catch(() => true);
-        if (aiOn && scope.userId) {
-          const forms = selectSavedForEnrichment(
-            storedWords,
-            new Set(),
-            SAVED_ENRICH_CAP,
-          );
-          if (forms.length) void enrichBatch(forms, language, scope);
-        }
-      }
-      // La sección visible se reclasifica con cuaderno y perfil
-      // actualizados, sin otra consulta al catálogo.
-      applyPrediction(sectionIndexRef.current, language);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vocabVersion]);
+    },
+    savedEnrichSentRef,
+    sectionIndexRef,
+    profileRefs: { savedForms, evidenceRef, pendingKnowledgeRef, knowledgeMapRef, adjustRef, baseThresholdRef, profileRef },
+    recordDominated,
+    applyPrediction,
+  });
 
   // Trayecto: anota cada destino distinto al que se entra en la
   // visita (secciones del mismo capítulo comparten destino y no
