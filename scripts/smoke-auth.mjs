@@ -1,7 +1,10 @@
 // Prueba de humo de autorización: corre contra el dev server en marcha
-// (pnpm dev). Crea dos cuentas temporales y verifica que ni libros ni
-// vocabulario crucen entre usuarios, además de los 401 sin sesión.
+// (pnpm dev). Verifica que ni libros ni vocabulario crucen entre dos
+// usuarios, además de los 401 sin sesión.
 //   node scripts/smoke-auth.mjs  (o SMOKE_URL=http://127.0.0.1:5174 node …)
+// Con SMOKE_AUTH_A_EMAIL/_PASSWORD y SMOKE_AUTH_B_EMAIL/_PASSWORD entra con
+// esas dos cuentas fijas (así corre el cron contra producción, donde el
+// registro exige Turnstile); sin ellas crea dos cuentas temporales.
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -50,6 +53,22 @@ async function api(path, { method = "GET", body, cookie, json, baseUrl = BASE } 
   let data = null;
   try { data = await response.json(); } catch { /* cuerpo binario */ }
   return { status: response.status, data, setCookie: response.headers.getSetCookie?.() ?? [] };
+}
+
+async function signIn(user, baseUrl = BASE) {
+  const res = await api("/api/auth/sign-in/email", {
+    method: "POST", body: { email: user.email, password: user.password }, baseUrl,
+  });
+  if (res.status !== 200) throw new Error(`Inicio de sesión falló para ${user.email}: ${res.status}`);
+  const cookie = res.setCookie?.find((c) => c.includes("session_token"))?.split(";")[0];
+  if (!cookie) throw new Error(`Sin cookie de sesión para ${user.email}`);
+  return cookie;
+}
+
+function fixedUser(prefix) {
+  const email = process.env[`${prefix}_EMAIL`];
+  const password = process.env[`${prefix}_PASSWORD`];
+  return email && password ? { email, password } : null;
 }
 
 async function signUp(user, baseUrl = BASE) {
@@ -117,13 +136,21 @@ export async function runSmokeTests(baseUrl = BASE) {
   }
 
   const ts = Date.now();
-  const USER_A = { email: `a-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "A" };
-  const USER_B = { email: `b-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "B" };
-
-  // --- alta de cuentas ---
-  const cookieA = await signUp(USER_A, baseUrl);
-  const cookieB = await signUp(USER_B, baseUrl);
-  console.log(`Cuentas A y B creadas: ${USER_A.email} y ${USER_B.email}.`);
+  const fixedA = fixedUser("SMOKE_AUTH_A");
+  const fixedB = fixedUser("SMOKE_AUTH_B");
+  let cookieA;
+  let cookieB;
+  if (fixedA && fixedB) {
+    cookieA = await signIn(fixedA, baseUrl);
+    cookieB = await signIn(fixedB, baseUrl);
+    console.log("Sesión abierta con las cuentas fijas A y B.");
+  } else {
+    const USER_A = { email: `a-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "A" };
+    const USER_B = { email: `b-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "B" };
+    cookieA = await signUp(USER_A, baseUrl);
+    cookieB = await signUp(USER_B, baseUrl);
+    console.log(`Cuentas A y B creadas: ${USER_A.email} y ${USER_B.email}.`);
+  }
 
   // --- libros ---
   // EPUB mínimo válido para el servidor: cabecera local ZIP con la
@@ -166,7 +193,10 @@ export async function runSmokeTests(baseUrl = BASE) {
   check("A puede guardar palabra", putA.status === 200);
 
   const vocabB = await api("/api/vocab?lang=es", { cookie: cookieB, baseUrl });
-  check("B no ve el vocabulario de A", vocabB.status === 200 && vocabB.data?.words?.length === 0);
+  check(
+    "B no ve el vocabulario de A",
+    vocabB.status === 200 && !vocabB.data?.words?.some((w) => w.meaning === "de A"),
+  );
 
   await api("/api/vocab", {
     method: "PUT", cookie: cookieB, baseUrl,

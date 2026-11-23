@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { magicLink } from "better-auth/plugins";
+import { captcha, magicLink } from "better-auth/plugins";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
 import { invalidateUserPlan } from "./plan-store";
@@ -96,6 +96,30 @@ async function sendViaResend(
   }
 }
 
+/**
+ * Turnstile en el registro y en el enlace mágico (el que manda correo a
+ * cualquier dirección): frena cuentas en masa y el bombardeo de correos
+ * que quema la reputación de Resend. Fuera quedan `sign-in/email` (el
+ * portal Kindle entra por ahí sin JS; lo cubre el freno por IP) y el
+ * reset de contraseña (solo escribe a cuentas existentes). Sin
+ * `TURNSTILE_SECRET_KEY` no se exige: así el cliente que manda el token
+ * se despliega antes y el secret enciende la exigencia.
+ */
+export const CAPTCHA_ENDPOINTS = ["/sign-up/email", "/sign-in/magic-link"];
+
+function captchaPlugins(env: WorkerEnv) {
+  const secretKey = env.TURNSTILE_SECRET_KEY?.trim();
+  if (!secretKey) return [];
+  return [
+    captcha({
+      provider: "cloudflare-turnstile",
+      secretKey,
+      endpoints: CAPTCHA_ENDPOINTS,
+      allowedHostnames: ["lectal.app"],
+    }),
+  ];
+}
+
 export function createScopedAuth(env: WorkerEnv, baseURL: string) {
   const pool = new pg.Pool({ connectionString: getConnectionString(env), max: 1 });
   if (typeof pool.on === "function") {
@@ -166,6 +190,7 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
       },
     },
     plugins: [
+      ...captchaPlugins(env),
       magicLink({
         expiresIn: 600,
         sendMagicLink: async ({ email, url }) => {

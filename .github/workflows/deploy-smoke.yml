@@ -45,6 +45,11 @@ jobs:
           SMOKE_URL: ${{ inputs.target_url || github.event.deployment_status.target_url || secrets.SMOKE_BASE_URL || 'https://lecta.luis-sg9915.workers.dev' }}
           SMOKE_SYNC_EMAIL: ${{ secrets.SMOKE_SYNC_EMAIL || 'sync-smoke-canonical@example.com' }}
           SMOKE_SYNC_PASSWORD: ${{ secrets.SMOKE_SYNC_PASSWORD || 'lecta-smoke-2026' }}
+          # Cuentas fijas: el registro en producción exige Turnstile.
+          SMOKE_AUTH_A_EMAIL: ${{ secrets.SMOKE_AUTH_A_EMAIL }}
+          SMOKE_AUTH_A_PASSWORD: ${{ secrets.SMOKE_AUTH_A_PASSWORD }}
+          SMOKE_AUTH_B_EMAIL: ${{ secrets.SMOKE_AUTH_B_EMAIL }}
+          SMOKE_AUTH_B_PASSWORD: ${{ secrets.SMOKE_AUTH_B_PASSWORD }}
         run: |
           pnpm smoke:auth
           pnpm smoke:sync

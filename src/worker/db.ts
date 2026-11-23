@@ -21,6 +21,8 @@ export type WorkerEnv = {
   STRIPE_PRICE_MONTHLY_ID?: string;
   STRIPE_PRICE_YEARLY_ID?: string;
   BOOKS?: R2Bucket;
+  /** Turnstile: con él, sign-up/email y sign-in/magic-link exigen captcha (auth.ts). */
+  TURNSTILE_SECRET_KEY?: string;
   /** Workers Rate Limiting: freno de /api/auth/* y /k/login (auth-rate-limit.ts). */
   AUTH_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
   /** «Series y películas»: SubDL (subtítulos) y OMDb (metadatos/póster). */
