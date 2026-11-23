@@ -21,10 +21,6 @@ import {
   getBookTitle,
 } from "../lib/epub";
 import {
-  bookHelpKey,
-  saveBookMicroHighlightsEnabled,
-} from "../lib/attention-budget";
-import {
   captureDbScope,
   getStoredBook,
   listAllKnowledge,
@@ -114,9 +110,6 @@ import {
   type MarkLevel,
 } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
-import {
-  calibrationDoneKey,
-} from "../lib/calibration";
 import {
   applyPreviewKnownSignal,
   applyWordPanelLookupSignal,
@@ -221,6 +214,7 @@ import { useReaderResizeRemeasure } from "../hooks/useReaderResizeRemeasure";
 import { useReaderUiState } from "../hooks/useReaderUiState";
 import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
+import { useReaderNoticeActions } from "../hooks/useReaderNoticeActions";
 import { useReaderVocabRefresh } from "../hooks/useReaderVocabRefresh";
 import { useReaderKnowledge } from "../hooks/useReaderKnowledge";
 import { useReaderSelectionMenu } from "../hooks/useReaderSelectionMenu";
@@ -2877,22 +2871,6 @@ export default function Reader({
     trackCalibrationOffer,
   });
 
-  // «Ajustar mi vocabulario»: la descarga corre por App; si la hoja no
-  // llegó a abrirse (sin conexión o muestra vacía) el aviso se conserva
-  // para reintentar.
-  const acceptCalibrationNotice = useCallback(async () => {
-    if (await onRequestCalibration(language)) setCalNotice(false);
-  }, [onRequestCalibration, language, setCalNotice]);
-
-  // «Ahora no»: cierra la oferta automática — la prueba queda a mano
-  // desde Cuenta, con el borrador si se empezó.
-  const dismissCalibrationNotice = useCallback(() => {
-    setCalNotice(false);
-    void saveSessionValue(calibrationDoneKey(language), "1", captureDbScope()).catch(
-      () => undefined,
-    );
-  }, [language, setCalNotice]);
-
   // Franja de ayuda de vocabulario: se evalúa una vez por apertura,
   // solo entrando por el inicio de un libro nuevo (sin posición
   // guardada o apenas empezado) y solo en es/en — los idiomas con
@@ -2908,44 +2886,20 @@ export default function Reader({
     setHelpNotice,
   });
 
-  const saveHelpDecision = useCallback((value: "on" | "off" | "dismissed") => {
-    void saveSessionValue(bookHelpKey(bookHash), value, captureDbScope()).catch(
-      () => undefined,
-    );
-  }, [bookHash]);
-
-  // «Sí, prepárame» / «Activar ayudas»: enciende la ayuda del libro.
-  const acceptHelpNotice = useCallback(() => {
-    setHelpNotice(false);
-    saveBookMicroHighlightsEnabled(bookHash, true);
-    saveHelpDecision("on");
-  }, [bookHash, saveHelpDecision, setHelpNotice]);
-
-  // «Medir mi nivel en 15 s»: abre la prueba; al aceptar la ayuda
-  // queda encendida y la franja se cierra. Si la hoja no abrió, el
-  // aviso se conserva para reintentar, igual que el de calibración.
-  const calibrateHelpNotice = useCallback(async () => {
-    if (await onRequestCalibration(language)) {
-      setHelpNotice(false);
-      saveBookMicroHighlightsEnabled(bookHash, true);
-      saveHelpDecision("on");
-    }
-  }, [onRequestCalibration, language, bookHash, saveHelpDecision, setHelpNotice]);
-
-  // «No, gracias»: apaga los micro-destacados de este libro y no
-  // vuelve a preguntar.
-  const declineHelpNotice = useCallback(() => {
-    setHelpNotice(false);
-    saveBookMicroHighlightsEnabled(bookHash, false);
-    saveHelpDecision("off");
-  }, [bookHash, saveHelpDecision, setHelpNotice]);
-
-  // «Ahora no» (×): cierra sin apagar nada — la preferencia queda
-  // registrada para no insistir en cada apertura.
-  const dismissHelpNotice = useCallback(() => {
-    setHelpNotice(false);
-    saveHelpDecision("dismissed");
-  }, [saveHelpDecision, setHelpNotice]);
+  const {
+    acceptCalibrationNotice,
+    dismissCalibrationNotice,
+    acceptHelpNotice,
+    calibrateHelpNotice,
+    declineHelpNotice,
+    dismissHelpNotice,
+  } = useReaderNoticeActions({
+    language,
+    bookHash,
+    onRequestCalibration,
+    setCalNotice,
+    setHelpNotice,
+  });
 
   const currentTargetIdx = catalog
     ? catalog.targets.findIndex((t) => t.id === currentChapterTarget?.id)
