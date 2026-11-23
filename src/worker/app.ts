@@ -263,6 +263,17 @@ app.route("/", screenDiscover);
 app.route("/", admin);
 app.route("/", billing);
 app.route("/", weeklyDigest);
+// Formularios del portal Kindle (login, ajustes, vocabulario, subrayados):
+// unos pocos cientos de bytes. `/k/login` es público, así que se corta
+// en la puerta antes de que parseBody() materialice el cuerpo.
+export const KINDLE_FORM_MAX_BYTES = 64 * 1024;
+const kindleFormLimit = bodyLimit({
+  maxSize: KINDLE_FORM_MAX_BYTES,
+  onError: (c) => c.text("Formulario demasiado grande.", 413),
+});
+app.use("/k/*", kindleFormLimit);
+app.use("/kindle/*", kindleFormLimit);
+
 app.route("/k", kindleRoutes);
 app.get("/kindle", handleKindleLinkPage);
 app.get("/kindle/verify", handleKindleStatus);

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   API_BODY_MAX_BYTES,
+  KINDLE_FORM_MAX_BYTES,
   LEXICON_BATCH_MAX_BYTES,
   apiBodyLimitFor,
   app,
@@ -490,6 +491,22 @@ describe("POST /api/ai/micro-story", () => {
       words: [{ word: "tinta", meaning: "Líquido para escribir" }],
     });
     expect(response.status).toBe(401);
+  });
+});
+
+describe("tope de formularios del portal Kindle", () => {
+  const bigForm = () => "email=" + "x".repeat(KINDLE_FORM_MAX_BYTES);
+  const form = { "content-type": "application/x-www-form-urlencoded" };
+
+  it("corta con 413 un POST /k/login de más de 64 KB", async () => {
+    const response = await app.request("/k/login", { method: "POST", headers: form, body: bigForm() });
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe("Formulario demasiado grande.");
+  });
+
+  it("corta también la ruta /kindle/*", async () => {
+    const response = await app.request("/kindle/login", { method: "POST", headers: form, body: bigForm() });
+    expect(response.status).toBe(413);
   });
 });
 
