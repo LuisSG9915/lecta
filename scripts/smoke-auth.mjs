@@ -75,7 +75,10 @@ async function signUp(user, baseUrl = BASE) {
   const res = await api("/api/auth/sign-up/email", { method: "POST", body: user, baseUrl });
   if (res.status !== 200) throw new Error(`Registro falló para ${user.email}: ${res.status}`);
   const cookie = res.setCookie?.find((c) => c.includes("session_token"))?.split(";")[0];
-  if (!cookie) throw new Error(`Sin cookie de sesión para ${user.email}`);
+  if (!cookie)
+    throw new Error(
+      `Sin cookie de sesión para ${user.email}: con la verificación de correo obligatoria el registro no abre sesión. Usa SMOKE_AUTH_A/B_EMAIL y _PASSWORD con cuentas verificadas.`,
+    );
   return cookie;
 }
 

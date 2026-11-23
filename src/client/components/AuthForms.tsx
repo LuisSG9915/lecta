@@ -28,6 +28,9 @@ export function translateAuthError(message?: string): string {
   if (lower.includes("invalid token") || lower.includes("invalid_token")) {
     return "El enlace ya venció o no es válido. Pide uno nuevo.";
   }
+  if (lower.includes("email not verified") || lower.includes("email_not_verified")) {
+    return "Confirma tu correo: te enviamos un enlace. Ábrelo y entrarás directamente.";
+  }
   if (
     lower.includes("captcha") ||
     lower.includes("missing_response") ||
@@ -141,10 +144,18 @@ export default function AuthForms({
         email: cleanEmail,
         password,
         name,
+        callbackURL: "/",
         fetchOptions,
       });
+      // Con la verificación obligatoria el registro no abre sesión: el
+      // enlace del correo la abre. (Si el correo ya existía, el servidor
+      // responde igual a propósito, para no revelar qué cuentas hay.)
       if (!result?.error) {
-        onSuccess();
+        if (result?.data?.token) onSuccess();
+        else
+          setMessage(
+            "Te enviamos un correo para confirmar tu cuenta. Ábrelo y entrarás directamente.",
+          );
       }
       return result;
     });

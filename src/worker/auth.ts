@@ -161,8 +161,25 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
         maxAge: 5 * 60,
       },
     },
+    // Verificación obligatoria del correo (2026-11-23): sin ella cualquiera
+    // registraba una dirección ajena con contraseña. El registro manda el
+    // enlace y no abre sesión hasta confirmarlo; entrar con contraseña sin
+    // verificar reenvía el enlace (sendOnSignIn) y responde 403
+    // EMAIL_NOT_VERIFIED. El enlace mágico verifica al usarlo.
+    emailVerification: {
+      sendOnSignUp: true,
+      sendOnSignIn: true,
+      autoSignInAfterVerification: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendViaResend(env, user.email, url, {
+          subject: "Confirma tu correo en Lecta",
+          intro: "Abre este enlace para confirmar tu correo y entrar a Lecta:",
+        });
+      },
+    },
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: true,
       sendResetPassword: async ({ user, url }) => {
         await sendViaResend(env, user.email, url, {
           subject: "Restablece tu contraseña de Lecta",

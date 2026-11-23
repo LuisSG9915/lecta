@@ -1433,6 +1433,19 @@ kindleRoutes.post("/login", async (c) => {
     await closePoolSafe(closeLoginPool, c);
   }
 
+  if (authRes.status === 403) {
+    // Cuenta sin verificar: Better Auth ya reenvió el enlace (sendOnSignIn).
+    return c.html(
+      renderLoginView({
+        user: null,
+        error: "Confirma tu correo: te enviamos un enlace. Ábrelo en tu celular y vuelve a entrar.",
+        email,
+        returnTo,
+      }),
+      403,
+    );
+  }
+
   if (!authRes.ok) {
     return c.html(
       renderLoginView({

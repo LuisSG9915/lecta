@@ -89,6 +89,37 @@ describe("Turnstile en el acceso", () => {
     expect(window.turnstile!.render).toHaveBeenCalledTimes(2);
   });
 
+  it("el registro sin sesión (correo por confirmar) avisa en vez de entrar", async () => {
+    const onSuccess = vi.fn();
+    vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
+      data: { token: null, user: {} },
+      error: null,
+    } as never);
+    await act(async () => root.render(h(AuthForms, { initialMode: "signup", onSuccess })));
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    for (const [id, value] of [
+      ["#modal-signup-email", "ana@correo.mx"],
+      ["#modal-signup-password", "12345678"],
+    ]) {
+      const input = host.querySelector<HTMLInputElement>(id)!;
+      await act(async () => {
+        setValue.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => issueToken?.("tok-2"));
+    await submit();
+    expect(authClient.signUp.email).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "ana@correo.mx", callbackURL: "/" }),
+    );
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Te enviamos un correo para confirmar tu cuenta");
+  });
+
+  it("traduce el correo sin verificar", () => {
+    expect(translateAuthError("Email not verified")).toContain("Confirma tu correo");
+  });
+
   it("traduce los errores del captcha", () => {
     expect(translateAuthError("Missing CAPTCHA response")).toContain(
       "comprobar que eres una persona",

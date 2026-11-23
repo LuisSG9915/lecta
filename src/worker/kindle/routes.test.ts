@@ -565,6 +565,18 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("Correo electrónico o contraseña incorrectos.");
     });
 
+    it("POST /k/login avisa que confirme el correo si la cuenta no está verificada", async () => {
+      authHandlerMock.mockResolvedValue(
+        Response.json({ code: "EMAIL_NOT_VERIFIED" }, { status: 403 }),
+      );
+      const formData = new FormData();
+      formData.append("email", "nueva@example.com");
+      formData.append("password", "correct");
+      const res = await app.request("/k/login", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(403);
+      expect(await res.text()).toContain("Confirma tu correo");
+    });
+
     it("POST /k/login establece la cookie de sesión y redirige a /k si es correcto", async () => {
       authHandlerMock.mockResolvedValue(
         new Response("{}", {
