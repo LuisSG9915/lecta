@@ -551,9 +551,23 @@ books.put("/api/books/:hash/cover", async (context) => {
     return context.json({ error: "Portada vacía o demasiado grande (máximo 300 KB)." }, 400);
   }
 
-  await booksBucket.put(bookCoverKey(session.user.id, hash), data, {
-    httpMetadata: { contentType },
-  });
+  // R2 limita ~1 escritura/s por objeto (10058): reintenta; si persiste, 429 en vez de 500.
+  const coverKey = bookCoverKey(session.user.id, hash);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await booksBucket.put(coverKey, data, { httpMetadata: { contentType } });
+      break;
+    } catch (err) {
+      const busy = err instanceof Error && /\(10058\)|concurrent request rate/i.test(err.message);
+      if (!busy) throw err;
+      if (attempt >= 2) {
+        return context.json({ error: "Portada en proceso, reintenta en unos segundos." }, 429, {
+          "Retry-After": "2",
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1100 * (attempt + 1)));
+    }
+  }
 
   try {
     await setUserBookCover(context.env, session.user.id, hash, true, readResetAck(context));
