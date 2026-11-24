@@ -2,7 +2,7 @@
 // Embudo de la landing por fuente, desde lecta_landing_daily (migración 028).
 // Solo lee. Uso:
 //   pnpm landing:stats [--days 14] [--json]
-// `.env` apunta a lecta_dev; para producción, DATABASE_URL con la base `lecta`.
+// `DATABASE_URL` del `.env` es producción (`lecta`); para dev, `DATABASE_URL_DEV` (`lecta_dev`).
 
 import { pathToFileURL } from "node:url";
 
