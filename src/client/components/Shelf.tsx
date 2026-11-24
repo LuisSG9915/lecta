@@ -254,6 +254,9 @@ export default function Shelf({
   const [dueWordsCount, setDueWordsCount] = useState(0);
   const effectiveDueWordsCount = propDueReviewsCount ?? dueWordsCount;
   const [latestHash, setLatestHash] = useState<string | undefined>(undefined);
+  // Hasta el primer bootstrap no se sabe cuál es el libro destacado: se
+  // muestra el esqueleto para que el hero no aparezca de golpe.
+  const [bootReady, setBootReady] = useState(false);
   const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
   const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -394,6 +397,7 @@ export default function Shelf({
         setWordCounts(counts);
         setDueWordsCount(dueTotal);
         setLatestHash(hash);
+        setBootReady(true);
         // Días donde hubo lectura real (registrada al guardar posición),
         // no deducidos de la última posición de cada libro.
         const readDays = new Set(readDayList);
@@ -427,7 +431,9 @@ export default function Shelf({
           })
           .catch(() => null);
       },
-    );
+    ).catch(() => {
+      if (!cancelled) setBootReady(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -817,7 +823,7 @@ export default function Shelf({
     handleLibraryChange();
   };
 
-  if (checking) {
+  if (checking || !bootReady) {
     return (
       <div className="shelf shelf-main shelf-loading" role="status" aria-live="polite" aria-busy="true">
         <span className="visually-hidden">Preparando tu estantería…</span>
