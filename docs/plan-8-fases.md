@@ -512,8 +512,18 @@ corruptos, aislamiento por cuenta), y en `vocab.test.ts` el cursor no usa el rel
 fijado en 9e15 → cursor 200), el lote parcial (501 palabras, segundo PUT rechazado → cursor 500) y
 la carrera (palabra guardada durante el vuelo → se empuja en el ciclo siguiente). En
 `reading-sync.test.ts`, la misma prueba de «no reloj» para anotaciones. **014 descartada** con el
-`EXPLAIN` de arriba. El «sync manual en dev, dos pasadas» no se pudo hacer desde aquí: queda
-pendiente de una pasada con la app abierta.
+`EXPLAIN` de arriba. El «sync manual en dev, dos pasadas» **se hizo el 2026-11-23** con una cuenta
+real en `lecta_dev` (`pnpm dev`, Perfil → Avanzado → «Resincronizar desde el servidor», dos veces):
+IndexedDB antes, tras la pasada 1 y tras la 2 idéntico en las seis tablas (33 palabras, 76
+conocimiento, 27 repasos, 24 actividad, 5 posiciones, 0 anotaciones; mismo hash de claves), igual al
+conteo del servidor, sin palabras duplicadas por `(form, language)` y con `id` únicos en repasos y
+actividad. Segunda prueba el mismo día, con una palabra **nueva** (`cucuruchos`, guardada desde la
+ficha): llegó al servidor sola en ~3 s (`updated_at` 1795492620311, `synced_at` 1795492623482) y tras
+dos «Resincronizar» seguía en 34 palabras / 77 conocimiento / 27 repasos / 25 actividad / 5
+posiciones, local = servidor, sin duplicados y con una sola fila `es:cucuruchos`. La actividad pasó
+de 24 a 25 por la sesión de lectura que se cerró al salir del libro (evento legítimo, en ambos
+lados). Observado: «Resincronizar» vuelve a sellar `synced_at` de la fila (1795492623482 →
+1795492658999) sin tocar `updated_at`: es el reloj del servidor, no un duplicado.
 
 ### 7.3 Señales de fallo
 
