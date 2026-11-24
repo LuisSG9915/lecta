@@ -43,10 +43,34 @@ if (jsFiles.length === 0 || cssFiles.length === 0) {
   process.exit(1);
 }
 
-// 1. Verificar que el chunk lexicon-banks NO esté en los tags modulepreload de index.html
-const lexiconBanksPreloaded = jsFiles.some((f) => f.includes("lexicon-banks"));
+// Grafo estático real: los `import "./x.js"` de cada chunk se descargan al arrancar
+// aunque no estén en el HTML. Contar solo las etiquetas dejaba ~120 kB sin medir.
+{
+  const known = new Set(jsFiles);
+  const stack = [...jsFiles];
+  const importRegex = /(?:^|;|\n)\s*import\s*(?:[^"'`();]*?from\s*)?"\.\/([^"]+\.js)"/g;
+  while (stack.length) {
+    const current = stack.pop();
+    const filePath = path.join(DIST_CLIENT_DIR, current);
+    if (!fs.existsSync(filePath)) continue;
+    const code = fs.readFileSync(filePath, "utf8");
+    for (const match of code.matchAll(importRegex)) {
+      const dep = path.posix.join(path.posix.dirname(current), match[1]);
+      if (!known.has(dep)) {
+        known.add(dep);
+        jsFiles.push(dep);
+        stack.push(dep);
+      }
+    }
+  }
+}
+
+// 1. Los bancos léxicos pesados solo pueden cargarse por import() dinámico.
+const lexiconBanksPreloaded = jsFiles.some(
+  (f) => f.includes("calibration-bank") || f.includes("english-core-lexicon") || f.includes("lexicon-banks"),
+);
 if (lexiconBanksPreloaded) {
-  console.error("❌ Regresión de rendimiento: 'lexicon-banks' está presente en los tags modulepreload de index.html.");
+  console.error("❌ Regresión de rendimiento: un banco léxico está en el grafo estático de arranque.");
   process.exit(1);
 }
 

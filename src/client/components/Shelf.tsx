@@ -68,10 +68,6 @@ const GutenbergSearch = lazy(() => import("./GutenbergSearch"));
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
-import {
-  evaluateHabitReminder,
-  updateAppBadge,
-} from "../lib/localNotificationScheduler";
 import type { NotificationPayload } from "../lib/companionNotification";
 import { useCompanion } from "./CompanionProvider";
 import CoatChoice, { needsCoatChoice } from "./CoatChoice";
@@ -638,6 +634,8 @@ export default function Shelf({
         return;
       }
 
+      void import("../lib/localNotificationScheduler").then(({ evaluateHabitReminder, updateAppBadge }) => {
+      if (cancelled) return;
       const res = evaluateHabitReminder(
         {
           bookHash: current.hash,
@@ -658,6 +656,7 @@ export default function Shelf({
       } else {
         setHabitReminder(null);
       }
+      });
     });
 
     return () => {
@@ -1185,7 +1184,7 @@ export default function Shelf({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              void updateAppBadge(false);
+                              void import("../lib/localNotificationScheduler").then((m) => m.updateAppBadge(false));
                               onOpen(current);
                             }}
                             className="btn btn--primary shelf-companion-habit-cta"

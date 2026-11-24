@@ -1,4 +1,3 @@
-import { scheduleHabitReminder } from "./localNotificationScheduler";
 // Registro y ciclo de vida del Service Worker de Lecta.
 // Garantiza actualización instantánea en móviles mediante updateViaCache: 'none',
 // comprobaciones en visibilitychange/online, autocuración ante ASSET_MISMATCH_RELOAD
@@ -160,7 +159,7 @@ export async function registerServiceWorker(
           const raw = localStorage.getItem("lecta_active_book_context");
           if (raw) {
             const activeBook = JSON.parse(raw);
-            void scheduleHabitReminder(activeBook);
+            void import("./localNotificationScheduler").then((m) => m.scheduleHabitReminder(activeBook));
           }
         } catch {
           // Ignore

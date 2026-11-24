@@ -353,16 +353,6 @@ export default defineConfig({
     // "hidden" = sin comentario sourceMappingURL: el navegador no los pide y
     // sourcemapVault() los mueve a artifacts/sourcemaps/ antes del deploy.
     sourcemap: "hidden",
-    modulePreload: {
-      resolveDependencies(_filename, deps) {
-        return deps.filter(
-          (dep) =>
-            !dep.includes("lexicon-banks") &&
-            !dep.includes("companion-data") &&
-            !dep.includes("reading-activity"),
-        );
-      },
-    },
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -372,12 +362,6 @@ export default defineConfig({
             id.includes("node_modules/scheduler/")
           ) {
             return "react-vendor";
-          }
-          if (
-            id.includes("src/shared/calibration-bank") ||
-            id.includes("src/shared/english-core-lexicon")
-          ) {
-            return "lexicon-banks";
           }
         },
       },
