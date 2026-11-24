@@ -6,7 +6,7 @@ const DIST_CLIENT_DIR = path.resolve("dist/client");
 const INDEX_HTML_PATH = path.join(DIST_CLIENT_DIR, "index.html");
 
 // Presupuestos estrictos con margen razonable sobre el peso actual
-const MAX_JS_GZIP_KB = 215; // Presupuesto JS inicial gzip (<= 215 kB)
+const MAX_JS_GZIP_KB = 205; // Presupuesto JS inicial gzip (<= 205 kB), medido sobre el grafo estático real
 const MAX_CSS_GZIP_KB = 55; // Presupuesto CSS inicial gzip (<= 55 kB)
 const WARN_THRESHOLD_RATIO = 0.90; // Umbral de aviso preventivo al 90%
 
