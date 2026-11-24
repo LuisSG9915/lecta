@@ -174,6 +174,11 @@ export class KittenTtsEngine {
   private worker: Worker | null = null;
   private audioCtx: AudioContext | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
+  // Watchdog de la fuente en curso: tiene que morir con ella. Si sobrevive a un
+  // `stopCurrentSource()` (la fuente nueva reemplaza a la vieja sin pasar por su
+  // `onDone`), al vencer detiene la fuente NUEVA y avanza el cursor: cada oración
+  // se corta a mitad y el audio salta oraciones («habla demasiado rápido»).
+  private cancelCurrentWatchdog: (() => void) | null = null;
   private epoch = 1;
   private ready = false;
   private initPromise: Promise<boolean> | null = null;
@@ -1211,9 +1216,11 @@ export class KittenTtsEngine {
       this.currentSource = source;
       source.start(0);
       cancelWatchdog = this.armPlaybackWatchdog(ctx, duration, () => {
-        this.stopCurrentSource();
+        // Solo corta la fuente que armó este watchdog; una reemplazada no toca la nueva.
+        if (this.currentSource === source) this.stopCurrentSource();
         onDone();
       });
+      this.cancelCurrentWatchdog = cancelWatchdog;
     } catch {
       onDone();
     }
@@ -1270,6 +1277,8 @@ export class KittenTtsEngine {
   }
 
   private stopCurrentSource(): void {
+    this.cancelCurrentWatchdog?.();
+    this.cancelCurrentWatchdog = null;
     if (this.currentSource) {
       const src = this.currentSource;
       this.currentSource = null;

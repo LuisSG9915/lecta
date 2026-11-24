@@ -196,6 +196,74 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
       vi.unstubAllGlobals();
     });
 
+    it("el watchdog de una fuente reemplazada no corta la nueva ni avanza el cursor", () => {
+      vi.useFakeTimers();
+      let now = 0;
+      const sources: { stop: ReturnType<typeof vi.fn> }[] = [];
+      const fakeCtx = {
+        state: "running",
+        get currentTime() {
+          return now;
+        },
+        resume: vi.fn().mockResolvedValue(undefined),
+        createBufferSource: () => {
+          const s = {
+            buffer: null,
+            playbackRate: { value: 1 },
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn(),
+            onended: null,
+          };
+          sources.push(s);
+          return s;
+        },
+      } as unknown as AudioContext;
+      vi.stubGlobal("AudioContext", class {
+        constructor() {
+          return fakeCtx;
+        }
+      });
+      const buf = (duration: number) =>
+        ({
+          sampleRate: 24000,
+          length: 240,
+          duration,
+          numberOfChannels: 1,
+          getChannelData: () => new Float32Array(240),
+          copyFromChannel: () => {},
+          copyToChannel: () => {},
+        }) as unknown as AudioBuffer;
+
+      const cbA = vi.fn();
+      const cbB = vi.fn();
+      kittenTtsEngine.play(buf(3), 1, cbA);
+      const a = sources[sources.length - 1];
+      // A 0,5 s llega la oración siguiente y reemplaza a la primera.
+      now = 0.5;
+      vi.advanceTimersByTime(500);
+      kittenTtsEngine.play(buf(5), 1, cbB);
+      const b = sources[sources.length - 1];
+      a.stop.mockClear();
+      b.stop.mockClear();
+
+      // Pasado dA + 0,8 s el watchdog huérfano de A no debe tocar B.
+      now = 4;
+      vi.advanceTimersByTime(4000);
+      expect(b.stop).not.toHaveBeenCalled();
+      expect(cbA).not.toHaveBeenCalled();
+      expect(cbB).not.toHaveBeenCalled();
+
+      // El de B sí vence a su hora y avisa una sola vez.
+      now = 6.5;
+      vi.advanceTimersByTime(3000);
+      expect(cbB).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
     it("source.playbackRate.value permanece en 1.0 incluso cuando speed es 0.8 o 1.25", () => {
       const fakeSource = {
         buffer: null,
