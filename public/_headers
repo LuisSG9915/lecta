@@ -39,13 +39,10 @@
   Access-Control-Expose-Headers: Content-Length, Content-Range
   Accept-Ranges: bytes
 
-# Binarios WebAssembly (ONNX Runtime / Foliate)
-/assets/*.wasm
-  Content-Type: application/wasm
-  Cache-Control: public, max-age=31536000, immutable
-  Access-Control-Expose-Headers: Content-Length, Content-Range
-  Accept-Ranges: bytes
-
+# Binarios WebAssembly (ONNX Runtime / Foliate). Una sola regla: `/*.wasm` ya
+# cubre /assets/ y las reglas que coinciden se concatenan; con dos, el
+# Content-Type salía «application/wasm, application/wasm» y el navegador lo
+# rechazaba en WebAssembly.compileStreaming.
 /*.wasm
   Content-Type: application/wasm
   Cache-Control: public, max-age=31536000, immutable
