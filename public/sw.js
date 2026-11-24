@@ -29,6 +29,10 @@ const KITTEN_TTS_CACHE = 'lecta-kitten-tts-v2';
 // Lista blanca de cachés persistentes que NUNCA deben borrarse al actualizar la app
 const PERSISTENT_DLC_CACHES = new Set([
   KITTEN_TTS_CACHE,
+  // Modelo Piper (voz natural en español, ~63 MB; PIPER_CACHE_NAME en piperModel.ts).
+  // Sin esta entrada el activate lo borraba en cada deploy (empieza por «lecta-») y
+  // la voz neural caía en silencio a la del sistema hasta volver a descargarlo.
+  'lecta-tts-models-v1',
   'lecta-offline-dict-v1',
 ]);
 

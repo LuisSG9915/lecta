@@ -273,6 +273,23 @@ describe("registerServiceWorker", () => {
       expect(swCode).toContain("isKittenModelRequest(url)");
       expect(swCode).toContain("caches.open(KITTEN_TTS_CACHE)");
     });
+
+    it("la lista blanca del SW protege las cachés de los modelos de voz (Piper y Kitten)", async () => {
+      // Sin esto el activate borra el modelo (~63 MB) en cada deploy y la voz
+      // neural cae en silencio a la del sistema.
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const { PIPER_CACHE_NAME } = await import("./piperModel");
+      const { KITTEN_CACHE_NAME } = await import("./kittenModel");
+      const swCode = await fs.readFile(path.resolve(process.cwd(), "public/sw.js"), "utf-8");
+      const block = swCode.slice(
+        swCode.indexOf("const PERSISTENT_DLC_CACHES = new Set(["),
+        swCode.indexOf("]);", swCode.indexOf("const PERSISTENT_DLC_CACHES")),
+      );
+      expect(block).toContain(`'${PIPER_CACHE_NAME}'`);
+      expect(block).toContain("KITTEN_TTS_CACHE");
+      expect(KITTEN_CACHE_NAME).toBe("lecta-kitten-tts-v2");
+    });
   });
 });
 
