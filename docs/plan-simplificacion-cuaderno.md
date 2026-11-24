@@ -164,9 +164,11 @@ al salir sin repasar). C13–C15 de `audit-cuaderno` pasaron de «defecto» a
   desviación respecto a lo escrito arriba.
 - Salir a mitad con «Terminar por hoy» sin haber repasado nada vuelve al
   cuaderno sin pantalla de cierre (no hay nada que cerrar).
-- **Pendiente: las capturas a 1440/390 px en `papel` y `noche` no se tomaron**;
-  solo se verificó con pruebas de jsdom. Conviene mirar el plegable
-  (cabecera ≥44 px, flecha, espaciado de la rejilla) en el navegador.
+- **Capturas tomadas el 2026-11-23** a 1440/390 px en `papel` y `noche`, plegable
+  cerrado y abierto (8 PNG en `artifacts/capturas-cuaderno/`, script `shoot.mjs`
+  con sesión simulada de `e2e/helpers/session.ts` y 6 palabras sembradas). Revisadas
+  a ojo `papel` 390/1440 y `noche` 390/1440 (abiertas): el plegable abre y la
+  rejilla se ve bien. Cabecera del `summary` medida: **44 px** a 1440 y a 390.
 
 ### Fase 3 — Cifras, texto y accesibilidad (U1–U8) · **hecha (2026-11-10)**
 
