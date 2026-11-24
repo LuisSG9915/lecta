@@ -19,7 +19,7 @@ import {
 } from "../lib/idb";
 import { useCompanionSafe } from "./CompanionProvider";
 import { levelProgress, listFamilyProgress } from "../lib/gamification";
-import { isReviewDueWord } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs-light";
 import {
   bookLabel,
   calculateInkPoints,

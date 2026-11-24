@@ -1,7 +1,7 @@
 // Modelo puro del Cuaderno: tipos, constantes y reglas de clasificación,
 // elegibilidad y búsqueda. Sin React ni efectos: lo comparten Vocabulary, los
 // hooks de sesión y los componentes del Cuaderno.
-import { isDue, Rating, type Card, type Grade } from "./fsrs";
+import { isDue, Rating, type Card, type Grade } from "./fsrs-light";
 import type { SavedWord } from "./idb";
 import type { LexiconEntry, LexiconItem } from "./lexicon";
 import { blankWordInContext, type AdaptiveChallenge } from "./practice";

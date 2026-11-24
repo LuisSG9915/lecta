@@ -52,7 +52,7 @@ import {
 } from "../lib/settings";
 import { BOOK_GENRES } from "../../shared/book-genres";
 import { levelProgress } from "../lib/gamification";
-import { isReviewDueWord } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs-light";
 import BookCover from "./BookCover";
 
 // Explora y sus piezas cargan diferidas: están debajo de la

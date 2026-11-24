@@ -46,7 +46,7 @@ import { sha256Hex } from "./lib/hash";
 import { loadTtsLandingPosition } from "./lib/tts-landing";
 import { downloadCatalogEpub, listCatalog, type CatalogBook } from "./lib/catalog";
 import { parseTrialBook, type TrialBook } from "./lib/trial";
-import { isReviewDueWord } from "./lib/fsrs";
+import { isReviewDueWord } from "./lib/fsrs-light";
 import {
   COMPANION_LETTERS_KEY,
   parseCompanionLetters,
@@ -92,7 +92,7 @@ import {
   setCollectionPendingCount,
 } from "./lib/sync-state";
 import { resetGameCache } from "./lib/game";
-import { hydrateRetentionHorizon } from "./lib/fsrs";
+import { hydrateRetentionHorizon } from "./lib/fsrs-light";
 import {
   clearLastUserId,
   loadLastUserId,

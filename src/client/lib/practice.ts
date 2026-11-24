@@ -1,4 +1,4 @@
-import { Rating, type Grade } from "./fsrs";
+import { Rating, type Grade } from "./fsrs-light";
 import type { SavedWord } from "./idb";
 import { markLevel } from "./word-level";
 import { normalizeSearchText } from "./search-text";

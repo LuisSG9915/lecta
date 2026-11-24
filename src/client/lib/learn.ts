@@ -1,6 +1,6 @@
 import { accountFetch } from "./account-fetch";
 import { loadUseAi } from "./ai-pref";
-import { isDue } from "./fsrs";
+import { isDue } from "./fsrs-light";
 import { knowledgeKey, type DbScope, type KnownWord, type SavedWord } from "./idb";
 
 // Primera exposición guiada («Aprender»): qué palabras ya pasaron por

@@ -1,4 +1,4 @@
-import { isReviewDueWord } from "./fsrs";
+import { isReviewDueWord } from "./fsrs-light";
 import type { SavedWord } from "./idb";
 import { blankWordInContext, type EpisodicWordItem } from "./practice";
 import { firstSentenceWith } from "./section-words";

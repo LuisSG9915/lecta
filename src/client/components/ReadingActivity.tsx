@@ -13,7 +13,7 @@ import {
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
-import { isReviewDueWord } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs-light";
 import {
   computeFlowStateSummary,
   dayKeyOf,

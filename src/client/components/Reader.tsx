@@ -125,7 +125,7 @@ import {
   getWeeklyLearnedWordsCount,
   setJourneySelectorCache,
 } from "../lib/journey";
-import { isReviewDueWord } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs-light";
 import {
   setCompanionAudioSuppressed,
   startAmbientPurr,

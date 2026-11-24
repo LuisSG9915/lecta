@@ -130,3 +130,16 @@ describe("isReviewDueWord", () => {
     expect(isReviewDueWord({ card: undefined, presentedAt: 1700000000000 })).toBe(true);
   });
 });
+
+describe("Rating de fsrs-light", () => {
+  it("coincide con el enum de ts-fsrs (la copia evita cargar la librería al arrancar)", async () => {
+    const { Rating: real } = await import("ts-fsrs");
+    expect({ ...Rating }).toEqual({
+      Manual: real.Manual,
+      Again: real.Again,
+      Hard: real.Hard,
+      Good: real.Good,
+      Easy: real.Easy,
+    });
+  });
+});
