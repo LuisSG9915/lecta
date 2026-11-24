@@ -76,9 +76,13 @@ export function mediaSessionReset(): void {
   s.metadata = null;
 }
 
-// ~1 s de silencio PCM 8 bit/8 kHz generado en memoria (sin asset nuevo).
+// 10 s de silencio PCM 8 bit/8 kHz generado en memoria (sin asset nuevo).
+// Menos de 5 s Chromium lo trata como medio «transitorio»: no registra
+// MediaSession ni servicio en primer plano y Android manda el renderer al
+// cgroup `background` (núcleos pequeños, uclamp.max 16), donde el worker WASM
+// de Kitten va ~9× más lento y la inferencia caduca (medido en un Z Flip5).
 function silentWavUrl(): string {
-  const n = 8000;
+  const n = 80000;
   const buf = new ArrayBuffer(44 + n);
   const v = new DataView(buf);
   const str = (o: number, t: string) => {
