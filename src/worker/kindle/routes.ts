@@ -24,7 +24,7 @@ const KINDLE_GLOSS_MAX_CHARS = 90;
 // Lote de formas por llamada a findEntriesForForms (que corta a 2000 internamente).
 // Debe ser <= ese tope: en capítulos densos, pasar todo de una vez dejaría fuera
 // las palabras frecuentes más allá de la posición 2000 (revisión 2026-11-17).
-const KINDLE_GLOSS_BATCH_SIZE = 2000;
+const KINDLE_GLOSS_BATCH_SIZE = 500;
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
@@ -1686,6 +1686,7 @@ async function loadKindleChapterForRead(
           const batch = candidates.slice(i, i + KINDLE_GLOSS_BATCH_SIZE);
           const part = await withClient(c.env, (client) =>
             findEntriesForForms(client, bookLang, batch),
+            true,
           );
           Object.assign(entriesMap, part);
         }
@@ -2007,6 +2008,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
         (await withClient(c.env, (client) =>
           findEntriesForForms(client, bookLang, filtered),
+          true,
         ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
 
       for (const [form, entries] of Object.entries(entriesMap)) {
