@@ -2829,6 +2829,18 @@ b.lecta-anchor {
   opacity: 1;
 }
 
+/* En noche/oled la atenuación de arriba lleva `:root[data-theme]` y gana por
+   especificidad: sin esto el párrafo enfocado quedaba tan tenue como el resto
+   y «Un párrafo a la vez» parecía no aplicarse. */
+:root:root .book-content[data-focus-mode="paragraph"] p.is-focused,
+:root:root .book-content[data-focus-mode="paragraph"] blockquote.is-focused,
+:root:root .book-content[data-focus-mode="paragraph"] li.is-focused,
+:root:root .book-content[data-paragraph-focus] p.is-focused,
+:root:root .book-content[data-paragraph-focus] blockquote.is-focused,
+:root:root .book-content[data-paragraph-focus] li.is-focused {
+  opacity: 1;
+}
+
 @media (hover: hover) {
   .book-content[data-focus-mode="paragraph"] p:hover,
   .book-content[data-focus-mode="paragraph"] blockquote:hover,

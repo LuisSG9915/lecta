@@ -135,8 +135,8 @@ describe("scrollToAnchor", () => {
       }
     }
 
-    // 400 (arriba del bloque) − 0.5 × 200 (mitad leída) = 300.
-    expect(scrollTo).toHaveBeenCalledWith(0, 300);
+    // 400 (arriba del bloque) + 0.5 × 200 (mitad leída, ya por encima) = 500.
+    expect(scrollTo).toHaveBeenCalledWith(0, 500);
   });
 
   it("prefiere el bloque que empieza con el ancla antes que uno corto que lo contiene", () => {

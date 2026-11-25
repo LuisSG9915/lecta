@@ -2619,7 +2619,14 @@ export default function Reader({
 
   // El modo de preparación lo leen los callbacks de navegación sin
   // Ajustes del lector: la lógica vive en hooks/useReaderSettings.ts.
-  const { updateSettings } = useReaderSettings({ bookHash, setSettings, setBookOverride });
+  const { updateSettings } = useReaderSettings({
+    bookHash,
+    setSettings,
+    setBookOverride,
+    beforeReflow: () => {
+      capturePositionRef.current();
+    },
+  });
 
   const selectStrategyPreset = (preset: ReadingStrategyPreset) => {
     const updated = applyStrategyPreset(preset, settings);

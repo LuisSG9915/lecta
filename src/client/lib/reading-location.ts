@@ -123,7 +123,7 @@ export function scrollToAnchor(
       0,
       document.documentElement.scrollHeight - window.innerHeight,
     );
-    const y = rect.top + window.scrollY - offset * rect.height;
+    const y = rect.top + window.scrollY + offset * rect.height;
     window.scrollTo(0, Math.min(Math.max(0, y), max));
   } else {
     el.scrollIntoView({ block: "start" });
