@@ -305,14 +305,15 @@ describe("Subrayado de Pasajes y Tonos de Tinta (B.4)", () => {
 });
 
 describe("Guía Cromática y Modo de Concentración TDAH", () => {
-  it("el preset 'focus' activa Líneas Sintácticas, Guía Cromática, Enfoque de Párrafo y Anclajes Biónicos", async () => {
+  it("el preset 'focus' activa Líneas Sintácticas, Guía Cromática, Enfoque de Párrafo, sin Anclajes Biónicos", async () => {
     const { applyStrategyPreset, READER_DEFAULTS } = await import("../lib/settings");
     const focusSettings = applyStrategyPreset("focus", READER_DEFAULTS);
 
     expect(focusSettings.syntacticLines).toBe(true);
     expect(focusSettings.chromaticGuide).toBe(true);
     expect(focusSettings.paragraphFocus).toBe(true);
-    expect(focusSettings.bionicAnchors).toBe(true);
+    // Sin evidencia de beneficio: el resaltado de palabra ya no viene encendido.
+    expect(focusSettings.bionicAnchors).toBe(false);
     expect(focusSettings.chromaticPalette).toBe("editorial");
   });
 

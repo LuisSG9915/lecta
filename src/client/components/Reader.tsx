@@ -3343,6 +3343,9 @@ export default function Reader({
       {/* SmartReaderDock (Track 2): Dock Inteligente Único que muta entre Lectura, Audio y Lienzo Puro */}
       {state === "ready" && !isDeepReading ? (
         <ReaderDockHost
+          pacerPaused={pacerPaused}
+          strategyPaused={strategyPaused}
+          onTogglePacerPause={() => setPacerPaused((p) => !p)}
           settings={settings}
           updateSettings={updateSettings}
           errorText={errorText}
@@ -3530,13 +3533,6 @@ export default function Reader({
         />
 
         <ReaderFloatingBars
-          settings={settings}
-          state={state}
-          strategyPaused={strategyPaused}
-          isDeepReading={isDeepReading}
-          pacerPaused={pacerPaused}
-          setPacerPaused={setPacerPaused}
-          updateSettings={updateSettings}
           ttsCapturedToast={ttsCapturedToast}
           activeBilingualParagraph={activeBilingualParagraph}
           bookHash={bookHash}

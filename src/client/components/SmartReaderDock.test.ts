@@ -106,6 +106,30 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(container.querySelector(".reader-mode-popover")).not.toBeNull();
   });
 
+  it("con el marcapasos activo el popover trae velocidades y pausa", () => {
+    const onSetPacerWpm = vi.fn();
+    const onTogglePacerPause = vi.fn();
+    const onStopPacer = vi.fn();
+    render({
+      activePreset: "guided",
+      pacer: { paused: false, wpm: 210 },
+      onSetPacerWpm,
+      onTogglePacerPause,
+      onStopPacer,
+    });
+    act(() => (container.querySelector(".dock-mode-trigger") as HTMLButtonElement).click());
+    const speeds = container.querySelectorAll<HTMLButtonElement>(".reader-mode-pacer .segmented button");
+    expect(speeds).toHaveLength(3);
+    expect(speeds[1].getAttribute("aria-pressed")).toBe("true");
+    act(() => speeds[2].click());
+    expect(onSetPacerWpm).toHaveBeenCalledWith(270);
+    act(() => (container.querySelector(".reader-mode-pacer-toggle") as HTMLButtonElement).click());
+    expect(onTogglePacerPause).toHaveBeenCalledTimes(1);
+    const btns = container.querySelectorAll<HTMLButtonElement>(".reader-mode-pacer-toggle");
+    act(() => btns[1].click());
+    expect(onStopPacer).toHaveBeenCalledTimes(1);
+  });
+
   it("abre el popover con los 3 Modos Humanos de 1 Clic y permite seleccionarlos", () => {
     const onSelectPreset = vi.fn();
     const onOpenAdvancedSettings = vi.fn();

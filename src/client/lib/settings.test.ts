@@ -31,6 +31,7 @@ import {
   DEFAULT_CHAPTER_PRIMING_SETTINGS,
   readingPresetOptions,
   detectActiveReadingPreset,
+  readingModeView,
 } from "./settings";
 
 describe("parseTheme", () => {
@@ -656,5 +657,28 @@ describe("modos de lectura: detección y opciones", () => {
       "chromaticGuide",
       "visualPacer",
     ]);
+  });
+});
+
+describe("readingModeView: el popover no pierde los interruptores", () => {
+  it("Enfoque con la atenuación apagada sigue mostrando las opciones de Enfoque", () => {
+    const res = { ...applyReadingPreset(READER_DEFAULTS, "adhd"), paragraphFocus: false };
+    const view = readingModeView(res);
+    expect(view.active).toBe("custom");
+    expect(readingPresetOptions(view.optionsFor).map((o) => o.key)).toContain("paragraphFocus");
+  });
+
+  it("Ritmo sin guía de color sigue mostrando las opciones de Ritmo", () => {
+    const res = { ...applyReadingPreset(READER_DEFAULTS, "guided"), chromaticGuide: false };
+    const view = readingModeView(res);
+    expect(view.active).toBe("custom");
+    expect(readingPresetOptions(view.optionsFor).map((o) => o.key)).toContain("chromaticGuide");
+  });
+
+  it("un modo intacto se muestra tal cual y Limpia no tiene opciones", () => {
+    expect(readingModeView(applyReadingPreset(READER_DEFAULTS, "adhd")).active).toBe("adhd");
+    const clean = readingModeView(applyReadingPreset(READER_DEFAULTS, "clean"));
+    expect(clean.active).toBe("clean");
+    expect(readingPresetOptions(clean.optionsFor)).toEqual([]);
   });
 });

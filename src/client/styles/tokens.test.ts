@@ -355,9 +355,25 @@ describe("Enfoque y Ritmo: contraste efectivo", () => {
         relativeLuminance(eff.r, eff.g, eff.b),
         relativeLuminance(paper.r, paper.g, paper.b),
       );
-      expect(opacity, `opacidad en ${name}`).toBeGreaterThan(0);
+      // Piso exacto: con 0.52 noche/oled aún pasan, pero papel/blanco no; el piso evita volver atrás.
+      expect(opacity, `opacidad en ${name}`).toBeGreaterThanOrEqual(0.6);
       expect(ratio, `${name} con opacidad ${opacity}`).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it("el párrafo atenuado con prefers-color-scheme: dark lee ≥ 4.5:1", () => {
+    const dark = /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme\]\) \.book-content\[data-focus-mode="paragraph"\] p,[\s\S]*?\{\s*opacity: ([\d.]+);/.exec(
+      reader,
+    );
+    const opacity = Number(dark?.[1]);
+    const ink = parseColor(themes["auto-dark"]["--ink"])!;
+    const paper = parseColor(themes["auto-dark"]["--paper"])!;
+    const eff = compositeOver({ ...ink, a: opacity }, { ...paper, a: 1 });
+    const ratio = contrastRatio(
+      relativeLuminance(eff.r, eff.g, eff.b),
+      relativeLuminance(paper.r, paper.g, paper.b),
+    );
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 
   it("el acento B de la guía cromática cumple AAA (7.5:1) en papel y blanco", () => {

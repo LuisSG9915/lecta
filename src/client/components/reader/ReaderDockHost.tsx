@@ -14,7 +14,7 @@ import type { FocusAidType } from "../../lib/focus-telemetry";
 import type { SectionPrediction } from "../../lib/knowledge";
 import {
   applyReadingPreset,
-  detectActiveReadingPreset,
+  readingModeView,
   readingPresetOptions,
   type ReadingPresetOption,
   type ReaderSettings,
@@ -23,6 +23,9 @@ import type { TtsSnapshot } from "../../lib/ttsTypes";
 import type { WordHit } from "../../lib/words";
 
 export interface ReaderDockHostProps {
+  pacerPaused: boolean;
+  strategyPaused: boolean;
+  onTogglePacerPause: () => void;
   settings: ReaderSettings;
   updateSettings: (patch: Partial<ReaderSettings>) => void;
   errorText: string;
@@ -81,8 +84,16 @@ export interface ReaderDockHostProps {
   onStartAudio5Min?: () => void;
 }
 
+/** Velocidades guardadas por la barra anterior (180, 240…) caen al botón más cercano. */
+function snapPacerWpm(wpm: number): number {
+  return [150, 210, 270].reduce((a, b) => (Math.abs(b - wpm) < Math.abs(a - wpm) ? b : a));
+}
+
 export function ReaderDockHost(props: ReaderDockHostProps) {
   const {
+  pacerPaused,
+  strategyPaused,
+  onTogglePacerPause,
   settings,
   updateSettings,
   errorText,
@@ -162,16 +173,34 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
         triggerHaptic("selection");
         updateSettings({ layout });
       }}
-      activePreset={detectActiveReadingPreset(settings)}
-      modeOptions={readingPresetOptions(detectActiveReadingPreset(settings)).map((o) => ({
+      activePreset={readingModeView(settings).active}
+      modeOptions={readingPresetOptions(readingModeView(settings).optionsFor).map((o) => ({
         id: o.key,
         label: o.label,
         checked: Boolean(settings[o.key]),
       }))}
+      pacer={
+        settings.visualPacer && !strategyPaused
+          ? { paused: pacerPaused, wpm: snapPacerWpm(settings.pacerWpm || 210) }
+          : null
+      }
+      onTogglePacerPause={onTogglePacerPause}
+      onSetPacerWpm={(wpm) => updateSettings({ pacerWpm: wpm })}
+      onStopPacer={() => {
+        if (pacerPaused) onTogglePacerPause();
+        updateSettings({ visualPacer: false });
+      }}
       onToggleModeOption={(id) => {
         triggerHaptic("selection");
         const key = id as ReadingPresetOption["key"];
-        updateSettings({ [key]: !settings[key] });
+        if (key === "visualPacer" && settings.visualPacer && pacerPaused) onTogglePacerPause();
+        // Conservar el modo elegido: sin esto el hook marca «custom» y los
+        // interruptores desaparecen al apagar una pieza.
+        updateSettings({
+          [key]: !settings[key],
+          readingPreset: settings.readingPreset,
+          strategyPreset: settings.strategyPreset,
+        });
       }}
       onSelectPreset={(preset) => {
         triggerHaptic("selection");

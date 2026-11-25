@@ -543,6 +543,9 @@
 
 .reader[data-justify] .book-content p {
   text-align: justify;
+  /* Justificado sin guionado abre «ríos» de blanco; el idioma va en lang. */
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 
 .reader[data-dropcap] .book-content > p:first-of-type::first-letter,
@@ -7360,4 +7363,21 @@ b.lecta-anchor {
 .reader-mode-adjusted {
   margin: 0;
   padding-block: 6px;
+}
+
+.reader-mode-pacer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block: 6px;
+}
+
+.reader-mode-pacer-toggle {
+  min-height: 44px;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md, 8px);
 }

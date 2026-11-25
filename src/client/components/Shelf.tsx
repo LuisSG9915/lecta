@@ -45,6 +45,7 @@ import { dayKeyOf } from "../lib/reading-activity";
 import { loadDailyTip, type TipAction, type TipOutcome } from "../lib/tips";
 import { trackReadingEvent } from "../lib/reading-events";
 import {
+  applyStrategyPreset,
   loadActivityHidden,
   loadReaderSettings,
   saveReaderSettings,
@@ -1248,7 +1249,7 @@ export default function Shelf({
                           triggerHaptic(8);
                           setHeroStrategy(strat.id as StrategyPreset);
                           const curSettings = loadReaderSettings(current.hash);
-                          saveReaderSettings({ ...curSettings, strategyPreset: strat.id as StrategyPreset }, current.hash);
+                          saveReaderSettings(applyStrategyPreset(strat.id as StrategyPreset, curSettings), current.hash);
                         }}
                       >
                         {strat.label}

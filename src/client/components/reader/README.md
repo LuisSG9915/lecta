@@ -23,7 +23,7 @@ are listed under Side Effects.
   controls, focus suggestion, cat lane via `CompanionButton`).
 - [ReaderFloatingLane.tsx:ReaderFloatingLane] (memo) The single column
   (`.reader-floating-lane`) where everything that floats above the dock stacks.
-- [ReaderFloatingBars.tsx:ReaderFloatingBars] (memo) Visual pacer, TTS «word captured»
+- [ReaderFloatingBars.tsx:ReaderFloatingBars] (memo) TTS «word captured»
   notice, and the bilingual paragraph (`BilingueParagraph`).
 - [ReaderFocusLayers.tsx:ReaderFocusLayers] (memo) The `FocusRuler` with the cat paw, and
   the deep-reading (Retiro) indicator.

@@ -343,7 +343,7 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
         !settingsRef.current?.bionicAnchors &&
         !(settingsRef.current as { bionicReading?: boolean } | null)?.bionicReading
       ) {
-        showNotice("¿Pasaje denso? Puedes activar la «Resaltar inicio de palabra» en el menú Aa.");
+        showNotice("¿Pasaje denso? Puedes activar «Resaltar inicio de palabra» en el menú Aa.");
       }
 
       const next = pageRef.current + delta;

@@ -353,7 +353,7 @@ export function ThemeMenu({
           </span>
         </div>
         <Toggle
-          checked={Boolean(settings.bionicReading ?? settings.bionicAnchors)}
+          checked={Boolean(settings.bionicAnchors)}
           onChange={(next) => handlePatch({ bionicReading: next, bionicAnchors: next })}
           ariaLabel="Resaltar inicio de palabra"
         />

@@ -2,7 +2,7 @@
 // unidades con sentido — cada corte cae tras puntuación o antes de
 // un conector, así la longitud variable de las líneas acompaña las
 // fijaciones sacádicas en lugar de depender del ancho de columna.
-// Envuelve cada unidad en <span class="syn-line"> (display:block);
+// Envuelve cada unidad en <span class="syn-line"> (display:inline, con degradado por renglón);
 // quitar el modo desenrolla esos spans sin perder marcas ni notas.
 
 import { isStopword } from "../../shared/stopwords";

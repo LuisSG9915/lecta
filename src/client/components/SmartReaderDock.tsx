@@ -87,6 +87,11 @@ export interface SmartReaderDockProps {
   /** Interruptores del modo activo (Enfoque, Ritmo). */
   modeOptions?: { id: string; label: string; checked: boolean }[];
   onToggleModeOption?: (id: string) => void;
+  /** Marcapasos activo: estado y controles dentro del popover. */
+  pacer?: { paused: boolean; wpm: number } | null;
+  onTogglePacerPause?: () => void;
+  onSetPacerWpm?: (wpm: number) => void;
+  onStopPacer?: () => void;
   onOpenAdvancedSettings: () => void;
 
   /** Acciones adicionales del modo lectura */
@@ -142,6 +147,10 @@ export default function SmartReaderDock({
   onSelectPreset,
   modeOptions,
   onToggleModeOption,
+  pacer,
+  onTogglePacerPause,
+  onSetPacerWpm,
+  onStopPacer,
   layout,
   onSelectLayout,
   onOpenAdvancedSettings,
@@ -499,6 +508,7 @@ export default function SmartReaderDock({
                   <button
                     key={preset.id}
                     type="button"
+                    aria-pressed={isSelected}
                     className={`reader-mode-card ${isSelected ? "is-active" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -530,6 +540,46 @@ export default function SmartReaderDock({
                     <span>{opt.label}</span>
                   </label>
                 ))}
+              </div>
+            ) : null}
+            {pacer ? (
+              <div className="reader-mode-pacer" role="group" aria-label="Marcapasos">
+                <div className="segmented">
+                  {([[150, "Pausado"], [210, "Medio"], [270, "Ágil"]] as const).map(([wpm, name]) => (
+                    <button
+                      key={wpm}
+                      type="button"
+                      data-active={pacer.wpm === wpm || undefined}
+                      aria-pressed={pacer.wpm === wpm}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSetPacerWpm?.(wpm);
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="reader-mode-pacer-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePacerPause?.();
+                  }}
+                >
+                  {pacer.paused ? "Reanudar" : "Pausar"}
+                </button>
+                <button
+                  type="button"
+                  className="reader-mode-pacer-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStopPacer?.();
+                  }}
+                >
+                  Detener
+                </button>
               </div>
             ) : null}
             {onSelectLayout ? (

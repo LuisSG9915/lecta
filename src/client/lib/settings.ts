@@ -240,7 +240,7 @@ export const READING_STRATEGY_PRESETS: ReadingStrategyPresetItem[] = [
   },
   {
     id: "focus",
-    title: "Neuro-Enfoque (TDAH)",
+    title: "Neuro-Enfoque",
     description: "Guía cromática, líneas sintácticas y foco de párrafo",
     icon: "sparkles",
   },
@@ -593,6 +593,24 @@ export function detectActiveReadingPreset(settings: ReaderSettings): ReadingPres
   return "custom";
 }
 
+/**
+ * Qué modo mostrar en el popover. Si el lector eligió Enfoque o Ritmo y luego
+ * apagó una de sus piezas, la detección por interruptores cambia de modo; el
+ * popover sigue mostrando los interruptores del modo elegido (para poder
+ * volver a encenderlos) y marca «ajustado» en vez de saltar a otro.
+ */
+export function readingModeView(settings: ReaderSettings): {
+  active: ReadingPreset;
+  optionsFor: ReadingPreset;
+} {
+  const detected = detectActiveReadingPreset(settings);
+  const declared = settings.readingPreset;
+  if ((declared === "adhd" || declared === "guided") && detected !== declared) {
+    return { active: "custom", optionsFor: declared };
+  }
+  return { active: detected, optionsFor: detected };
+}
+
 export interface ReadingPresetOption {
   key: "paragraphFocus" | "bionicAnchors" | "chromaticGuide" | "visualPacer";
   label: string;
@@ -645,7 +663,7 @@ export function applyStrategyPreset(
         paragraphFocus: true,
         syntacticLines: true,
         chromaticGuide: true,
-        bionicAnchors: true,
+        bionicAnchors: false,
         focusMode: "chromatic",
         highlightLexical: false,
         hideSecondaryIndicators: false,

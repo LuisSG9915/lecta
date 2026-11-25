@@ -87,6 +87,17 @@ describe("useReaderSettings", () => {
     expect(next.focusMode).toBe("ruler");
   });
 
+  it("apagar una pieza con el modo declarado no lo pasa a custom", () => {
+    const opts = settingsOptions();
+    render(opts);
+    const next = apply(opts, {
+      paragraphFocus: false,
+      readingPreset: "adhd",
+      strategyPreset: "adhd",
+    });
+    expect(next.readingPreset).toBe("adhd");
+  });
+
   it("el foco por párrafo apaga la regla", () => {
     const opts = settingsOptions();
     render(opts);

@@ -196,7 +196,7 @@ export function ReaderContent(props: ReaderContentProps) {
 <div
   className={`reader-body reader__stage ${settings.chromaticGuide && !strategyPaused ? "reader__stage--chromatic" : ""}`}
   data-strategy-contrast={settings.strategyContrast}
-  data-has-floating-bar={ttsSnap.status !== "idle" || (settings.visualPacer && !strategyPaused) ? "true" : undefined}
+  data-has-floating-bar={ttsSnap.status !== "idle" ? "true" : undefined}
 >
   {state === "opening" && !title ? (
     <p className="reader-loading">Abriendo libro…</p>
@@ -262,7 +262,7 @@ export function ReaderContent(props: ReaderContentProps) {
       data-strategy-preset={settings.strategyPreset}
       data-strategy-contrast={settings.strategyContrast}
       data-strategy-paused={strategyPaused || undefined}
-      data-has-floating-bar={ttsSnap.status !== "idle" || (settings.visualPacer && !strategyPaused) ? "true" : undefined}
+      data-has-floating-bar={ttsSnap.status !== "idle" ? "true" : undefined}
       style={
         settings.layout === "pages" && pageMetrics
           ? ({
