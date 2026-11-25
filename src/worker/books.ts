@@ -31,7 +31,13 @@ books.get("/api/books", async (context) => {
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
 
-  const listed = await booksBucket.list({ prefix: `books/${session.user.id}/` });
+  // Sin `include`, R2 no trae customMetadata (compatibility_date >= 2022-08-04):
+  // cada libro parecía sin título y la reparación de abajo lo reescribía en
+  // cada GET.
+  const listed = await booksBucket.list({
+    prefix: `books/${session.user.id}/`,
+    include: ["customMetadata"],
+  });
 
   const books = listed.objects.map((object) => {
     const hash = object.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";

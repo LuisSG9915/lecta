@@ -74,13 +74,15 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
       delete: vi.fn(async (key: string) => {
         r2Objects.delete(key);
       }),
-      list: vi.fn(async ({ prefix }: { prefix: string }) => {
+      // Igual que R2 con compatibility_date >= 2022-08-04: list() solo trae
+      // customMetadata si se pide en `include`.
+      list: vi.fn(async ({ prefix, include }: { prefix: string; include?: string[] }) => {
         const matching = Array.from(r2Objects.entries())
           .filter(([key]) => key.startsWith(prefix))
           .map(([key, val]) => ({
             key,
             uploaded: val.uploaded ?? new Date(),
-            customMetadata: val.customMetadata,
+            customMetadata: include?.includes("customMetadata") ? val.customMetadata : undefined,
           }));
         return { objects: matching };
       }),
@@ -112,6 +114,32 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
 
     // El camino crítico responde sin invocar r2.get()
     expect(mockBucket.get).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/books lee los metadatos de R2 y no vuelve a reparar un libro con título", async () => {
+    getSessionMock.mockResolvedValueOnce({ user: { id: "user-titled" } });
+    r2Objects.set(`books/user-titled/${minimalHash}.epub`, {
+      body: minimalBytes.buffer as ArrayBuffer,
+      customMetadata: { title: "Marianela", author: "Galdós", hasCover: "true" },
+      uploaded: new Date("2026-10-24T10:00:00Z"),
+    });
+    const waitUntil = vi.fn();
+
+    const res = await app.request(
+      "/api/books",
+      { method: "GET" },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"] },
+      { waitUntil, passThroughOnException: () => {}, props: {} } as unknown as ExecutionContext,
+    );
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { books: Array<{ title: string; hasCover: boolean }> };
+    expect(json.books[0].title).toBe("Marianela");
+    expect(json.books[0].hasCover).toBe(true);
+    // Sin customMetadata en la lista, cada GET reescribía el EPUB y la portada
+    // en R2 y la fila de user_books (bucle visto en producción el 2026-11-24).
+    expect(waitUntil).not.toHaveBeenCalled();
+    expect(mockBucket.put).not.toHaveBeenCalled();
   });
 
   it("POST /api/books rechaza con 413 si el usuario supera el límite de 100 libros", async () => {

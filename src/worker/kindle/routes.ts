@@ -1167,7 +1167,12 @@ kindleRoutes.get("/", async (c) => {
   }
 
   // Listar libros del usuario en R2
-  const listed = await c.env.BOOKS.list({ prefix: `books/${user.id}/` }).catch(() => null);
+  // `include` hace falta para leer title/author/sections; sin él cada visita
+  // reescribía un EPUB en R2 (ver /api/books).
+  const listed = await c.env.BOOKS.list({
+    prefix: `books/${user.id}/`,
+    include: ["customMetadata"],
+  }).catch(() => null);
   const objects = listed?.objects ?? [];
 
   // Posiciones guardadas (con sello de sincronía para el orden por recencia)
