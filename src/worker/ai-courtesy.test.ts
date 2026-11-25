@@ -122,6 +122,14 @@ describe("explain-in-passage con cortesía", () => {
     expect(refundMock).toHaveBeenCalledTimes(1);
   });
 
+  it("el reintegro usa el mismo instante que el consumo (no cruza la medianoche UTC)", async () => {
+    aiContent = null;
+    await post("/api/ai/explain-in-passage", explainBody());
+    const consumedAt = consumeMock.mock.calls[0][2];
+    expect(typeof consumedAt).toBe("number");
+    expect(refundMock.mock.calls[0][2]).toBe(consumedAt);
+  });
+
   it("si la IA responde algo no estructurado devuelve el uso", async () => {
     aiContent = "no es json";
     const res = await post("/api/ai/explain-in-passage", explainBody());

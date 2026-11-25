@@ -189,11 +189,11 @@ export interface ExplainInPassageResponse extends PassageExplanation {
   cached?: boolean;
 }
 
-// Cortesía de IA free (5 al mes, free-courtesy.ts): se descuenta DENTRO del
-// handler, solo cuando de verdad se va a llamar a la IA (tras el caché), y se
-// devuelve si la IA falla. Lecta+/fundador no consumen nada.
+// Cortesía de IA free (3 al día UTC, free-courtesy.ts): se descuenta DENTRO
+// del handler, solo cuando de verdad se va a llamar a la IA (tras el caché), y
+// se devuelve si la IA falla. Lecta+/fundador no consumen nada.
 const COURTESY_EXHAUSTED = {
-  error: "Agotaste tus consultas de IA gratuitas de este mes. Lecta+ las desbloquea.",
+  error: "Agotaste tus consultas de IA gratuitas de hoy. Mañana tienes 3 más; Lecta+ las desbloquea.",
   code: LECTA_PLUS_REQUIRED,
 } as const;
 
@@ -207,14 +207,17 @@ async function guardAiCourtesy(
   lectaPlus: boolean,
 ): Promise<CourtesyGuard> {
   if (lectaPlus) return { refund: async () => undefined };
+  // Un solo instante para descontar y devolver: si la IA falla pasada la
+  // medianoche UTC, el reintegro vuelve al bucket del día en que se consumió.
+  const at = Date.now();
   let ok: boolean;
   try {
-    ok = await consumeFreeAiCourtesy(env, userId);
+    ok = await consumeFreeAiCourtesy(env, userId, at);
   } catch {
     return { deny: { body: { error: "Servicio temporalmente no disponible" }, status: 503 } };
   }
   if (!ok) return { deny: { body: { ...COURTESY_EXHAUSTED }, status: 402 } };
-  return { refund: () => refundFreeAiCourtesy(env, userId) };
+  return { refund: () => refundFreeAiCourtesy(env, userId, at) };
 }
 
 const explainPassageCache = createTtlCache<ExplainInPassageResponse>({
