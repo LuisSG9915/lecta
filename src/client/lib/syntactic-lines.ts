@@ -73,7 +73,7 @@ export function getConnectorRegex(lang?: string): RegExp {
 
 const MIN_BEFORE_CONNECTOR = 30;
 const MIN_BEFORE_MEDIUM = 30;
-const MIN_BEFORE_WEAK = 45;
+const MIN_BEFORE_WEAK = 60;
 // Un corte que deja un fragmento diminuto a cualquier lado se retira.
 const MIN_SEGMENT = 16;
 
