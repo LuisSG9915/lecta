@@ -44,9 +44,14 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
   warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
   del React Compiler y limpió los 20 que quedaban): un warning nuevo rompe el gate.
-  `check:size` va en **207.14 kB** de 215 kB gzip (avisa al 90 %, es decir a partir de
-  193.5 kB — el aviso sale siempre y hay que fijarse en el margen que imprime, no en su
-  presencia); en peso quedan ~7.9 kB de margen.
+  `check:size` va en **199.70 kB** de **205 kB** gzip (2026-11-24; avisa al 90 %, es decir a
+  partir de 184.5 kB — el aviso sale siempre y hay que fijarse en el margen que imprime, no en
+  su presencia): quedan 5.30 kB. **Mide el grafo estático real** (los `import "./x.js"` de cada
+  chunk desde el HTML, no solo las etiquetas): antes contaba 210 kB cuando el arranque bajaba
+  ~330 kB, porque `lexicon-banks` (103 kB) y compañía entraban por imports estáticos fuera del
+  preload. Falla si `calibration-bank` o `english-core-lexicon` entran al arranque. `ts-fsrs`
+  tampoco debería entrar (el script no lo comprueba): el arranque usa `src/client/lib/fsrs-light.ts` (con una copia de `Rating` fijada por
+  prueba); `fsrs.ts` queda para quien programa repasos.
 - La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 183 archivos con
   jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
   mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6
@@ -356,7 +361,9 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   `"follow"` el 301 a otro origen fallaba y servía la copia cacheada. IndexedDB, cookies y SW son por
   origen: al pasar a `lectal.app` cada usuario vuelve a iniciar sesión y lo no sincronizado se queda en
   workers.dev. Scripts y MCP (`DEFAULT_BASE_URL`) siguen en workers.dev: la API no se redirige.
-- Último deploy: **2026-11-23** (duodécimo del día), versión `365887e9-ca70-491a-9860-905f795c063c`, Lecta **v0.2.16** (commit `74a2029`): **la caché del modelo Piper sobrevive a los deploys** — `public/sw.js` la añade a `PERSISTENT_DLC_CACHES` (ver «Audio en segundo plano»). Sin migraciones ni secrets. Verificado antes: `sw-register.test.ts` 18/18 (la prueba nueva falla sin el arreglo). En caliente: `/api/health` → 200 y `lecta-tts-models-v1` en el `/sw.js` servido. Con el modelo ya reinstalado en el Z Flip5, la voz neural vuelve a sonar. El árbol tenía cambios ajenos sin commitear (`src/worker/kindle/routes.ts`, `.claude/launch.json`): se apartaron con stash y no salieron.
+- Último deploy: **2026-11-24** (segundo del día), versión `329df1f3-416d-44e2-93d8-356e4e0aeed1`, Lecta **v0.2.16** (commit `73dd0f7`): **prueba inversa de 14 días sin tarjeta y cortesía de IA de 3 al día** (ver «Planes Gratis / Lecta+»). Sin migraciones ni secrets. Verificado antes: `pnpm gate` (4140 pruebas, JS 199.74/205 kB). En caliente: `/api/health` y `/sw.js` → 200, `/api/account/state`, `/api/positions` y `POST /api/billing/checkout` sin sesión → 401, `/inicio/` en `lectal.app` con «14 días de prueba sin tarjeta» y «3 explicaciones con IA al día», chunk `Account-*.js` con «Prueba de Lecta+» → 200; la consulta nueva de `getUserPlan` corrida en solo lectura contra `lecta`: las cuentas free sin fila quedan en prueba hasta el 2026-12-09 (`user_created_at` llega como string y `toStamp` lo convierte). Sin prueba con cuenta real en el navegador ni pago de Stripe durante la prueba.
+- Deploy anterior: **2026-11-24**, versión `8bf90655-d8d3-42f3-96b3-f8d4947121f6`, Lecta **v0.2.16** (commit `331f935`): **fin del bucle de reparación de libros**. `R2.list()` no devuelve `customMetadata` sin `include: ["customMetadata"]` (con `compatibility_date` ≥ 2022-08-04), así que `GET /api/books` veía cada libro sin título ni `repairAttemptedAt` y en cada petición reescribía hasta 5 EPUB + portada en R2 y la fila de `user_books` (medido en `crdb_internal.statement_statistics`: ~1 500 `INSERT user_books` al día con una sola cuenta, y probable origen del 10058 de R2); la portada `/k` reescribía un EPUB por visita y le borraba `language`/`hasCover`. Toda llamada a `list()` que lea metadatos debe pasar `include`; el mock de `books.test.ts` ya lo respeta como R2 real. Sin migraciones ni secrets. Verificado antes: `pnpm gate` (JS 199.70/205 kB) y la prueba nueva falla sin el arreglo. En caliente (workers.dev): `/api/health` → 200, `/api/books` y `/api/positions` sin sesión → 401, `/k` → 301, `/sw.js` → 200. Pendiente: confirmar en las estadísticas de sentencias que `INSERT INTO user_books` cae a casi 0 al día.
+- Deploy anterior: **2026-11-23** (duodécimo del día), versión `365887e9-ca70-491a-9860-905f795c063c`, Lecta **v0.2.16** (commit `74a2029`): **la caché del modelo Piper sobrevive a los deploys** — `public/sw.js` la añade a `PERSISTENT_DLC_CACHES` (ver «Audio en segundo plano»). Sin migraciones ni secrets. Verificado antes: `sw-register.test.ts` 18/18 (la prueba nueva falla sin el arreglo). En caliente: `/api/health` → 200 y `lecta-tts-models-v1` en el `/sw.js` servido. Con el modelo ya reinstalado en el Z Flip5, la voz neural vuelve a sonar. El árbol tenía cambios ajenos sin commitear (`src/worker/kindle/routes.ts`, `.claude/launch.json`): se apartaron con stash y no salieron.
 - Deploy anterior: **2026-11-23** (undécimo del día), versión `e3d1371a-4c20-4e57-bb07-ee9310f0ecf0`, Lecta **v0.2.16** (commit `40c53d0`): **el watchdog de una fuente de audio reemplazada ya no corta la oración nueva ni avanza el cursor** (`kittenTtsEngine.ts`). Sin migraciones ni secrets. Verificado antes: `kittenAudioEngine.test.ts` 16/16 (la prueba nueva falla sin el arreglo), 181 pruebas de TTS, lint y typecheck. Medido en el Z Flip5 con la neural instalada: cada `start()` llega cuando acaba la anterior (2,13 → +2,14 s; 3,19 → +3,2 s; 0,91 → +0,93 s), antes cortaba a los 1,2–2,8 s de 3–3,8 s.
 - Deploy anterior: **2026-11-23** (décimo del día), versión `070090d0-7951-4eb0-a2e2-31d383e24e5b`, Lecta **v0.2.16** (commit `077d842`): una sola regla `/*.wasm` en `public/_headers` (con dos, el `Content-Type` salía `application/wasm, application/wasm` y `compileStreaming` fallaba). En caliente: un solo `content-type: application/wasm`; el `cache-control` sigue repetido dos veces (coincide `/assets/*`), inocuo. Sin comprobar en el móvil que desaparezca el aviso de la consola.
 - Deploy anterior: **2026-11-23** (noveno del día), versión `d51c6517-da3b-49dc-9795-29de1fed266e`, Lecta **v0.2.16** (commit `cc2ec06`): **keep-alive silencioso de 10 s** (antes ~1 s) para que Chrome Android registre MediaSession y servicio en primer plano y el renderer no caiga al cgroup `background` (ver «Audio en segundo plano»). Sin migraciones ni secrets. Verificado antes: `ttsMediaSession` 4/4 y typecheck; no se corrió `pnpm gate` completo. En el Z Flip5 con el deploy real: Inicio a los ~17 s, 90 s de voz neural a ~4,5 frases/10 s (frases 165 → 201), sin timeout ni aviso de voz del sistema; Chrome con sesión de medios activa y servicio en primer plano. Sin probar con pantalla bloqueada. El árbol tenía un cambio ajeno sin commitear en `src/worker/kindle/routes.ts`: se apartó con stash para construir y no salió.
@@ -748,15 +755,24 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
   /api/books(/:hash)`, `GET /api/books/:hash`, `PUT/GET
   /api/user/books/:bookId/file`), `/api/kindle/prefs` y vincular Kindle.
   Libres: `enrich*`, listas, catálogo y `PUT /api/user/books/:bookId/meta`.
-- **Cortesía de IA y prueba (2026-11-18)**: en `free`, `explain-in-passage`,
-  `page-recap` y `translate` dan **5 usos al mes UTC** (`FREE_AI_COURTESY_LIMIT`,
-  `free-courtesy.ts`, contador en `lecta_ai_quota` scope `free-courtesy`; **sin
-  migración 033**). Se descuenta en el handler solo tras fallar la caché y se
+- **Cortesía de IA (2026-11-24: 3 al día UTC; antes 5 al mes)**: en `free`, `explain-in-passage`,
+  `page-recap` y `translate` dan **3 usos al día UTC** (`FREE_AI_COURTESY_LIMIT`,
+  `courtesyBucketHour` = inicio del día, `free-courtesy.ts`, contador en `lecta_ai_quota` scope
+  `free-courtesy`; **sin migración**). Se descuenta en el handler solo tras fallar la caché y se
   devuelve si la IA falla; agotada o sin tabla → 402 `LECTA_PLUS_REQUIRED`
   (fail-closed). `/api/account/state` suma `freeAiRemaining` (null = sin tope) y
-  `trialEligible` (free y sin `stripeCustomerId`); el checkout añade
-  `trial_period_days=7` solo si `trialEligible`; `success_url` `/?carne=gracias`,
-  `cancel_url` `/?carne=cancelado`. `/api/ai/enrich` sigue libre pero no persiste
+  `trialEndsAt`. `success_url` `/?carne=gracias`, `cancel_url` `/?carne=cancelado`.
+- **Prueba inversa (2026-11-24, `docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md`)**:
+  sin migración. `getUserPlan` une `"user"` con `lecta_user_plan` en una consulta; si el plan
+  efectivo de la fila es `free` y `now < max(createdAt, REVERSE_TRIAL_START = 2026-11-25Z) + 14
+  días` (`reverseTrialEndsAt`, `src/shared/plan.ts`), devuelve `lecta_plus` con `trialEndsAt`. Sin
+  gracia. El checkout ya no manda `trial_period_days` y no responde 409 durante la prueba;
+  `cancelBillingForDeletion` trata `trialEndsAt` como fila free (suscripción vencida no se cancela).
+  Cliente: `planFromAccountState` baja a `free` una prueba vencida (caché sin red),
+  `pollPlanUntilPlus` no se detiene en la prueba y el Carné muestra «Prueba de Lecta+ · quedan N
+  días» con el botón de pago. Los EPUB subidos a R2 durante la prueba se quedan (402 al terminar).
+  Pendientes menores: la caché de plan del isolate puede alargar la prueba hasta 30 s; un
+  reintegro de cortesía pasada la medianoche UTC cae en el bucket del día nuevo. `/api/ai/enrich` sigue libre pero no persiste
   en el catálogo si trae `context`. `loadUserPlan` cachea 30 s **solo planes
   positivos** (invalida en `beforeDelete`, `setStarterCoat`, webhook). Modos
   locales del Cuaderno (cloze/scramble/syntax/match) y premios del gato
