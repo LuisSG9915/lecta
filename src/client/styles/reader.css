@@ -2793,7 +2793,7 @@ b.lecta-anchor {
 .book-content[data-paragraph-focus] p,
 .book-content[data-paragraph-focus] blockquote,
 .book-content[data-paragraph-focus] li {
-  opacity: 0.35;
+  opacity: 0.65;
   transition: opacity var(--dur-2, 0.25s) var(--ease-out);
 }
 
@@ -2809,7 +2809,7 @@ b.lecta-anchor {
 :root[data-theme="oled"] .book-content[data-paragraph-focus] p,
 :root[data-theme="oled"] .book-content[data-paragraph-focus] blockquote,
 :root[data-theme="oled"] .book-content[data-paragraph-focus] li {
-  opacity: 0.52;
+  opacity: 0.6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2819,7 +2819,7 @@ b.lecta-anchor {
   :root:not([data-theme]) .book-content[data-paragraph-focus] p,
   :root:not([data-theme]) .book-content[data-paragraph-focus] blockquote,
   :root:not([data-theme]) .book-content[data-paragraph-focus] li {
-    opacity: 0.52;
+    opacity: 0.6;
   }
 }
 
@@ -7330,4 +7330,34 @@ b.lecta-anchor {
 .word-card-report-note {
   font-size: 0.8125rem;
   color: var(--ink-soft);
+}
+
+/* Interruptores del modo activo dentro del popover de la luna. */
+.reader-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-block: 6px;
+}
+
+.reader-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.reader-mode-option input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent-primary);
+}
+
+.reader-mode-adjusted {
+  margin: 0;
+  padding-block: 6px;
 }

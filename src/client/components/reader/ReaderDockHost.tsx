@@ -15,6 +15,8 @@ import type { SectionPrediction } from "../../lib/knowledge";
 import {
   applyReadingPreset,
   detectActiveReadingPreset,
+  readingPresetOptions,
+  type ReadingPresetOption,
   type ReaderSettings,
 } from "../../lib/settings";
 import type { TtsSnapshot } from "../../lib/ttsTypes";
@@ -161,6 +163,16 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
         updateSettings({ layout });
       }}
       activePreset={detectActiveReadingPreset(settings)}
+      modeOptions={readingPresetOptions(detectActiveReadingPreset(settings)).map((o) => ({
+        id: o.key,
+        label: o.label,
+        checked: Boolean(settings[o.key]),
+      }))}
+      onToggleModeOption={(id) => {
+        triggerHaptic("selection");
+        const key = id as ReadingPresetOption["key"];
+        updateSettings({ [key]: !settings[key] });
+      }}
       onSelectPreset={(preset) => {
         triggerHaptic("selection");
         setStrategyPaused(false);

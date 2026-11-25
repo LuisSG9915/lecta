@@ -69,7 +69,7 @@ describe("ThemeMenu", () => {
     expect(host.textContent).toContain("Un párrafo a la vez");
     expect(host.textContent).toContain("Atenúa el resto del texto para concentrarte en el bloque actual");
 
-    expect(host.textContent).toContain("Guía visual de sílabas");
+    expect(host.textContent).toContain("Resaltar inicio de palabra");
     expect(host.textContent).toContain("Destaca el inicio de cada palabra para leer con más agilidad");
 
     expect(host.textContent).toContain("Dividir palabras largas");
@@ -127,7 +127,7 @@ describe("ThemeMenu", () => {
       }),
     );
 
-    // Switch 2: Guía visual de sílabas
+    // Switch 2: Resaltar inicio de palabra
     await act(async () => {
       switches[2].click();
     });

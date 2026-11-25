@@ -84,6 +84,9 @@ export interface SmartReaderDockProps {
   /** Presets cognitivos de 1 clic */
   activePreset: ReadingPreset;
   onSelectPreset: (preset: Exclude<ReadingPreset, "custom">) => void;
+  /** Interruptores del modo activo (Enfoque, Ritmo). */
+  modeOptions?: { id: string; label: string; checked: boolean }[];
+  onToggleModeOption?: (id: string) => void;
   onOpenAdvancedSettings: () => void;
 
   /** Acciones adicionales del modo lectura */
@@ -137,6 +140,8 @@ export default function SmartReaderDock({
   onExitPureCanvas,
   activePreset,
   onSelectPreset,
+  modeOptions,
+  onToggleModeOption,
   layout,
   onSelectLayout,
   onOpenAdvancedSettings,
@@ -498,7 +503,7 @@ export default function SmartReaderDock({
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelectPreset(preset.id as Exclude<ReadingPreset, "custom">);
-                      setIsModeSheetOpen(false);
+                      if (preset.id === "clean") setIsModeSheetOpen(false);
                     }}
                   >
                     <span className="reader-mode-card-icon" aria-hidden="true">
@@ -510,6 +515,23 @@ export default function SmartReaderDock({
                 );
               })}
             </div>
+            {activePreset === "custom" ? (
+              <p className="meta reader-mode-adjusted">Ajustado a tu gusto. Elige un modo para restablecerlo.</p>
+            ) : null}
+            {modeOptions && modeOptions.length > 0 ? (
+              <div className="reader-mode-options" role="group" aria-label="Opciones del modo">
+                {modeOptions.map((opt) => (
+                  <label key={opt.id} className="reader-mode-option">
+                    <input
+                      type="checkbox"
+                      checked={opt.checked}
+                      onChange={() => onToggleModeOption?.(opt.id)}
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
             {onSelectLayout ? (
               <div className="reader-mode-layout">
                 <div className="segmented" role="group" aria-label="Maquetación">

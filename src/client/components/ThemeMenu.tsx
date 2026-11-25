@@ -347,7 +347,7 @@ export function ThemeMenu({
 
       <div className="theme-row theme-row-toggle">
         <div className="theme-toggle-text">
-          <span className="theme-label">Guía visual de sílabas</span>
+          <span className="theme-label">Resaltar inicio de palabra</span>
           <span className="theme-toggle-hint">
             Destaca el inicio de cada palabra para leer con más agilidad
           </span>
@@ -355,7 +355,7 @@ export function ThemeMenu({
         <Toggle
           checked={Boolean(settings.bionicReading ?? settings.bionicAnchors)}
           onChange={(next) => handlePatch({ bionicReading: next, bionicAnchors: next })}
-          ariaLabel="Guía visual de sílabas"
+          ariaLabel="Resaltar inicio de palabra"
         />
       </div>
 

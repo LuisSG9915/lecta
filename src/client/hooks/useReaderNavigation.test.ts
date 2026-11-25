@@ -450,7 +450,7 @@ describe("useReaderPagination", () => {
     });
     expect(mocks.saveFocusTelemetryProfile).toHaveBeenCalled();
     expect(opts.showNotice).toHaveBeenCalledWith(
-      "¿Pasaje denso? Puedes activar la «Guía visual de sílabas» en el menú Aa.",
+      "¿Pasaje denso? Puedes activar la «Resaltar inicio de palabra» en el menú Aa.",
     );
   });
 });

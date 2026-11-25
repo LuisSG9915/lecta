@@ -332,6 +332,47 @@ describe("tokens.css", () => {
   });
 });
 
+describe("Enfoque y Ritmo: contraste efectivo", () => {
+  const tokens = readFileSync(resolve(__dirname, "tokens.css"), "utf-8");
+  const reader = readFileSync(resolve(__dirname, "reader.css"), "utf-8");
+  const themes = extractThemeBlocks(tokens);
+  const cssOpacity = (re: RegExp) => Number(re.exec(reader)?.[1]);
+
+  // Opacidad del párrafo no activo (Enfoque): color efectivo = tinta sobre papel.
+  const dim = {
+    papel: cssOpacity(/data-paragraph-focus\] li \{\s*opacity: ([\d.]+);/),
+    blanco: cssOpacity(/data-paragraph-focus\] li \{\s*opacity: ([\d.]+);/),
+    noche: cssOpacity(/\[data-theme="oled"\] \.book-content\[data-paragraph-focus\] li \{\s*opacity: ([\d.]+);/),
+    oled: cssOpacity(/\[data-theme="oled"\] \.book-content\[data-paragraph-focus\] li \{\s*opacity: ([\d.]+);/),
+  } as const;
+
+  it("el párrafo atenuado de Enfoque lee ≥ 4.5:1 en papel, blanco, noche y oled", () => {
+    for (const [name, opacity] of Object.entries(dim)) {
+      const ink = parseColor(themes[name]["--ink"])!;
+      const paper = parseColor(themes[name]["--paper"])!;
+      const eff = compositeOver({ ...ink, a: opacity }, { ...paper, a: 1 });
+      const ratio = contrastRatio(
+        relativeLuminance(eff.r, eff.g, eff.b),
+        relativeLuminance(paper.r, paper.g, paper.b),
+      );
+      expect(opacity, `opacidad en ${name}`).toBeGreaterThan(0);
+      expect(ratio, `${name} con opacidad ${opacity}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("el acento B de la guía cromática cumple AAA (7.5:1) en papel y blanco", () => {
+    for (const name of ["papel", "blanco"]) {
+      const b = parseColor(themes[name]["--chroma-anchor-b"])!;
+      const paper = parseColor(themes[name]["--paper"])!;
+      const ratio = contrastRatio(
+        relativeLuminance(b.r, b.g, b.b),
+        relativeLuminance(paper.r, paper.g, paper.b),
+      );
+      expect(ratio, name).toBeGreaterThanOrEqual(7.5);
+    }
+  });
+});
+
 describe("conectores sintácticos", () => {
   // «sin embargo», «no obstante»… se envuelven en [data-connector] para que
   // las anclas biónicas los salten, pero no responden a nada: un subrayado

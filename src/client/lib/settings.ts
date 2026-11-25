@@ -194,21 +194,21 @@ export const READING_PRESETS: ReaderModePresetConfig[] = [
     icon: "retreat",
     label: "Lectura Limpia",
     shortLabel: "Limpia",
-    description: "Editorial clásico sin ayudas visuales",
+    description: "Solo el texto, como un libro impreso",
   },
   {
     id: "adhd",
     icon: "sparkles",
-    label: "Enfoque TDAH",
+    label: "Enfoque",
     shortLabel: "Enfoque",
-    description: "Párrafo activo nítido + anclas de atención",
+    description: "Atenúa lo demás y deja nítido el párrafo que lees",
   },
   {
     id: "guided",
     icon: "strategy",
-    label: "Ritmo Guiado",
+    label: "Ritmo",
     shortLabel: "Ritmo",
-    description: "Frases cortas + guía cromática de alto contraste",
+    description: "Frases en pausas naturales y guía de color para no perder el renglón",
   },
 ];
 
@@ -533,7 +533,7 @@ export function applyReadingPreset(
         readingPreset: "adhd",
         strategyPreset: "adhd",
         paragraphFocus: true,
-        bionicAnchors: true,
+        bionicAnchors: false,
         focusRuler: false,
         syntacticLines: false,
         chromaticGuide: false,
@@ -577,12 +577,7 @@ export function detectActiveReadingPreset(settings: ReaderSettings): ReadingPres
   ) {
     return "clean";
   }
-  if (
-    settings.paragraphFocus &&
-    settings.bionicAnchors &&
-    !settings.syntacticLines &&
-    !settings.chromaticGuide
-  ) {
+  if (settings.paragraphFocus && !settings.syntacticLines && !settings.chromaticGuide) {
     return "adhd";
   }
   if (
@@ -593,10 +588,31 @@ export function detectActiveReadingPreset(settings: ReaderSettings): ReadingPres
   ) {
     return "guided";
   }
-  if (settings.strategyPreset === "clean" || settings.strategyPreset === "immersive") return "clean";
-  if (settings.strategyPreset === "adhd" || settings.strategyPreset === "focus") return "adhd";
-  if (settings.strategyPreset === "guided") return "guided";
+  // Sin recurrir a `strategyPreset`: si los interruptores ya no encajan con un
+  // modo, el modo está «ajustado» y la interfaz lo dice en vez de fingir.
   return "custom";
+}
+
+export interface ReadingPresetOption {
+  key: "paragraphFocus" | "bionicAnchors" | "chromaticGuide" | "visualPacer";
+  label: string;
+}
+
+/** Interruptores que cada modo expone en el popover de la luna. */
+export function readingPresetOptions(preset: ReadingPreset): ReadingPresetOption[] {
+  if (preset === "adhd") {
+    return [
+      { key: "paragraphFocus", label: "Atenuar lo demás" },
+      { key: "bionicAnchors", label: "Resaltar inicio de palabra (experimental)" },
+    ];
+  }
+  if (preset === "guided") {
+    return [
+      { key: "chromaticGuide", label: "Guía de color" },
+      { key: "visualPacer", label: "Marcapasos" },
+    ];
+  }
+  return [];
 }
 
 export function applyStrategyPreset(

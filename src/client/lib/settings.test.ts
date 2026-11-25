@@ -29,6 +29,8 @@ import {
   disablePrimingGlobally,
   setChapterPrimingMode,
   DEFAULT_CHAPTER_PRIMING_SETTINGS,
+  readingPresetOptions,
+  detectActiveReadingPreset,
 } from "./settings";
 
 describe("parseTheme", () => {
@@ -627,3 +629,32 @@ describe("ChapterPrimingSettings", () => {
 });
 
 
+
+describe("modos de lectura: detección y opciones", () => {
+  it("Enfoque ya no enciende el resaltado de palabra y sigue detectándose", () => {
+    const res = applyReadingPreset(READER_DEFAULTS, "adhd");
+    expect(res.bionicAnchors).toBe(false);
+    expect(detectActiveReadingPreset(res)).toBe("adhd");
+    expect(detectActiveReadingPreset({ ...res, bionicAnchors: true })).toBe("adhd");
+  });
+
+  it("apagar la atenuación de Enfoque no finge seguir en Enfoque", () => {
+    const res = applyReadingPreset(READER_DEFAULTS, "adhd");
+    expect(detectActiveReadingPreset({ ...res, paragraphFocus: false })).toBe("clean");
+    expect(
+      detectActiveReadingPreset({ ...res, paragraphFocus: false, bionicAnchors: true }),
+    ).toBe("custom");
+  });
+
+  it("cada modo expone solo sus interruptores", () => {
+    expect(readingPresetOptions("clean")).toEqual([]);
+    expect(readingPresetOptions("adhd").map((o) => o.key)).toEqual([
+      "paragraphFocus",
+      "bionicAnchors",
+    ]);
+    expect(readingPresetOptions("guided").map((o) => o.key)).toEqual([
+      "chromaticGuide",
+      "visualPacer",
+    ]);
+  });
+});

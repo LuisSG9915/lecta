@@ -119,19 +119,19 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     const popover = container.querySelector(".reader-mode-popover");
     expect(popover).not.toBeNull();
     expect(popover?.textContent).toContain("Lectura Limpia");
-    expect(popover?.textContent).toContain("Enfoque TDAH");
-    expect(popover?.textContent).toContain("Ritmo Guiado");
+    expect(popover?.textContent).toContain("Enfoque");
+    expect(popover?.textContent).toContain("Ritmo");
 
     // Sin onSelectLayout no hay segmentado
     expect(container.querySelector(".reader-mode-layout")).toBeNull();
 
-    // Seleccionar Enfoque TDAH
+    // Seleccionar Enfoque
     const adhdCard = container.querySelectorAll(".reader-mode-card")[1] as HTMLButtonElement;
     act(() => adhdCard.click());
     expect(onSelectPreset).toHaveBeenCalledWith("adhd");
 
-    // Reabrir y tocar personalizar opciones avanzadas
-    act(() => modeBtn.click());
+    // Enfoque deja el popover abierto (sus interruptores) y Limpia lo cierra
+    expect(container.querySelector(".reader-mode-popover")).not.toBeNull();
     const customizeBtn = container.querySelector(".reader-mode-customize-link") as HTMLButtonElement;
     expect(customizeBtn).not.toBeNull();
     act(() => customizeBtn.click());
