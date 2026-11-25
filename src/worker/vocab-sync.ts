@@ -251,6 +251,42 @@ vocabSync.put("/api/vocab", async (context) => {
   return context.json({ ok: true, upserted, serverTime: serverNow });
 });
 
+// Sonda de cambios (docs/designs/2026-11-24-sonda-de-cambios-sync.md): el
+// último synced_at por clave de cursor del cliente, en una sola sentencia.
+// El cliente salta el pull de una colección cuyo sello no pasa su cursor.
+// Sin filas, la clave no aparece (equivale a 0).
+vocabSync.get("/api/sync/changes", async (context) => {
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session)
+    return context.json({ error: "Inicia sesión para consultar sincronización." }, 401);
+
+  const rows = await withClient(context.env, (client) =>
+    client
+      .query<{ k: string; m: string | number | null }>(
+        `SELECT 'vocab:' || language AS k, max(synced_at) AS m
+           FROM lecta_user_words WHERE user_id = $1 GROUP BY language
+         UNION ALL SELECT 'annotations', max(synced_at) FROM lecta_user_annotations WHERE user_id = $1
+         UNION ALL SELECT 'activity', max(synced_at) FROM lecta_user_activity WHERE user_id = $1
+         UNION ALL SELECT 'reviews', max(synced_at) FROM lecta_user_reviews WHERE user_id = $1
+         UNION ALL SELECT 'positions', max(synced_at) FROM lecta_user_positions WHERE user_id = $1
+         UNION ALL SELECT 'knowledge', max(synced_at) FROM lecta_user_knowledge WHERE user_id = $1`,
+        [session.user.id],
+      )
+      .then((res) => res.rows),
+  );
+  if (rows === undefined)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+
+  const stamps: Record<string, number> = {};
+  for (const row of rows) {
+    const stamp = Number(row.m);
+    if (row.m !== null && Number.isFinite(stamp) && stamp > 0) stamps[String(row.k)] = stamp;
+  }
+  return context.json({ stamps, serverTime: Date.now() });
+});
+
 vocabSync.get("/api/sync/counts", async (context) => {
   if (!getConnectionString(context.env))
     return context.json({ error: "El almacenamiento no está configurado." }, 503);

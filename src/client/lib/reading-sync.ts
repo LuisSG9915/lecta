@@ -31,6 +31,7 @@ import {
   getSyncCursor,
   resetPullCursors,
 } from "./sync-cursors";
+import { canSkipPull } from "./sync-changes";
 import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
@@ -204,6 +205,8 @@ export async function syncAnnotations(scope?: DbScope) {
   let nextCursor: number | undefined;
   let allOk = true;
 
+  // Sonda de cambios: nada nuevo en el servidor → sin descarga y sin mover el cursor.
+  if (canSkipPull(bound.userId, "annotations", effectiveSince)) hasMore = false;
   while (hasMore && page < MAX_PAGES) {
     page++;
     let data: {
@@ -390,6 +393,8 @@ export async function syncActivity(scope?: DbScope) {
   let nextCursor: number | undefined;
   let allOk = true;
 
+  // Sonda de cambios: nada nuevo en el servidor → sin descarga y sin mover el cursor.
+  if (canSkipPull(bound.userId, "activity", effectiveSince)) hasMore = false;
   while (hasMore && page < MAX_PAGES) {
     page++;
     let data: {
@@ -570,6 +575,8 @@ export async function syncReviews(scope?: DbScope) {
   let nextCursor: number | undefined;
   let allOk = true;
 
+  // Sonda de cambios: nada nuevo en el servidor → sin descarga y sin mover el cursor.
+  if (canSkipPull(bound.userId, "reviews", effectiveSince)) hasMore = false;
   while (hasMore && page < MAX_PAGES) {
     page++;
     let data: {
@@ -766,6 +773,8 @@ export async function syncKnowledge(
   let nextCursor: number | undefined;
   let allOk = true;
 
+  // Sonda de cambios: nada nuevo en el servidor → sin descarga y sin mover el cursor.
+  if (canSkipPull(bound.userId, cursorKey, effectiveSince)) hasMore = false;
   while (hasMore && page < MAX_PAGES) {
     page++;
     let data: {

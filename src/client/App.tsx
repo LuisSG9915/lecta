@@ -113,6 +113,7 @@ import type {
 } from "./lib/subtitle-works";
 import type { SubtitleGuide } from "./components/SubtitleShelf";
 import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
+import { primeSyncChanges } from "./lib/sync-changes";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
 import { extractEpubMeta } from "../shared/epub-meta";
@@ -1270,19 +1271,23 @@ export default function App() {
       if (!isDbScopeActive(scope)) return;
       const fullSyncUserId = scope.userId;
       if (fullSyncUserId) void claimStarterCoat(fullSyncUserId, scope);
-      void syncSavedWords(scope)
+      // Sonda de cambios (docs/designs/2026-11-24-sonda-de-cambios-sync.md): cada
+      // colección salta su pull si el servidor no tiene nada nuevo. Van en serie
+      // para que sus escrituras no compitan por el candado de withResetGuard.
+      if (fullSyncUserId) await primeSyncChanges(fullSyncUserId, scope);
+      await syncSavedWords(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("words");
           else recordCollectionSyncFailure("words", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("words", e));
-      void syncAnnotations(scope)
+      await syncAnnotations(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("annotations");
           else recordCollectionSyncFailure("annotations", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("annotations", e));
-      void syncActivity(scope)
+      await syncActivity(scope)
         .then((pulled) => {
           if (pulled !== null) {
             recordCollectionSyncSuccess("activity");
@@ -1292,19 +1297,19 @@ export default function App() {
           }
         })
         .catch((e) => recordCollectionSyncFailure("activity", e));
-      void syncReviews(scope)
+      await syncReviews(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("reviews");
           else recordCollectionSyncFailure("reviews", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("reviews", e));
-      void syncCompanion(scope)
+      await syncCompanion(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("companion");
           else recordCollectionSyncFailure("companion", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("companion", e));
-      void syncKnowledge(scope)
+      await syncKnowledge(scope)
         .then((pulled) => {
           if (pulled !== null) {
             recordCollectionSyncSuccess("knowledge");
@@ -1314,7 +1319,7 @@ export default function App() {
           }
         })
         .catch((e) => recordCollectionSyncFailure("knowledge", e));
-      void syncPositions(scope)
+      await syncPositions(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("positions");
           else recordCollectionSyncFailure("positions", "Sync parcial o interrumpido");

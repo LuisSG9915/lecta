@@ -411,3 +411,50 @@ describe("PUT /api/vocab — sello de primera exposición", () => {
     expect(sql).toContain('presented_at AS "presentedAt"');
   });
 });
+
+describe("GET /api/sync/changes — sonda de cambios", () => {
+  beforeEach(() => {
+    queryMock.mockClear();
+  });
+
+  it("una sola sentencia devuelve el último synced_at por clave de cursor del cliente", async () => {
+    queryMock.mockImplementationOnce(async () => ({
+      rowCount: 4,
+      rows: [
+        { k: "vocab:es", m: "1700000000500" },
+        { k: "vocab:en", m: 1700000000100 },
+        { k: "positions", m: "1700000000900" },
+        { k: "annotations", m: null },
+      ],
+    }));
+    const res = await app.request("/api/sync/changes", {}, {});
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stamps: Record<string, number>; serverTime: number };
+    expect(body.stamps).toEqual({
+      "vocab:es": 1700000000500,
+      "vocab:en": 1700000000100,
+      positions: 1700000000900,
+    });
+    expect(typeof body.serverTime).toBe("number");
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    for (const table of [
+      "lecta_user_words",
+      "lecta_user_annotations",
+      "lecta_user_activity",
+      "lecta_user_reviews",
+      "lecta_user_positions",
+      "lecta_user_knowledge",
+    ]) {
+      expect(sql).toContain(table);
+    }
+    expect(sql).not.toContain("FOR UPDATE");
+    expect(params).toEqual(["u1"]);
+  });
+
+  it("sin sesión responde 401", async () => {
+    getSessionMock.mockResolvedValueOnce(null as never);
+    const res = await app.request("/api/sync/changes", {}, {});
+    expect(res.status).toBe(401);
+  });
+});

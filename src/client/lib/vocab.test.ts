@@ -7,7 +7,8 @@ import {
   type SavedWord,
 } from "./idb";
 import { pushWordsToServer, syncSavedWords } from "./vocab";
-import { clearSyncCursors, getSyncCursor } from "./sync-cursors";
+import { clearSyncCursors, getSyncCursor, setSyncCursor } from "./sync-cursors";
+import { clearSyncChanges, primeSyncChanges } from "./sync-changes";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -554,5 +555,51 @@ describe("cursor de push veraz", () => {
 
     // Y el cursor final tras completar todas las páginas ya no está en 25000 sino en 28000
     expect(getSyncCursor("u1", "vocab:es")).toBe(28000);
+  });
+});
+
+describe("syncSavedWords — sonda de cambios", () => {
+  afterEach(() => clearSyncChanges());
+
+  it("salta el idioma sin cambios sin mover su cursor aunque otro idioma traiga serverTime", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([word("a", "es"), word("b", "en")]);
+    setSyncCursor("u1", "vocab:es", 500);
+    setSyncCursor("u1", "vocab:en", 500);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ stamps: { "vocab:es": 900, "vocab:en": 400 } }), { status: 200 }),
+      )
+      .mockResolvedValue(new Response(JSON.stringify({ words: [], serverTime: 1000 }), { status: 200 }));
+    await primeSyncChanges("u1");
+
+    await syncSavedWords();
+
+    const gets = vi
+      .mocked(fetch)
+      .mock.calls.map((call) => String(call[0]))
+      .filter((url) => url.startsWith("/api/vocab"));
+    expect(gets.some((url) => url.includes("lang=es"))).toBe(true);
+    expect(gets.some((url) => url.includes("lang=en"))).toBe(false);
+    expect(getSyncCursor("u1", "vocab:en")).toBe(500);
+  });
+
+  it("un idioma que solo existe en el servidor entra a la cola por la sonda", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([word("a", "es")]);
+    setSyncCursor("u1", "vocab:es", 500);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ stamps: { "vocab:es": 400, "vocab:fr": 300 } }), { status: 200 }),
+      )
+      .mockResolvedValue(new Response(JSON.stringify({ words: [], serverTime: 1000 }), { status: 200 }));
+    await primeSyncChanges("u1");
+
+    await syncSavedWords();
+
+    const gets = vi
+      .mocked(fetch)
+      .mock.calls.map((call) => String(call[0]))
+      .filter((url) => url.startsWith("/api/vocab"));
+    expect(gets.some((url) => url.includes("lang=fr"))).toBe(true);
+    expect(gets.some((url) => url.includes("lang=es"))).toBe(false);
   });
 });

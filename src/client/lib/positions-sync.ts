@@ -14,6 +14,7 @@ import {
   getSyncCompoundCursor,
   getSyncCursor,
 } from "./sync-cursors";
+import { canSkipPull } from "./sync-changes";
 import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
@@ -138,6 +139,8 @@ export async function syncPositions(scope?: DbScope): Promise<{
   let nextCursor: number | undefined;
   let allOk = true;
 
+  // Sonda de cambios: nada nuevo en el servidor → sin descarga y sin mover el cursor.
+  if (canSkipPull(bound.userId, "positions", effectiveSince)) hasMore = false;
   while (hasMore && page < MAX_PAGES) {
     page++;
     let data: {

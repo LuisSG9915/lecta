@@ -18,6 +18,7 @@ import {
   getSyncCompoundCursor,
   getSyncCursor,
 } from "./sync-cursors";
+import { canSkipPull, syncChangeLanguages } from "./sync-changes";
 import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
@@ -118,6 +119,10 @@ export async function syncSavedWords(scope?: DbScope) {
     }
   }
 
+  // Un idioma que solo existe en el servidor lo descubría el pull de otro
+  // idioma; si la sonda salta ese pull, lo trae la propia sonda.
+  for (const lang of syncChangeLanguages(bound.userId)) initialLanguages.add(lang);
+
   const queue = Array.from(initialLanguages);
   const processedLanguages = new Set<string>();
 
@@ -149,6 +154,11 @@ export async function syncSavedWords(scope?: DbScope) {
     let langOk = true;
     let langNextCursor: number | undefined;
 
+    // Sonda de cambios: nada nuevo para este idioma → sin descarga. `maxUpdated`
+    // es compartido entre idiomas, así que el cursor de un idioma saltado no
+    // se mueve (ver finalLangCursor).
+    const skipped = canSkipPull(bound.userId, `vocab:${language}`, effectiveSince);
+    if (skipped) hasMore = false;
     while (hasMore && page < MAX_PAGES) {
       page++;
       let pageData: {
@@ -274,7 +284,7 @@ export async function syncSavedWords(scope?: DbScope) {
       }
     }
 
-    const finalLangCursor = hasMore ? currentSince : (langNextCursor ?? maxUpdated);
+    const finalLangCursor = skipped ? 0 : hasMore ? currentSince : (langNextCursor ?? maxUpdated);
     if (finalLangCursor > 0) {
       advanceSyncCursor(bound.userId, `vocab:${language}`, finalLangCursor);
     }

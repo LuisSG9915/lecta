@@ -21,6 +21,7 @@ import {
   pushActivityToServer,
   pushKnowledgeToServer,
   pushReviewsToServer,
+  syncActivity,
   syncAnnotations,
   syncKnowledge,
   syncReviews,
@@ -30,6 +31,7 @@ import {
 } from "./reading-sync";
 import { pushPositionsToServer, syncPositions } from "./positions-sync";
 import { clearSyncCursors, getSyncCursor, setSyncCursor } from "./sync-cursors";
+import { clearSyncChanges, primeSyncChanges } from "./sync-changes";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -153,6 +155,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearSyncChanges();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -1192,3 +1195,45 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
   });
 });
 
+
+describe("sonda de cambios: pull saltado sin mover el cursor", () => {
+  const cases = [
+    { key: "annotations", path: "/api/annotations", run: () => syncAnnotations(), local: () => annotation("a1", { updatedAt: 600 }), list: "listAllAnnotations" },
+    { key: "reviews", path: "/api/reviews", run: () => syncReviews(), local: () => ({ ...review("r1"), createdAt: 600 }), list: "listAllReviews" },
+    { key: "positions", path: "/api/positions", run: () => syncPositions(), local: () => position("b1", { updatedAt: 600 }), list: "listPositions" },
+    { key: "knowledge", path: "/api/knowledge", run: () => syncKnowledge(), local: () => known("perenne", { updatedAt: 600 }), list: "listAllKnowledge" },
+    { key: "activity", path: "/api/activity", run: () => syncActivity(), local: () => interval("i1"), list: "listIntervals" },
+  ] as const;
+
+  for (const c of cases) {
+    it(`${c.key}: sin cambios en el servidor no descarga y el cursor queda igual`, async () => {
+      const idb = (await import("./idb")) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+      idb[c.list].mockResolvedValue([c.local()]);
+      setSyncCursor("u1", c.key, 500);
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ stamps: { [c.key]: 400 } }), { status: 200 }),
+      );
+      await primeSyncChanges("u1");
+
+      await c.run();
+
+      const gets = vi
+        .mocked(fetch)
+        .mock.calls.filter((call) => String(call[0]).startsWith(c.path) && !call[1]?.method);
+      expect(gets).toHaveLength(0);
+      expect(getSyncCursor("u1", c.key)).toBe(500);
+    });
+  }
+
+  it("con un sello posterior al cursor sí descarga", async () => {
+    const { listAllAnnotations } = await import("./idb");
+    vi.mocked(listAllAnnotations).mockResolvedValue([annotation("a1", { updatedAt: 100 })]);
+    setSyncCursor("u1", "annotations", 500);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ stamps: { annotations: 501 } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ annotations: [], serverTime: 700 }), { status: 200 }));
+    await primeSyncChanges("u1");
+    await syncAnnotations();
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe("/api/annotations?since=500");
+  });
+});
