@@ -820,6 +820,13 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
   `ON DELETE CASCADE`.
 - IndexedDB separado por cuenta (`lecta` anónimo, `lecta:u:<id>` por usuario);
   al entrar sesión migra lo anónimo a la cuenta.
+- **Cuentas de prueba en prod**: `pnpm smoke:auth` sin `SMOKE_AUTH_A/B_*` crea parejas
+  `a-<ts>@smoke.test` / `b-<ts>@smoke.test` sin verificar. El 2026-11-24 se borraron de `lecta`
+  las 47 sin verificar con `@smoke.test` o `@example.com` (con autorización de Luis): todas las
+  tablas con `user_id`/`userId` en una transacción, luego `"user"`, y en R2 el único EPUB y su
+  portada (`books/OEd5gD…`, `covers/OEd5gD…`). Quedan 2 sin verificar a propósito: un
+  fundador real (id `JCkHNe…`) y la cuenta de respaldo de Luis (id `RwVOX7…`). Al contar usuarios
+  reales, excluir `@smoke.test`, además de `@example.com` y `smoke%`.
 
 ## Datos
 
