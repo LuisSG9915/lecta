@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 
 describe("consumeFreeAiCourtesy", () => {
-  it("hace el UPSERT atómico con scope free-courtesy, tope 5 y bucket mensual", async () => {
+  it("hace el UPSERT atómico con scope free-courtesy, tope 3 y bucket diario", async () => {
     const query = useQuery(() => ({ rows: [{ units_used: 1 }] }));
     expect(await consumeFreeAiCourtesy({}, "u1", NOW)).toBe(true);
     const [sql, params] = query.mock.calls[0];
@@ -37,7 +37,7 @@ describe("consumeFreeAiCourtesy", () => {
     expect(params[1]).toBe(courtesyBucketHour(NOW));
     expect(params[2]).toBe(1);
     expect(params[4]).toBe("free-courtesy");
-    expect(params[5]).toBe(5);
+    expect(params[5]).toBe(3);
   });
 
   it("RETURNING vacío = agotada", async () => {
@@ -86,9 +86,9 @@ describe("refundFreeAiCourtesy", () => {
 describe("readFreeAiRemaining", () => {
   const client = (impl: () => unknown) => ({ query: vi.fn(async () => impl()) });
 
-  it("sin fila = 5; con uso resta; nunca negativo", async () => {
-    expect(await readFreeAiRemaining(client(() => ({ rows: [] })), "u1", NOW)).toBe(5);
-    expect(await readFreeAiRemaining(client(() => ({ rows: [{ units_used: "2" }] })), "u1", NOW)).toBe(3);
+  it("sin fila = 3; con uso resta; nunca negativo", async () => {
+    expect(await readFreeAiRemaining(client(() => ({ rows: [] })), "u1", NOW)).toBe(3);
+    expect(await readFreeAiRemaining(client(() => ({ rows: [{ units_used: "2" }] })), "u1", NOW)).toBe(1);
     expect(await readFreeAiRemaining(client(() => ({ rows: [{ units_used: 8 }] })), "u1", NOW)).toBe(0);
   });
 

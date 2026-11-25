@@ -1,6 +1,6 @@
-// Cortesía de IA para cuentas free (decisión cerrada 2026-11): 5 consultas al
-// mes calendario UTC, contadas en `lecta_ai_quota` con scope "free-courtesy"
-// y un bucket_hour fijo por mes. Sin migración. Falla CERRADA: si la tabla o
+// Cortesía de IA para cuentas free: 3 consultas al día UTC (2026-11-24; antes
+// 5 al mes), contadas en `lecta_ai_quota` con scope "free-courtesy" y un
+// bucket_hour fijo por día. Sin migración. Falla CERRADA: si la tabla o
 // una columna faltan (42P01/42703) o no hay base, quedan 0 restantes.
 import {
   FREE_AI_COURTESY_LIMIT,
@@ -58,7 +58,7 @@ export async function refundFreeAiCourtesy(
 
 type QueryClient = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
 
-/** Restantes este mes con un cliente ya abierto; sin tabla → 0 (cerrada). */
+/** Restantes hoy con un cliente ya abierto; sin tabla → 0 (cerrada). */
 export async function readFreeAiRemaining(
   client: QueryClient,
   userId: string,

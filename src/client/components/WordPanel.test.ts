@@ -404,7 +404,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(host.querySelector(".btn--explain-passage")).toBeNull();
     expect(explainInPassage).not.toHaveBeenCalled();
     expect(host.querySelector(".plan-note")?.textContent).toContain(
-      "Se acabaron tus usos de IA de cortesía este mes.",
+      "Se acabaron tus usos de IA de cortesía de hoy. Mañana tienes 3 más.",
     );
     // El significado del diccionario sigue a la vista.
     expect(host.textContent).toContain("De corta duración.");
@@ -426,7 +426,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       }),
     );
     await flush();
-    expect(host.textContent).toContain("Te quedan 3 usos de IA de cortesía.");
+    expect(host.textContent).toContain("Te quedan 3 usos de IA de cortesía hoy.");
     await act(async () => {
       click(host.querySelector<HTMLButtonElement>(".btn--explain-passage")!);
     });

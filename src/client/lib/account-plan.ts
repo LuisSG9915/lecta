@@ -3,7 +3,7 @@
 // mismo, y solo App escribe (tras checkRemoteReset, en runFullSync y en el
 // sondeo de ?carne=1). `null` = desconocido: sin notas ni llamadas premium.
 import { useSyncExternalStore } from "react";
-import { isStarterCoat, normalizePlan, type UserPlan } from "../../shared/plan";
+import { hasLectaPlus, isStarterCoat, normalizePlan, type UserPlan } from "../../shared/plan";
 import type { CompanionCoatId } from "../../shared/companion-data";
 import { accountFetch } from "./account-fetch";
 import { getActiveUserId, loadSessionValue, saveSessionValue, type DbScope } from "./idb";
@@ -12,10 +12,10 @@ export type PlanSnapshot = {
   plan: UserPlan;
   starterCoat: CompanionCoatId | null;
   expiresAt: number | null;
-  /** Usos de IA de cortesía que le quedan este mes a una cuenta gratis. */
+  /** Usos de IA de cortesía que le quedan hoy a una cuenta gratis. */
   freeAiRemaining?: number;
-  /** La cuenta aún puede estrenar la prueba de 7 días de Lecta+. */
-  trialEligible?: boolean;
+  /** Fin de la prueba inversa de Lecta+ (ms); null/ausente si no está en prueba. */
+  trialEndsAt?: number | null;
 };
 
 const planKey = (userId: string) => `account:plan:v1:${userId}`;
@@ -54,25 +54,30 @@ export function useUserPlan(): PlanSnapshot | null {
  * Convierte el cuerpo de GET /api/account/state en un snapshot. Sin `plan`
  * (el servidor lo omite ante un error) devuelve null: se conserva la caché.
  */
-export function planFromAccountState(body: unknown): PlanSnapshot | null {
+export function planFromAccountState(body: unknown, now = Date.now()): PlanSnapshot | null {
   if (!body || typeof body !== "object") return null;
   const data = body as {
     plan?: unknown;
     starterCoat?: unknown;
     planExpiresAt?: unknown;
     freeAiRemaining?: unknown;
-    trialEligible?: unknown;
+    trialEndsAt?: unknown;
   };
   if (typeof data.plan !== "string") return null;
   const expires = Number(data.planExpiresAt);
+  const trialEnd = typeof data.trialEndsAt === "number" && Number.isFinite(data.trialEndsAt)
+    ? data.trialEndsAt
+    : null;
+  // Una prueba ya terminada (caché leída sin red) vale como free.
+  const trialOver = trialEnd !== null && trialEnd <= now;
   return {
-    plan: normalizePlan(data.plan),
+    plan: trialOver ? "free" : normalizePlan(data.plan),
     starterCoat: isStarterCoat(data.starterCoat) ? data.starterCoat : null,
     expiresAt: data.planExpiresAt == null || !Number.isFinite(expires) ? null : expires,
     ...(typeof data.freeAiRemaining === "number" && Number.isFinite(data.freeAiRemaining)
       ? { freeAiRemaining: Math.max(0, Math.floor(data.freeAiRemaining)) }
       : {}),
-    ...(typeof data.trialEligible === "boolean" ? { trialEligible: data.trialEligible } : {}),
+    ...("trialEndsAt" in data ? { trialEndsAt: trialOver ? null : trialEnd } : {}),
   };
 }
 
@@ -101,7 +106,7 @@ export async function savePlan(userId: string, body: unknown, scope?: DbScope): 
         starterCoat: snapshot.starterCoat,
         planExpiresAt: snapshot.expiresAt,
         freeAiRemaining: snapshot.freeAiRemaining,
-        trialEligible: snapshot.trialEligible,
+        trialEndsAt: snapshot.trialEndsAt,
       }),
       scope,
     );
@@ -137,7 +142,8 @@ export async function pollPlanUntilPlus(
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   for (let waited = 0; waited <= timeout; waited += interval) {
     const snapshot = await refreshPlan(userId, scope);
-    if (snapshot?.plan === "lecta_plus" || snapshot?.plan === "founder_lifetime") return true;
+    // La prueba inversa ya es lecta_plus: hay que esperar a la suscripción.
+    if (snapshot && hasLectaPlus(snapshot.plan) && !snapshot.trialEndsAt) return true;
     if (waited + interval > timeout) break;
     await sleep(interval);
   }

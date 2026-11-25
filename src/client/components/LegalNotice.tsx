@@ -158,8 +158,8 @@ export default function LegalNotice({
               Lecta+ es una suscripción mensual o anual que se cobra por adelantado a través de Stripe y se renueva
               sola al final de cada periodo. Puedes cancelarla cuando quieras desde «Tú» → «Administrar suscripción»;
               conservas Lecta+ hasta el final del periodo ya pagado y no se vuelve a cobrar. Los cobros ya realizados
-              no se reembolsan, salvo en los casos que exija la Ley Federal de Protección al Consumidor. Si tu cuenta
-              incluye una prueba gratuita de 7 días y cancelas antes de que termine, no se te cobra nada.
+              no se reembolsan, salvo en los casos que exija la Ley Federal de Protección al Consumidor. Las cuentas
+              nuevas tienen 14 días de prueba de Lecta+ sin tarjeta: al terminar vuelven a Gratis sin ningún cargo.
             </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Avisos de derechos de autor</h4>
             <p>

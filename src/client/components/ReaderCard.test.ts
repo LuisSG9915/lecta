@@ -75,11 +75,19 @@ describe("ReaderCard (Carné de Lector)", () => {
     expect(host.querySelector(".reader-card")).toBeNull();
   });
 
-  it("trialEligible etiqueta «7 días gratis» y sin elegibilidad no", () => {
-    render({ plan: "free", starterCoat: null, expiresAt: null, trialEligible: true });
-    expect(host.textContent).toContain("7 días gratis");
-    render({ plan: "free", starterCoat: null, expiresAt: null, trialEligible: false });
-    expect(host.textContent).not.toContain("7 días gratis");
+  it("en prueba inversa: días que quedan, fecha de fin y botón de pago, sin portal", () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 11, 1, 12) });
+    try {
+      render({ plan: "lecta_plus", starterCoat: null, expiresAt: null, trialEndsAt: Date.UTC(2026, 11, 4, 12) });
+      expect(host.textContent).toContain("Prueba de Lecta+ · quedan 3 días");
+      expect(host.textContent).toContain("sin ningún cargo");
+      expect(host.querySelector(".reader-card__periods")).not.toBeNull();
+      expect(host.textContent).toContain("Hacerme Lecta+");
+      expect(host.textContent).not.toContain("Administrar suscripción");
+      expect(host.textContent).not.toContain("7 días gratis");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("vuelta de Checkout: aviso de éxito con badge de prueba y aviso sin cargos", () => {
@@ -91,7 +99,7 @@ describe("ReaderCard (Carné de Lector)", () => {
         }),
       ),
     );
-    expect(host.textContent).toContain("Prueba activa de Lecta+");
+    expect(host.textContent).toContain("Lecta+ ya está activo");
     act(() =>
       root.render(
         h(ReaderCard, { plan: { plan: "free", starterCoat: null, expiresAt: null }, notice: "cancelado" }),

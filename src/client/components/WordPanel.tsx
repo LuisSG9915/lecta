@@ -133,7 +133,7 @@ export interface UnifiedWordPanelProps {
   canExplain?: boolean;
   /** Cuenta free: la IA en contexto es de Lecta+ y se muestra PlanNote. */
   planLocked?: boolean;
-  /** Usos de IA de cortesía restantes del mes (solo cuentas free). */
+  /** Usos de IA de cortesía restantes de hoy (solo cuentas free). */
   freeAiRemaining?: number;
   isSavedInitial?: boolean;
   sections?: SearchSection[];
@@ -1370,7 +1370,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
 
               {planNoteShown || (planLocked && freeAiRemaining === 0) ? (
                 <PlanNote
-                  title="Se acabaron tus usos de IA de cortesía este mes."
+                  title="Se acabaron tus usos de IA de cortesía de hoy. Mañana tienes 3 más."
                   detail="El significado de arriba siempre es tuyo; la explicación en contexto es de Lecta+."
                 />
               ) : !aiAllowed ? (
@@ -1400,7 +1400,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   </button>
                   {planLocked && typeof freeAiRemaining === "number" && freeAiRemaining > 0 ? (
                     <p className="word-card-context-fallback">
-                      Te quedan {freeAiRemaining} {freeAiRemaining === 1 ? "uso" : "usos"} de IA de cortesía.
+                      Te quedan {freeAiRemaining} {freeAiRemaining === 1 ? "uso" : "usos"} de IA de cortesía hoy.
                     </p>
                   ) : null}
                 </div>

@@ -15,6 +15,8 @@ const PRICES: Record<Period, { label: string; price: string; note: string }> = {
   yearly: { label: "Anual", price: "$499 MXN al año", note: "Son $42 al mes." },
 };
 
+const DAY_MS = 86_400_000;
+
 const dateLabel = (ms: number) =>
   new Date(ms).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
 
@@ -32,6 +34,8 @@ export default function ReaderCard({
   const [period, setPeriod] = useState<Period>("yearly");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Hora del montaje: basta para contar días y mantiene puro el render.
+  const [mountedAt] = useState(() => Date.now());
 
   const go = async (path: string, body?: unknown) => {
     setBusy(true);
@@ -64,14 +68,17 @@ export default function ReaderCard({
   };
 
   if (!plan) return null;
-  const paid = plan.plan === "lecta_plus";
+  // Prueba inversa: Lecta+ sin pago, con opción de suscribirse.
+  const trialEndsAt = plan.plan === "lecta_plus" && plan.trialEndsAt ? plan.trialEndsAt : null;
+  const paid = plan.plan === "lecta_plus" && trialEndsAt === null;
+  const daysLeft = trialEndsAt === null ? 0 : Math.max(1, Math.ceil((trialEndsAt - mountedAt) / DAY_MS));
 
   return (
     <section className="reader-card" aria-label="Carné de Lector">
       <p className="eyebrow">Carné de Lector</p>
       {notice === "gracias" && paid ? (
         <p role="status" className="status">
-          ¡Gracias! Tu prueba de Lecta+ ya está activa.
+          ¡Gracias! Lecta+ ya está activo.
         </p>
       ) : notice === "gracias" ? (
         <p role="status" className="status">
@@ -89,10 +96,10 @@ export default function ReaderCard({
             Llegaste antes de que existiera el cobro: Lecta+ es tuyo para siempre.
           </p>
         </>
-      ) : plan.plan === "lecta_plus" ? (
+      ) : paid ? (
         <>
           <strong className="reader-card__state">
-            {notice === "gracias" ? "Prueba activa de Lecta+" : "Suscriptor Lecta+"}
+            {notice === "gracias" ? "Lecta+ ya está activo" : "Suscriptor Lecta+"}
           </strong>
           {plan.expiresAt ? (
             <p className="reader-card__detail">Se renueva el {dateLabel(plan.expiresAt)}.</p>
@@ -103,10 +110,24 @@ export default function ReaderCard({
         </>
       ) : (
         <>
-          <strong className="reader-card__state">Lector de Cuaderno Abierto</strong>
-          <p className="reader-card__detail">
-            Lecta+ suma Kindle, explicaciones con IA, palabras previstas y tus libros en la nube.
-          </p>
+          {trialEndsAt !== null ? (
+            <>
+              <strong className="reader-card__state">
+                Prueba de Lecta+ · {daysLeft === 1 ? "queda 1 día" : `quedan ${daysLeft} días`}
+              </strong>
+              <p className="reader-card__detail">
+                El {dateLabel(trialEndsAt)} vuelves a Gratis sin ningún cargo. Tus palabras, tu gato y
+                tu lectura se quedan.
+              </p>
+            </>
+          ) : (
+            <>
+              <strong className="reader-card__state">Lector de Cuaderno Abierto</strong>
+              <p className="reader-card__detail">
+                Lecta+ suma Kindle, explicaciones con IA, palabras previstas y tus libros en la nube.
+              </p>
+            </>
+          )}
           <div className="reader-card__periods" role="group" aria-label="Periodo de pago">
             {(Object.keys(PRICES) as Period[]).map((key) => (
               <button
@@ -128,7 +149,7 @@ export default function ReaderCard({
             disabled={busy}
             onClick={() => void go("/api/billing/checkout", { period })}
           >
-            {plan.trialEligible ? "Hacerme Lecta+ · 7 días gratis" : "Hacerme Lecta+"}
+            Hacerme Lecta+
           </button>
         </>
       )}

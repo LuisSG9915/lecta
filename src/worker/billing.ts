@@ -129,7 +129,8 @@ billing.post("/api/billing/checkout", async (c) => {
   if (!plan || plan.degraded) {
     return c.json({ error: "Servicio temporalmente no disponible" }, 503);
   }
-  if (hasLectaPlus(plan.plan)) {
+  // La prueba inversa da Lecta+ sin pago: durante ella sí se puede suscribir.
+  if (hasLectaPlus(plan.plan) && plan.trialEndsAt === null) {
     return c.json({ error: "Tu cuenta ya tiene Lecta+." }, 409);
   }
   const price = period === "monthly" ? c.env.STRIPE_PRICE_MONTHLY_ID : c.env.STRIPE_PRICE_YEARLY_ID;
@@ -146,10 +147,9 @@ billing.post("/api/billing/checkout", async (c) => {
     success_url: `${origin}/?carne=gracias`,
     cancel_url: `${origin}/?carne=cancelado`,
   };
+  // Sin prueba de Stripe: toda cuenta ya tuvo 14 días de prueba inversa
+  // (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md).
   if (plan.stripeCustomerId) form.customer = plan.stripeCustomerId;
-  // Prueba de 7 días solo para quien nunca fue cliente (mismo criterio que
-  // `trialEligible` en /api/account/state): free y sin stripe_customer_id.
-  else form["subscription_data[trial_period_days]"] = "7";
   const result = await stripeRequest(c.env, "POST", "/checkout/sessions", form);
   const url = typeof result.body.url === "string" ? result.body.url : null;
   if (!result.ok || !url) {

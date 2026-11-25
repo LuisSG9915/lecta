@@ -60,10 +60,10 @@ account.get("/api/account/state", async (context) => {
           plan: snapshot.plan,
           starterCoat: snapshot.starterCoat,
           planExpiresAt: snapshot.expiresAt,
-          // Cortesía de IA de este mes (UTC); null = sin tope (Lecta+/fundador).
+          // Cortesía de IA de hoy (UTC); null = sin tope (Lecta+, prueba, fundador).
           freeAiRemaining: freeAiLeft,
-          // Prueba de 7 días disponible: plan free y nunca fue cliente en Stripe.
-          trialEligible: snapshot.plan === "free" && !snapshot.stripeCustomerId,
+          // Fin de la prueba inversa en curso; null si no está en prueba.
+          trialEndsAt: snapshot.trialEndsAt,
         }
       : {}),
   });

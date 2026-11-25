@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { PLAN_GRACE_MS } from "../shared/plan";
+import { PLAN_GRACE_MS, REVERSE_TRIAL_MS } from "../shared/plan";
 import { getUserPlan, loadUserPlan, setStarterCoat, upsertPlanFromStripe } from "./plan-store";
 
 const missingTable = Object.assign(new Error("relation does not exist"), { code: "42P01" });
@@ -27,6 +27,37 @@ describe("getUserPlan", () => {
     expect((await getUserPlan(enGracia, "u1", { now })).plan).toBe("lecta_plus");
   });
 
+  describe("prueba inversa", () => {
+    const created = Date.UTC(2026, 11, 3);
+    const ends = created + REVERSE_TRIAL_MS;
+
+    it("una cuenta free dentro de sus 14 días tiene lecta_plus con trialEndsAt, en una sola consulta", async () => {
+      const client = clientWith(() => ({ rows: [{ plan: null, user_created_at: String(created) }] }));
+      const snap = await getUserPlan(client, "u1", { now: created + 1000 });
+      expect(snap).toMatchObject({ plan: "lecta_plus", trialEndsAt: ends, expiresAt: null });
+      expect(client.query).toHaveBeenCalledTimes(1);
+      expect(client.query.mock.calls[0][0]).toContain('"createdAt"');
+    });
+
+    it("el día 15 vuelve a free sin gracia", async () => {
+      const client = clientWith(() => ({ rows: [{ plan: "free", user_created_at: created }] }));
+      const snap = await getUserPlan(client, "u1", { now: ends + 1 });
+      expect(snap).toMatchObject({ plan: "free", trialEndsAt: null });
+    });
+
+    it("un fundador o un suscriptor vigente no está en prueba", async () => {
+      const founder = clientWith(() => ({ rows: [{ plan: "founder_lifetime", user_created_at: created }] }));
+      expect(await getUserPlan(founder, "u1", { now: created + 1 })).toMatchObject({
+        plan: "founder_lifetime",
+        trialEndsAt: null,
+      });
+      const paid = clientWith(() => ({
+        rows: [{ plan: "lecta_plus", plan_expires_at: ends + 30 * 86_400_000, user_created_at: created }],
+      }));
+      expect((await getUserPlan(paid, "u1", { now: created + 1 })).trialEndsAt).toBeNull();
+    });
+  });
+
   it("lecta_plus vencido más allá de la gracia devuelve free", async () => {
     const client = clientWith(() => ({
       rows: [{ plan: "lecta_plus", plan_expires_at: now - PLAN_GRACE_MS - 1 }],
@@ -52,6 +83,7 @@ describe("getUserPlan", () => {
       expiresAt: null,
       stripeCustomerId: "cus_1",
       stripeSubscriptionId: "sub_1",
+      trialEndsAt: null,
       degraded: false,
     });
   });

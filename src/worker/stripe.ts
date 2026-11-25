@@ -60,6 +60,9 @@ export async function cancelBillingForDeletion(
 ): Promise<void> {
   const plan = await loadUserPlan(env, userId);
   if (!plan?.stripeSubscriptionId) return;
-  if (plan.plan === "free" && plan.expiresAt !== null && plan.expiresAt < nowMs) return;
+  // Periodo vencido: la fila ya es free (en prueba inversa sale lecta_plus
+  // con trialEndsAt, pero la suscripción igual terminó).
+  const lapsed = plan.plan === "free" || plan.trialEndsAt !== null;
+  if (lapsed && plan.expiresAt !== null && plan.expiresAt < nowMs) return;
   await cancelSubscriptionForDeletion(env, plan.stripeSubscriptionId);
 }

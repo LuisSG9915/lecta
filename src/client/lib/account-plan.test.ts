@@ -53,12 +53,12 @@ describe("account-plan", () => {
     ).toEqual({ plan: "lecta_plus", starterCoat: null, expiresAt: 9 });
   });
 
-  it("lee freeAiRemaining y trialEligible del estado y los descuenta/agota", async () => {
+  it("lee freeAiRemaining y trialEndsAt del estado y los descuenta/agota", async () => {
     expect(
-      planFromAccountState({ plan: "free", freeAiRemaining: 5, trialEligible: true }),
-    ).toEqual({ plan: "free", starterCoat: null, expiresAt: null, freeAiRemaining: 5, trialEligible: true });
+      planFromAccountState({ plan: "free", freeAiRemaining: 3, trialEndsAt: null }),
+    ).toEqual({ plan: "free", starterCoat: null, expiresAt: null, freeAiRemaining: 3, trialEndsAt: null });
     expect(planFromAccountState({ plan: "free", freeAiRemaining: "x" })?.freeAiRemaining).toBeUndefined();
-    await savePlan("u1", { plan: "free", freeAiRemaining: 2, trialEligible: false });
+    await savePlan("u1", { plan: "free", freeAiRemaining: 2, trialEndsAt: null });
     setFreeAiRemaining(null);
     expect(planStore.get()?.freeAiRemaining).toBe(1);
     setFreeAiRemaining(0);
@@ -144,6 +144,28 @@ describe("account-plan", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     expect(await claimStarterCoat("u1", undefined)).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("una prueba inversa ya terminada (p. ej. en la caché sin red) cuenta como free", () => {
+    const now = Date.UTC(2026, 11, 20);
+    expect(planFromAccountState({ plan: "lecta_plus", trialEndsAt: now - 1 }, now)).toMatchObject({
+      plan: "free",
+      trialEndsAt: null,
+    });
+    expect(planFromAccountState({ plan: "lecta_plus", trialEndsAt: now + 1 }, now)).toMatchObject({
+      plan: "lecta_plus",
+      trialEndsAt: now + 1,
+    });
+  });
+
+  it("pollPlanUntilPlus no se detiene por la prueba inversa: espera la suscripción", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ plan: "lecta_plus", trialEndsAt: Date.now() + 86_400_000 }))
+      .mockResolvedValueOnce(jsonResponse({ plan: "lecta_plus", trialEndsAt: null }));
+    const sleep = vi.fn(async () => undefined);
+    expect(await pollPlanUntilPlus("u1", undefined, { sleep })).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("pollPlanUntilPlus se detiene al ver lecta_plus", async () => {

@@ -302,7 +302,7 @@ describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () =>
     expect(((await res.json()) as { plan: string }).plan).toBe("free");
   });
 
-  it("account/state free: freeAiRemaining = 5 menos lo usado este mes y trialEligible", async () => {
+  it("account/state free: freeAiRemaining = 3 menos lo usado hoy, sin prueba", async () => {
     await mockSession();
     await mockDb((sql, params) => {
       if (sql.includes("lecta_ai_quota")) {
@@ -312,7 +312,8 @@ describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () =>
       return { rows: [] };
     });
     const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ plan: "free", freeAiRemaining: 3, trialEligible: true });
+    expect(body).toMatchObject({ plan: "free", freeAiRemaining: 1, trialEndsAt: null });
+    expect(body).not.toHaveProperty("trialEligible");
   });
 
   it("account/state free sin tabla de cuota: 0 restantes (cerrada)", async () => {
@@ -325,15 +326,16 @@ describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () =>
     expect(body.freeAiRemaining).toBe(0);
   });
 
-  it("account/state free con stripe_customer_id: trialEligible false", async () => {
+  it("account/state en prueba inversa: lecta_plus con trialEndsAt y sin cortesía", async () => {
     await mockSession();
-    await mockDb((sql) =>
-      sql.includes("lecta_user_plan")
-        ? { rows: [{ plan: "free", stripe_customer_id: "cus_1" }] }
-        : { rows: [] },
+    const created = Date.now() - 86_400_000;
+    const query = await mockDb((sql) =>
+      sql.includes("lecta_user_plan") ? { rows: [{ plan: null, user_created_at: created }] } : { rows: [] },
     );
     const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
-    expect(body.trialEligible).toBe(false);
+    expect(body).toMatchObject({ plan: "lecta_plus", freeAiRemaining: null });
+    expect(typeof body.trialEndsAt).toBe("number");
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("lecta_ai_quota"))).toBe(false);
   });
 
   it("account/state Lecta+/fundador: freeAiRemaining null, sin consultar la cuota", async () => {
@@ -344,7 +346,7 @@ describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () =>
         : { rows: [] },
     );
     const body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ freeAiRemaining: null, trialEligible: false });
+    expect(body).toMatchObject({ freeAiRemaining: null, trialEndsAt: null });
     expect(query.mock.calls.some(([sql]) => String(sql).includes("lecta_ai_quota"))).toBe(false);
   });
 

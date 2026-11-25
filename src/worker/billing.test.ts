@@ -37,6 +37,7 @@ const plan = (over: Record<string, unknown> = {}) => ({
   expiresAt: null,
   stripeCustomerId: null,
   stripeSubscriptionId: null,
+  trialEndsAt: null,
   degraded: false,
   ...over,
 });
@@ -155,10 +156,10 @@ describe("POST /api/billing/checkout", () => {
   });
 });
 
-describe("prueba de 7 días", () => {
-  it("free sin stripe_customer_id lleva trial_period_days=7", async () => {
+describe("prueba inversa (sin prueba de Stripe)", () => {
+  it("durante la prueba se puede pagar y el checkout no lleva trial_period_days", async () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
-    loadUserPlanMock.mockResolvedValue(plan());
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "lecta_plus", trialEndsAt: Date.now() + 86_400_000 }));
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
@@ -169,7 +170,7 @@ describe("prueba de 7 días", () => {
     );
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const form = new URLSearchParams(String(init.body));
-    expect(form.get("subscription_data[trial_period_days]")).toBe("7");
+    expect(form.has("subscription_data[trial_period_days]")).toBe(false);
     expect(form.has("customer")).toBe(false);
   });
 
@@ -320,6 +321,15 @@ describe("cancelación al borrar la cuenta", () => {
 
   it("free con el periodo vencido omite la llamada", async () => {
     loadUserPlanMock.mockResolvedValue(plan({ stripeSubscriptionId: "sub_1", expiresAt: 5 }));
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await cancelBillingForDeletion(env, "u1", 10);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("exsuscriptor vencido que cae en la prueba inversa omite la llamada", async () => {
+    loadUserPlanMock.mockResolvedValue(
+      plan({ plan: "lecta_plus", trialEndsAt: 99, stripeSubscriptionId: "sub_1", expiresAt: 5 }),
+    );
     const fetchMock = vi.spyOn(globalThis, "fetch");
     await cancelBillingForDeletion(env, "u1", 10);
     expect(fetchMock).not.toHaveBeenCalled();

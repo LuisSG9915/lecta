@@ -1,7 +1,13 @@
 // Lectura y escritura del plan de cuenta (lecta_user_plan, migración 027).
 // Los middlewares viven aparte (plan-middleware.ts) para que las pruebas
 // puedan mockear `loadUserPlan` sin que la consulta pase por `withClient`.
-import { effectivePlan, hasLectaPlus, normalizePlan, type UserPlan } from "../shared/plan";
+import {
+  effectivePlan,
+  hasLectaPlus,
+  normalizePlan,
+  reverseTrialEndsAt,
+  type UserPlan,
+} from "../shared/plan";
 import type { CompanionCoatId } from "../shared/companion-data";
 import { createTtlCache } from "./ai";
 import { isMissingTableError, withClient, type WorkerEnv } from "./db";
@@ -14,6 +20,8 @@ export type UserPlanSnapshot = {
   expiresAt: number | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  /** Fin de la prueba inversa en curso (ms); null si la cuenta no está en prueba. */
+  trialEndsAt: number | null;
   /** true si la tabla aún no existe (42P01): el plan es un fail-open. */
   degraded: boolean;
 };
@@ -24,6 +32,7 @@ const DEGRADED: UserPlanSnapshot = {
   expiresAt: null,
   stripeCustomerId: null,
   stripeSubscriptionId: null,
+  trialEndsAt: null,
   degraded: true,
 };
 
@@ -33,6 +42,7 @@ const FREE: UserPlanSnapshot = {
   expiresAt: null,
   stripeCustomerId: null,
   stripeSubscriptionId: null,
+  trialEndsAt: null,
   degraded: false,
 };
 
@@ -57,9 +67,12 @@ export async function getUserPlan(
   userId: string,
   opts: { inTransaction?: boolean; now?: number } = {},
 ): Promise<UserPlanSnapshot> {
+  // Una sola consulta: la fecha de alta decide la prueba inversa cuando la
+  // fila no da Lecta+ (sin fila, plan sale NULL → free).
   const sql =
-    "SELECT plan, starter_coat, stripe_customer_id, stripe_subscription_id, plan_expires_at " +
-    "FROM lecta_user_plan WHERE user_id = $1";
+    "SELECT p.plan, p.starter_coat, p.stripe_customer_id, p.stripe_subscription_id, p.plan_expires_at, " +
+    '(extract(epoch from u."createdAt") * 1000)::INT8 AS user_created_at ' +
+    'FROM "user" u LEFT JOIN lecta_user_plan p ON p.user_id = u.id WHERE u.id = $1';
   if (opts.inTransaction) await client.query("SAVEPOINT lecta_plan_read");
   let res: { rows?: Array<Record<string, unknown>> };
   try {
@@ -72,13 +85,24 @@ export async function getUserPlan(
   }
   const row = res.rows?.[0];
   if (!row) return { ...FREE };
+  const now = opts.now ?? Date.now();
   const expiresAt = toStamp(row.plan_expires_at);
+  let plan = effectivePlan(normalizePlan(row.plan), expiresAt, now);
+  let trialEndsAt: number | null = null;
+  if (plan === "free") {
+    const ends = reverseTrialEndsAt(toStamp(row.user_created_at));
+    if (ends !== null && now < ends) {
+      plan = "lecta_plus";
+      trialEndsAt = ends;
+    }
+  }
   return {
-    plan: effectivePlan(normalizePlan(row.plan), expiresAt, opts.now ?? Date.now()),
+    plan,
     starterCoat: toText(row.starter_coat),
     expiresAt,
     stripeCustomerId: toText(row.stripe_customer_id),
     stripeSubscriptionId: toText(row.stripe_subscription_id),
+    trialEndsAt,
     degraded: false,
   };
 }

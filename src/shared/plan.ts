@@ -37,8 +37,22 @@ export function effectivePlan(
   return expiresAt + PLAN_GRACE_MS < now ? "free" : plan;
 }
 
-/** Consultas de IA de cortesía al mes (calendario UTC) para cuentas free. */
-export const FREE_AI_COURTESY_LIMIT = 5;
+/**
+ * Prueba inversa (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md):
+ * una cuenta free tiene Lecta+ los primeros 14 días, contados desde el alta o
+ * desde el lanzamiento si la cuenta es anterior. Sin gracia ni tarjeta.
+ */
+export const REVERSE_TRIAL_MS = 14 * 24 * 60 * 60 * 1000;
+export const REVERSE_TRIAL_START = Date.UTC(2026, 10, 25);
+
+/** Fin de la prueba inversa para una fecha de alta (ms); null sin fecha válida. */
+export function reverseTrialEndsAt(createdAt: number | null | undefined): number | null {
+  if (createdAt == null || !Number.isFinite(createdAt)) return null;
+  return Math.max(createdAt, REVERSE_TRIAL_START) + REVERSE_TRIAL_MS;
+}
+
+/** Consultas de IA de cortesía al día (UTC) para cuentas free. */
+export const FREE_AI_COURTESY_LIMIT = 3;
 
 /** Alcance en `lecta_ai_quota` donde se cuenta la cortesía (sin migración). */
 export const FREE_AI_COURTESY_SCOPE = "free-courtesy";
@@ -46,16 +60,15 @@ export const FREE_AI_COURTESY_SCOPE = "free-courtesy";
 const HOUR_MS = 3_600_000;
 
 /**
- * `bucket_hour` fijo del mes UTC de `now`: el inicio del mes expresado en
+ * `bucket_hour` fijo del día UTC de `now`: el inicio del día expresado en
  * horas desde la época (la unidad que usa `lecta_ai_quota`). Todas las
- * consultas del mes comparten fila; el 1.º a 00:00 UTC arranca otra.
+ * consultas del día comparten fila; las 00:00 UTC arrancan otra.
  */
 export function courtesyBucketHour(now: number): number {
-  const d = new Date(now);
-  return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / HOUR_MS);
+  return Math.floor(now / (24 * HOUR_MS)) * 24;
 }
 
-/** Cortesías que quedan dado lo usado este mes (nunca negativo). */
+/** Cortesías que quedan dado lo usado hoy (nunca negativo). */
 export function freeAiRemaining(used: number): number {
   const n = Number.isFinite(used) ? Math.floor(used) : FREE_AI_COURTESY_LIMIT;
   return Math.max(0, FREE_AI_COURTESY_LIMIT - Math.max(0, n));
