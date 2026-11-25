@@ -694,6 +694,13 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   días en el cron. Lectura: `pnpm landing:stats [--days 14] [--json]`.
   028 aplicada en `lecta_dev` y en `lecta` (2026-11-15; en prod tras el deploy
   `60d3aad5`, sin jobs en cola; un `POST` real escribió su fila y se borró).
+- **Retención por cohorte**: `pnpm retention:stats [--weeks 12] [--json]`
+  (`scripts/retention-stats.mjs`, solo lectura, nunca imprime correos). Cohortes por semana
+  de alta con activadas, D1, S1 (días 1–7) y D8–30, más activas en 7/30 días por plan.
+  Actividad = posición, palabra (`updated_at > 0`: la de la demo llega en 0), repaso,
+  intervalo o anotación; `lecta_user_activity` sola se queda corta. Excluye `@smoke.test`,
+  `@example.com` y `smoke%`. Una cohorte demasiado joven para un hito sale «—». El plan es el
+  de la fila: una cuenta en prueba inversa cuenta como `free`.
 - `POST /api/client-errors` recibe errores del navegador **sin sesión**:
   allowlist `name`/`code`/`route`/`version`, `frames` (máx. 3, limpiados a
   `archivo.js:línea:columna`) y, opcional, `message`; tope de 30/min y 300/hora
