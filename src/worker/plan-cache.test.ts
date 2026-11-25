@@ -48,6 +48,18 @@ describe("caché de loadUserPlan (30 s, solo positivos)", () => {
     expect(query).toHaveBeenCalledTimes(2);
   });
 
+  it("una prueba inversa cacheada deja de valer en cuanto vence, sin esperar los 30 s", async () => {
+    vi.useFakeTimers();
+    const created = Date.UTC(2026, 11, 3);
+    const ends = created + 14 * 86_400_000;
+    vi.setSystemTime(ends - 5_000);
+    row = { plan: null, user_created_at: created };
+    expect(await loadUserPlan({}, "u1")).toMatchObject({ plan: "lecta_plus", trialEndsAt: ends });
+    vi.setSystemTime(ends + 1);
+    expect(await loadUserPlan({}, "u1")).toMatchObject({ plan: "free", trialEndsAt: null });
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
   it("caduca a los 30 s", async () => {
     vi.useFakeTimers();
     row = { plan: "founder_lifetime" };

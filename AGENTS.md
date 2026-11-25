@@ -774,7 +774,7 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
   Cliente: `planFromAccountState` baja a `free` una prueba vencida (caché sin red),
   `pollPlanUntilPlus` no se detiene en la prueba y el Carné muestra «Prueba de Lecta+ · quedan N
   días» con el botón de pago. Los EPUB subidos a R2 durante la prueba se quedan (402 al terminar).
-  Pendiente menor: la caché de plan del isolate puede alargar la prueba hasta 30 s. El reintegro
+  `loadUserPlan` descarta un acierto de caché cuya prueba ya venció (no espera los 30 s). El reintegro
   de cortesía usa el mismo instante que el consumo (`guardAiCourtesy`, `ai-routes.ts`), así que no
   cruza la medianoche UTC. `/api/ai/enrich` sigue libre pero no persiste
   en el catálogo si trae `context`. `loadUserPlan` cachea 30 s **solo planes

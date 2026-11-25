@@ -131,7 +131,9 @@ export async function loadUserPlan(
   userId: string,
 ): Promise<UserPlanSnapshot | undefined> {
   const hit = planCache.get(userId);
-  if (hit) return { ...hit };
+  // Una prueba inversa vencida no espera los 30 s de la caché.
+  if (hit && (hit.trialEndsAt === null || hit.trialEndsAt > Date.now())) return { ...hit };
+  if (hit) planCache.delete(userId);
   const snapshot = await withClient(env, (client) => getUserPlan(client, userId));
   if (snapshot && !snapshot.degraded && hasLectaPlus(snapshot.plan)) {
     planCache.set(userId, { ...snapshot });
