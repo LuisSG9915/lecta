@@ -16,6 +16,8 @@ export type PlanSnapshot = {
   freeAiRemaining?: number;
   /** Fin de la prueba inversa de Lecta+ (ms); null/ausente si no está en prueba. */
   trialEndsAt?: number | null;
+  /** Fin de una prueba ya vencida (plan free); ausente si no tuvo o sigue en curso. */
+  trialEndedAt?: number;
 };
 
 const planKey = (userId: string) => `account:plan:v1:${userId}`;
@@ -62,6 +64,7 @@ export function planFromAccountState(body: unknown, now = Date.now()): PlanSnaps
     planExpiresAt?: unknown;
     freeAiRemaining?: unknown;
     trialEndsAt?: unknown;
+    trialEndedAt?: unknown;
   };
   if (typeof data.plan !== "string") return null;
   const expires = Number(data.planExpiresAt);
@@ -77,6 +80,11 @@ export function planFromAccountState(body: unknown, now = Date.now()): PlanSnaps
     ...(typeof data.freeAiRemaining === "number" && Number.isFinite(data.freeAiRemaining)
       ? { freeAiRemaining: Math.max(0, Math.floor(data.freeAiRemaining)) }
       : {}),
+    ...(typeof data.trialEndedAt === "number" && Number.isFinite(data.trialEndedAt)
+      ? { trialEndedAt: data.trialEndedAt }
+      : trialOver && trialEnd !== null
+        ? { trialEndedAt: trialEnd }
+        : {}),
     ...("trialEndsAt" in data ? { trialEndsAt: trialOver ? null : trialEnd } : {}),
   };
 }

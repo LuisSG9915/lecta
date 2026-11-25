@@ -149,4 +149,27 @@ describe("upsertPlanFromStripe", () => {
     expect(sql).toContain("WHEN lecta_user_plan.plan = 'founder_lifetime'");
     expect(params).toEqual(["u1", "cus_1", null, 5, 9]);
   });
+
+  it("con eventCreated solo pisa si el evento no es más viejo", async () => {
+    const client = clientWith(() => ({ rows: [] }));
+    await upsertPlanFromStripe(client, "u1", { planExpiresAt: 5, eventCreated: 3000 }, 9);
+    const calls = client.query.mock.calls;
+    expect(calls[0][0]).toBe("SAVEPOINT stripe_order");
+    const [sql, params] = calls[1];
+    expect(sql).toContain("stripe_event_created <= EXCLUDED.stripe_event_created");
+    expect(params).toEqual(["u1", null, null, 5, 9, 3000]);
+  });
+
+  it("sin la columna 034 (42703) vuelve a la escritura de siempre", async () => {
+    const client = clientWith((sql) => {
+      if (sql.includes("stripe_event_created")) {
+        throw Object.assign(new Error('column "stripe_event_created" does not exist'), { code: "42703" });
+      }
+      return { rows: [] };
+    });
+    await upsertPlanFromStripe(client, "u1", { planExpiresAt: 5, eventCreated: 3000 }, 9);
+    const sqls = client.query.mock.calls.map((c) => c[0]);
+    expect(sqls).toContain("ROLLBACK TO SAVEPOINT stripe_order");
+    expect(String(sqls[sqls.length - 1])).not.toContain("stripe_event_created");
+  });
 });

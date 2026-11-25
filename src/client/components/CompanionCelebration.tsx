@@ -17,6 +17,8 @@
 import { useEffect, useState } from "react";
 import { Companion } from "./Companion";
 import { LEVELS } from "../lib/gamification";
+import { useUserPlan } from "../lib/account-plan";
+import { COMPANION_COATS } from "../../shared/companion-data";
 import type { CelebrationItem } from "../lib/companion-inbox";
 
 // Duración en pantalla por clase de festejo (ms).
@@ -34,6 +36,12 @@ const STAGE_LABELS = [
   "gato con collar",
   "gato bibliotecario",
 ];
+
+// Pelaje de Lecta+ que celebraría cada hito de racha (solo una línea en free).
+const STREAK_COAT_TEASER: Record<string, keyof typeof COMPANION_COATS> = {
+  racha_7: "ginger",
+  racha_30: "calico",
+};
 
 const itemKey = (item: CelebrationItem): string => {
   switch (item.kind) {
@@ -72,6 +80,7 @@ export function CompanionCelebration({
   const [shown, setShown] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const plan = useUserPlan()?.plan ?? null;
   const [display, setDisplay] = useState<CelebrationItem | null>(null);
 
   // La primera pendiente no exhibida todavía.
@@ -126,6 +135,14 @@ export function CompanionCelebration({
       (display.ids.length > 1 ? ` y ${display.ids.length - 1} más` : "");
   }
 
+  let teaser: string | null = null;
+  if (plan === "free" && display.kind === "achievements") {
+    const hit = display.ids.find((id) => id in STREAK_COAT_TEASER);
+    if (hit) {
+      teaser = `Con Lecta+ lo celebrarías con el pelaje ${COMPANION_COATS[STREAK_COAT_TEASER[hit]].name}.`;
+    }
+  }
+
   const pose =
     display.kind === "stage" ||
     (display.kind === "level" && display.stage !== undefined)
@@ -145,7 +162,10 @@ export function CompanionCelebration({
         pose={pose}
         decorative
       />
-      <p className="companion-toast-text">{text}</p>
+      <p className="companion-toast-text">
+        {text}
+        {teaser ? <span className="companion-toast-sub">{teaser}</span> : null}
+      </p>
     </div>
   );
 }

@@ -263,7 +263,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 3582,
+          "line": 3591,
           "window": 2,
           "expect": "applyPreviewKnownSignal\\(currentLang, beta\\)",
           "why": "onMarkKnown de la hoja usa la misma señal explicit_known que la ficha"
@@ -392,7 +392,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/DeepReadingSummaryModal.tsx",
-          "line": 141,
+          "line": 144,
           "window": 1,
           "expect": "consolidateEpisodicWord\\(current\\.item",
           "why": "el reto de cierre llama a la consolidación real"

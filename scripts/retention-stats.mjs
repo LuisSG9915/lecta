@@ -16,6 +16,34 @@ import { pathToFileURL } from "node:url";
 
 const DAY = 86_400_000;
 
+// Copia de src/shared/plan.ts (REVERSE_TRIAL_MS, REVERSE_TRIAL_START, PLAN_GRACE_MS):
+// este .mjs no puede importar TypeScript. retention-stats.test.mjs lee plan.ts
+// como texto y falla si los valores dejan de coincidir.
+export const REVERSE_TRIAL_MS = 14 * DAY;
+export const REVERSE_TRIAL_START = Date.UTC(2026, 10, 25);
+export const PLAN_GRACE_MS = 3 * DAY;
+
+/** Fin de la prueba inversa de una cuenta (ms), igual que `reverseTrialEndsAt`. */
+export function trialEndsAt(created) {
+  return Math.max(created, REVERSE_TRIAL_START) + REVERSE_TRIAL_MS;
+}
+
+/**
+ * Plan efectivo para métricas: `trial` | `free` | `plus_paid` | `founder_lifetime`.
+ * `row`: { plan, expiresAt, hasSubscription, created }. Un `lecta_plus` sin
+ * suscripción de Stripe (otorgado a mano) cuenta como `free`/`trial` según la fecha.
+ */
+export function classifyPlan(row, now) {
+  const plan = row.plan ?? "free";
+  if (plan === "founder_lifetime") return "founder_lifetime";
+  if (plan === "lecta_plus" && row.hasSubscription) {
+    const exp = row.expiresAt;
+    const lapsed = exp != null && Number.isFinite(Number(exp)) && Number(exp) + PLAN_GRACE_MS < now;
+    if (!lapsed) return "plus_paid";
+  }
+  return now < trialEndsAt(row.created) ? "trial" : "free";
+}
+
 /** Cuentas de prueba (smoke:auth, sondas, capturas): fuera de toda métrica. */
 export function isTestEmail(email) {
   const e = String(email ?? "").toLowerCase();
@@ -39,7 +67,7 @@ export function buildCohorts(users, now) {
     const week = weekOf(user.created);
     const row =
       byWeek.get(week) ??
-      { week, signups: 0, activated: 0, d1: 0, d1Eligible: 0, w1: 0, w1Eligible: 0, d8to30: 0, d8to30Eligible: 0 };
+      { week, signups: 0, activated: 0, d1: 0, d1Eligible: 0, w1: 0, w1Eligible: 0, d8to30: 0, d8to30Eligible: 0, trialEnded: 0, trialPaid: 0 };
     const age = (now - user.created) / DAY;
     const offsets = user.days.map((t) => Math.floor((t - user.created) / DAY)).filter((d) => d >= 0);
     row.signups += 1;
@@ -55,6 +83,12 @@ export function buildCohorts(users, now) {
     if (age >= 31) {
       row.d8to30Eligible += 1;
       if (offsets.some((d) => d >= 8 && d <= 30)) row.d8to30 += 1;
+    }
+    // prueba → pago: cuentas cuya prueba ya venció y hoy son plus_paid.
+    // Los fundadores no tuvieron prueba (`trialEnd` ausente).
+    if (typeof user.trialEnd === "number" && user.trialEnd <= now) {
+      row.trialEnded += 1;
+      if (user.plan === "plus_paid") row.trialPaid += 1;
     }
     byWeek.set(week, row);
   }
@@ -93,7 +127,7 @@ function parseArgs(argv) {
   return out;
 }
 
-async function readUsers(weeks) {
+async function readUsers(weeks, now) {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("Falta DATABASE_URL (usa `node --env-file=.env`).");
   const { Client } = await import("pg");
@@ -104,7 +138,8 @@ async function readUsers(weeks) {
     const db = await client.query("SELECT current_database() AS db");
     const users = await client.query(
       `SELECT u.id, u.email, (extract(epoch from u."createdAt") * 1000)::INT8 AS created,
-              COALESCE(p.plan, 'free') AS plan
+              COALESCE(p.plan, 'free') AS plan, p.plan_expires_at AS expires_at,
+              (p.stripe_subscription_id IS NOT NULL) AS has_subscription
          FROM "user" u LEFT JOIN lecta_user_plan p ON p.user_id = u.id
         WHERE u."createdAt" >= now() - ($1::INT8 * INTERVAL '7 days')`,
       [weeks],
@@ -133,11 +168,24 @@ async function readUsers(weeks) {
     return {
       database: db.rows[0]?.db,
       excluded: users.rows.length - real.length,
-      users: real.map((row) => ({
-        created: Number(row.created),
-        plan: String(row.plan),
-        days: daysById.get(row.id) ?? [],
-      })),
+      users: real.map((row) => {
+        const created = Number(row.created);
+        const plan = classifyPlan(
+          {
+            plan: String(row.plan),
+            expiresAt: row.expires_at == null ? null : Number(row.expires_at),
+            hasSubscription: row.has_subscription === true,
+            created,
+          },
+          now,
+        );
+        return {
+          created,
+          plan,
+          trialEnd: plan === "founder_lifetime" ? undefined : trialEndsAt(created),
+          days: daysById.get(row.id) ?? [],
+        };
+      }),
     };
   } finally {
     await client.end();
@@ -146,8 +194,8 @@ async function readUsers(weeks) {
 
 async function main() {
   const { weeks, json } = parseArgs(process.argv.slice(2));
-  const { database, excluded, users } = await readUsers(weeks);
   const now = Date.now();
+  const { database, excluded, users } = await readUsers(weeks, now);
   const cohorts = buildCohorts(users, now);
   const active = summarizeActive(users, now);
   if (json) {
@@ -159,7 +207,7 @@ async function main() {
     console.log("Sin altas reales en el periodo.");
     return;
   }
-  const header = ["semana", "altas", "activadas", "D1", "S1 (días 1–7)", "D8–30"];
+  const header = ["semana", "altas", "activadas", "D1", "S1 (días 1–7)", "D8–30", "prueba → pago"];
   const lines = cohorts.map((c) => [
     c.week,
     c.signups,
@@ -167,6 +215,7 @@ async function main() {
     rate(c.d1, c.d1Eligible),
     rate(c.w1, c.w1Eligible),
     rate(c.d8to30, c.d8to30Eligible),
+    rate(c.trialPaid, c.trialEnded),
   ]);
   const widths = header.map((h, i) => Math.max(h.length, ...lines.map((l) => String(l[i]).length)));
   const fmt = (cells) => cells.map((c, i) => String(c).padEnd(widths[i])).join("  ");

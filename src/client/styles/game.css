@@ -2805,6 +2805,12 @@
   text-overflow: ellipsis;
   color: var(--ink-soft);
 }
+.companion-toast-sub {
+  display: block;
+  margin-top: var(--s-1);
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
 
 /* ---------- Pestañas de la hoja del compañero ---------- */
 .companion-sheet-tabs {

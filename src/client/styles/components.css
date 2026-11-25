@@ -3467,3 +3467,45 @@ mark.saved-word[data-level="settled"] {
     animation: none;
   }
 }
+
+/* Avisos del fin de la prueba de Lecta+ (F5) y hoja del día 15 (F6): tokens
+   del tema, sin colores fijos. */
+.trial-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-2) auto;
+  padding: var(--s-2) var(--s-3);
+  width: min(100% - 2 * var(--s-3), 48rem);
+  border-inline-start: 1px solid var(--rule-strong);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.trial-note__text {
+  flex: 1 1 16rem;
+}
+.trial-end {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  color: var(--ink);
+}
+.trial-end__title {
+  margin: 0;
+}
+.trial-end__figures {
+  margin: 0;
+  padding-inline-start: var(--s-4);
+}
+.trial-end__detail {
+  margin: 0;
+  color: var(--ink-soft);
+}
+.trial-end__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}

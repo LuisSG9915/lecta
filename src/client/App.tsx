@@ -18,6 +18,7 @@ const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
 const PaperReading = lazy(() => import("./components/PaperReading"));
 const CommunityShelf = lazy(() => import("./components/CommunityShelf"));
+const TrialEndSheet = lazy(() => import("./components/TrialEndSheet"));
 const SubtitleShelf = lazy(() => import("./components/SubtitleShelf"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
@@ -115,6 +116,7 @@ import type { SubtitleGuide } from "./components/SubtitleShelf";
 import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { primeSyncChanges } from "./lib/sync-changes";
 import { findDeepLinkItem, parseOpenBookParam } from "./lib/deep-link";
+import { shouldShowTrialEnd } from "./lib/trial-notice";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
 import { extractEpubMeta } from "../shared/epub-meta";
@@ -159,6 +161,18 @@ type BookFileSelection = {
 type BookSelection = BookFileSelection & {
   ownerUserId: string | null;
 };
+
+const LOCAL_ONLY_NOTICE_KEY = "lecta:local-only-notice:v1";
+/** true solo la primera vez (flag en localStorage; sin storage no se muestra). */
+function takeLocalOnlyNoticeOnce(): boolean {
+  try {
+    if (localStorage.getItem(LOCAL_ONLY_NOTICE_KEY)) return false;
+    localStorage.setItem(LOCAL_ONLY_NOTICE_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default function App() {
   // Enlace de restablecer contraseña (o error de enlace) leído una vez
@@ -1441,7 +1455,15 @@ export default function App() {
               scope,
             ).catch(() => null);
           }
-          setMessage("Libro guardado en este dispositivo.");
+          setMessage(
+            sessionUserId &&
+              !metaOverride?.catalog &&
+              planStore.get() &&
+              !hasLectaPlus(planStore.get()?.plan) &&
+              takeLocalOnlyNoticeOnce()
+              ? "Libro guardado. Este libro vive solo en este dispositivo. Con Lecta+ te sigue al celular y al Kindle."
+              : "Libro guardado en este dispositivo.",
+          );
           void refreshLibrary();
           // Análisis de vocabulario en segundo plano: alimenta la
           // insignia ~% de la tarjeta. Sin red sale con null y la
@@ -2415,6 +2437,16 @@ export default function App() {
                     user={session?.user ?? null}
                     syncing={false}
                   />
+                  {activeNav === "shelf" &&
+                  shouldShowTrialEnd({
+                    trialEndedAt: userPlan?.trialEndedAt,
+                    bookOpen: book !== null,
+                    deepLinkPending: authLink.openHash !== null,
+                  }) ? (
+                    <Suspense fallback={null}>
+                      <TrialEndSheet />
+                    </Suspense>
+                  ) : null}
                 </Activity>
               )}
 

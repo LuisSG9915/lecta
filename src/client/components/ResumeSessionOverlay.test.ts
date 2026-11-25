@@ -114,3 +114,59 @@ describe("ResumeSessionOverlay", () => {
     expect(onToggle).toHaveBeenCalledWith(false);
   });
 });
+
+describe("ResumeSessionOverlay «¿Quién era…?»", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    vi.resetModules();
+  });
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.doUnmock("../lib/lexicon");
+    vi.resetModules();
+  });
+
+  async function mount(result: unknown) {
+    const request = vi.fn().mockResolvedValue(result);
+    vi.doMock("../lib/lexicon", () => ({ requestCharacterRecap: request }));
+    const mod = await import("./ResumeSessionOverlay");
+    act(() => {
+      root.render(
+        h(mod.default, {
+          recapLine: "En escena con Dante.",
+          lastReadSentences: "Dante miró a Virgilio.",
+          onResumeReading: vi.fn(),
+          characters: ["Dante", "Virgilio"],
+          bookTitle: "Comedia",
+        }),
+      );
+    });
+    return request;
+  }
+  const nameBtn = () =>
+    container.querySelector(".resume-session-who-name") as HTMLButtonElement;
+
+  it("no llama a la red al montar; llama una vez al tocar", async () => {
+    const request = await mount({ ok: true, summary: "Poeta." });
+    expect(request).not.toHaveBeenCalled();
+    await act(async () => {
+      nameBtn().click();
+      nameBtn().click();
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Poeta.");
+  });
+
+  it("402 pinta PlanNote", async () => {
+    await mount({ ok: false, error: "x", code: "LECTA_PLUS_REQUIRED" });
+    await act(async () => {
+      nameBtn().click();
+    });
+    expect(container.querySelector(".plan-note")).not.toBeNull();
+  });
+});

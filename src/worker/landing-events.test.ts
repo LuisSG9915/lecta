@@ -62,6 +62,30 @@ describe("parseLandingEvent", () => {
   });
 });
 
+describe("eventos de plan (app:)", () => {
+  it("acepta plannote con feature de la lista cerrada y rechaza inventadas", () => {
+    expect(parseLandingEvent({ event: "app:plannote:wordpanel", source: "trial" })).toEqual({
+      event: "app:plannote:wordpanel",
+      source: "trial",
+    });
+    expect(parseLandingEvent({ event: "app:plannote:inventado" })).toBeNull();
+    expect(parseLandingEvent({ event: "app:plannote:" })).toBeNull();
+  });
+
+  it("acepta los eventos fijos y los días de aviso permitidos", () => {
+    for (const event of ["app:paywall", "app:carne-open", "app:trial-end-view", "app:trial-end-cta", "app:recap-locked", "app:trial-warning:3", "app:trial-warning:2", "app:trial-warning:1"]) {
+      expect(parseLandingEvent({ event })?.event).toBe(event);
+    }
+    expect(parseLandingEvent({ event: "app:trial-warning:99" })).toBeNull();
+    expect(parseLandingEvent({ event: "app:trial-warning:7" })).toBeNull();
+  });
+
+  it("checkout-start/complete no entran por el endpoint público", () => {
+    expect(parseLandingEvent({ event: "app:checkout-start:monthly" })).toBeNull();
+    expect(parseLandingEvent({ event: "app:checkout-complete:yearly" })).toBeNull();
+  });
+});
+
 describe("allowLandingEvent", () => {
   it("corta al pasar el tope por minuto y se reinicia en la ventana siguiente", () => {
     const now = 1_000_000_000_000;

@@ -1320,6 +1320,7 @@ export default function Account({
           </div>
           {session?.user && userPlan && !hasLectaPlus(userPlan.plan) ? (
             <PlanNote
+              feature="kindle"
               title="Leer en tu Kindle es de Lecta+."
               detail="Tu posición y tus palabras siguen guardadas en tu cuenta."
             />

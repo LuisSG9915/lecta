@@ -3,14 +3,15 @@
 // Mensual / Anual y los botones a Stripe Checkout / Customer Portal (sin SDK:
 // son redirecciones). Se importa de forma estática desde Account, que ya es
 // un chunk lazy.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { accountFetch } from "../lib/account-fetch";
 import { captureDbScope } from "../lib/idb";
 import type { PlanSnapshot } from "../lib/account-plan";
+import { trackPlanEvent } from "../lib/plan-events";
 
 type Period = "monthly" | "yearly";
 
-const PRICES: Record<Period, { label: string; price: string; note: string }> = {
+export const PRICES: Record<Period, { label: string; price: string; note: string }> = {
   monthly: { label: "Mensual", price: "$59 MXN al mes", note: "" },
   yearly: { label: "Anual", price: "$499 MXN al año", note: "Son $42 al mes." },
 };
@@ -36,6 +37,10 @@ export default function ReaderCard({
   const [error, setError] = useState("");
   // Hora del montaje: basta para contar días y mantiene puro el render.
   const [mountedAt] = useState(() => Date.now());
+
+  useEffect(() => {
+    trackPlanEvent("app:carne-open");
+  }, []);
 
   const go = async (path: string, body?: unknown) => {
     setBusy(true);
@@ -116,15 +121,15 @@ export default function ReaderCard({
                 Prueba de Lecta+ · {daysLeft === 1 ? "queda 1 día" : `quedan ${daysLeft} días`}
               </strong>
               <p className="reader-card__detail">
-                El {dateLabel(trialEndsAt)} vuelves a Gratis sin ningún cargo. Tus palabras, tu gato y
-                tu lectura se quedan.
+                El {dateLabel(trialEndsAt)} vuelves a Gratis. Tus palabras, tu gato y tu progreso se
+                quedan; la IA, la nube y el Kindle vuelven a Lecta+.
               </p>
             </>
           ) : (
             <>
               <strong className="reader-card__state">Lector de Cuaderno Abierto</strong>
               <p className="reader-card__detail">
-                Lecta+ suma Kindle, explicaciones con IA, palabras previstas y tus libros en la nube.
+                Lecta+ suma Kindle, explicaciones con IA, palabras previstas y Biblioteca en la nube.
               </p>
             </>
           )}

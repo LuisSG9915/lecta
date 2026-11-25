@@ -733,3 +733,18 @@ describe("DeepReadingSummaryModal", () => {
     });
   });
 });
+
+describe("DeepReadingSummaryModal: cortesía de IA agotada", () => {
+  it("solo avisa con la bandera y en cierre de capítulo", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const summary = { source: "chapter", durationMinutes: 5, sectionsRead: 1 } as unknown as DeepReadingSummary;
+    act(() => root.render(h(DeepReadingSummaryModal, { summary, onClose: vi.fn(), aiCourtesyExhausted: true })));
+    expect(document.body.textContent).toContain("Hoy ya usaste tus explicaciones con IA");
+    act(() => root.render(h(DeepReadingSummaryModal, { summary, onClose: vi.fn() })));
+    expect(document.body.textContent).not.toContain("Hoy ya usaste");
+    act(() => root.unmount());
+    host.remove();
+  });
+});

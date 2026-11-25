@@ -862,6 +862,7 @@ export default function Reader({
     recapLine: string;
     lastReadSentences: string;
     hasPendingReviewsDosing: boolean;
+    characters: string[];
   } | null>(null);
 
   // Inicialización de refs de tiempo al montar — extraído a useReaderSessionStart (B7).
@@ -2069,7 +2070,12 @@ export default function Reader({
                 const allWords = await listSavedWords(undefined, scope).catch(() => []);
                 const pendingDueCount = allWords.filter((w) => isReviewDueWord(w, new Date())).length;
                 const hasPendingReviewsDosing = pendingDueCount > 25;
-                setResumeOverlayData({ recapLine, lastReadSentences, hasPendingReviewsDosing });
+                setResumeOverlayData({
+                  recapLine,
+                  lastReadSentences,
+                  hasPendingReviewsDosing,
+                  characters: recap.activeCharactersInScene ?? [],
+                });
               } catch {
                 // Silencioso
               }
@@ -3411,6 +3417,8 @@ export default function Reader({
             recapLine={resumeOverlayData.recapLine}
             lastReadSentences={resumeOverlayData.lastReadSentences}
             hasPendingReviewsDosing={resumeOverlayData.hasPendingReviewsDosing}
+            characters={resumeOverlayData.characters}
+            bookTitle={title}
             onResumeReading={() => setResumeOverlayData(null)}
           />
         </div>

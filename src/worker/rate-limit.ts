@@ -35,3 +35,24 @@ export async function consumeRateUnits(
   );
   return Boolean(result?.rows[0]);
 }
+
+/** Devuelve unidades al mismo bucket (best-effort, nunca baja de 0). */
+export async function refundRateUnits(
+  env: WorkerEnv,
+  userId: string,
+  units: number,
+  scope: string,
+  bucketHour: number,
+): Promise<void> {
+  try {
+    await withClient(env, (client) =>
+      client.query(
+        `UPDATE lecta_ai_quota SET units_used = GREATEST(units_used - $4, 0), updated_at = $5
+         WHERE user_id = $1 AND scope = $2 AND bucket_hour = $3`,
+        [userId, scope, bucketHour, units, Date.now()],
+      ),
+    );
+  } catch {
+    // Un reintegro fallido solo cuesta una unidad al usuario.
+  }
+}

@@ -6,6 +6,8 @@ import {
   REVERSE_TRIAL_START,
   reverseTrialEndsAt,
   courtesyBucketHour,
+  dailyAiLimit,
+  PLAN_LIMITS,
   freeAiRemaining,
   effectivePlan,
   hasLectaPlus,
@@ -71,14 +73,20 @@ describe("cortesía de IA free", () => {
     expect(FREE_AI_COURTESY_LIMIT).toBe(3);
   });
 
-  it("courtesyBucketHour es fijo en el día UTC y cambia a las 00:00 UTC", () => {
-    const dayStart = Date.UTC(2026, 10, 17);
+  it("courtesyBucketHour es fijo en el día de CDMX y cambia a las 00:00 CDMX (06:00Z)", () => {
+    const dayStart = Date.UTC(2026, 10, 17, 6);
     const hours = dayStart / 3_600_000;
     expect(courtesyBucketHour(dayStart)).toBe(hours);
     expect(courtesyBucketHour(Date.UTC(2026, 10, 17, 13, 5))).toBe(hours);
-    expect(courtesyBucketHour(Date.UTC(2026, 10, 17, 23, 59, 59))).toBe(hours);
-    expect(courtesyBucketHour(Date.UTC(2026, 10, 18))).toBe(hours + 24);
+    expect(courtesyBucketHour(Date.UTC(2026, 10, 18, 5, 59, 59))).toBe(hours);
+    expect(courtesyBucketHour(Date.UTC(2026, 10, 18, 6))).toBe(hours + 24);
     expect(courtesyBucketHour(dayStart - 1)).toBe(hours - 24);
+  });
+
+  it("frontera: 05:59Z y 06:01Z caen en buckets distintos", () => {
+    const before = courtesyBucketHour(Date.UTC(2026, 10, 18, 5, 59));
+    const after = courtesyBucketHour(Date.UTC(2026, 10, 18, 6, 1));
+    expect(after).toBe(before + 24);
   });
 
   it("freeAiRemaining nunca es negativo y trata basura como agotada", () => {
@@ -88,5 +96,15 @@ describe("cortesía de IA free", () => {
     expect(freeAiRemaining(9)).toBe(0);
     expect(freeAiRemaining(-3)).toBe(3);
     expect(freeAiRemaining(Number.NaN)).toBe(0);
+  });
+});
+
+describe("tope diario invisible de IA", () => {
+  it("valores y selección por plan", () => {
+    expect(PLAN_LIMITS).toEqual({ plusDailyAiUnits: 300, trialDailyAiUnits: 150 });
+    expect(dailyAiLimit("lecta_plus", null)).toBe(300);
+    expect(dailyAiLimit("founder_lifetime", null)).toBe(300);
+    expect(dailyAiLimit("lecta_plus", Date.UTC(2026, 11, 1))).toBe(150);
+    expect(dailyAiLimit("free", null)).toBeNull();
   });
 });

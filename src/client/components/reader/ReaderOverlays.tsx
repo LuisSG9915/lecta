@@ -368,6 +368,7 @@ export function ReaderOverlays({
             <div className="page-recap-content">
               {pageRecap.data.planRequired ? (
                 <PlanNote
+                  feature="page-recap"
                   title="El resumen con IA es de Lecta+."
                   detail="Mientras tanto, este es un resumen básico del pasaje."
                 />
@@ -539,6 +540,7 @@ export function ReaderOverlays({
           onContinue={onContinueDeepSummary}
           onClose={onCloseDeepSummary}
           onWordConsolidated={onWordConsolidated}
+          aiCourtesyExhausted={planLocked && userPlan?.freeAiRemaining === 0}
         />
       ) : null}
 

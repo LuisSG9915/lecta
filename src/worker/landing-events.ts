@@ -7,6 +7,7 @@
 // - `signup` no entra por el endpoint: lo escribe el worker cuando una cuenta
 //   reclama por primera vez el gato elegido en la landing.
 
+import { isPlanFeature } from "../shared/plan";
 import { withClient, type WorkerEnv } from "./db";
 
 export const LANDING_EVENT_MAX_BODY_BYTES = 512;
@@ -31,7 +32,25 @@ export const LANDING_EVENTS = new Set([
   "demo_reveal",
   "pick_cat",
   "price_toggle",
+  "app:paywall",
+  "app:carne-open",
+  "app:trial-end-view",
+  "app:trial-end-cta",
+  "app:recap-locked",
 ]);
+
+/** Días de aviso de la prueba inversa (`app:trial-warning:<dia>`). */
+export const TRIAL_WARNING_DAYS = ["1", "2", "3"] as const;
+
+/** Estático o con sufijo validado contra una lista cerrada; nunca texto libre. */
+export function isAllowedLandingEvent(event: string): boolean {
+  if (LANDING_EVENTS.has(event)) return true;
+  if (event.startsWith("app:plannote:")) return isPlanFeature(event.slice("app:plannote:".length));
+  if (event.startsWith("app:trial-warning:")) {
+    return (TRIAL_WARNING_DAYS as readonly string[]).includes(event.slice("app:trial-warning:".length));
+  }
+  return false;
+}
 
 export type LandingEvent = { event: string; source: string };
 
@@ -54,7 +73,7 @@ export function parseLandingEvent(raw: unknown): LandingEvent | null {
   for (const key of Object.keys(input)) {
     if (key !== "event" && key !== "source") return null;
   }
-  if (typeof input.event !== "string" || !LANDING_EVENTS.has(input.event)) return null;
+  if (typeof input.event !== "string" || !isAllowedLandingEvent(input.event)) return null;
   return { event: input.event, source: normalizeLandingSource(input.source) };
 }
 

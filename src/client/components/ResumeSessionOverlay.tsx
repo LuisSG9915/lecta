@@ -1,5 +1,8 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import type { SceneReturnRecap } from "../lib/page-recap";
+import { requestCharacterRecap } from "../lib/lexicon";
+import { trackPlanEvent } from "../lib/plan-events";
+import PlanNote from "./PlanNote";
 
 export interface ResumeSessionOverlayProps {
   /** Texto del recap de 1 línea derivado de generateZeroSpoilerSceneRecap */
@@ -12,6 +15,9 @@ export interface ResumeSessionOverlayProps {
   onResumeReading: () => void;
   /** Callback al alternar el toggle de dosificación de repasos */
   onToggleDoseReviews?: (dosed: boolean) => void;
+  /** Nombres propios del pasaje para «¿Quién era…?» (opcional). */
+  characters?: string[];
+  bookTitle?: string;
   className?: string;
 }
 
@@ -46,9 +52,32 @@ export default function ResumeSessionOverlay({
   hasPendingReviewsDosing = false,
   onResumeReading,
   onToggleDoseReviews,
+  characters = [],
+  bookTitle,
   className = "",
 }: ResumeSessionOverlayProps) {
   const [doseReviews, setDoseReviews] = useState(true);
+  const [recaps, setRecaps] = useState<Record<string, string>>({});
+  const [locked, setLocked] = useState(false);
+  const askedRef = useRef<Set<string>>(new Set());
+  const names = characters.slice(0, 3);
+
+  // Solo al tocar: nada de red al montar. Una llamada por nombre.
+  const askWho = async (name: string) => {
+    if (askedRef.current.has(name)) return;
+    askedRef.current.add(name);
+    const result = await requestCharacterRecap({
+      entityName: name,
+      bookTitle,
+      excerptsSoFar: lastReadSentences ? [lastReadSentences] : [],
+    });
+    if (result.ok) {
+      setRecaps((prev) => ({ ...prev, [name]: result.summary }));
+    } else if (result.code === "LECTA_PLUS_REQUIRED") {
+      trackPlanEvent("app:recap-locked");
+      setLocked(true);
+    }
+  };
 
   const handleToggleDose = (e: React.ChangeEvent<HTMLInputElement>) => {
     const checked = e.target.checked;
@@ -82,6 +111,34 @@ export default function ResumeSessionOverlay({
           «{lastReadSentences}»
         </blockquote>
       ) : null}
+
+      {names.length > 0 && (
+        <div className="resume-session-who">
+          <span>¿Quién era… </span>
+          {names.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="btn btn--link resume-session-who-name"
+              onClick={() => void askWho(name)}
+            >
+              {name}
+            </button>
+          ))}
+          {Object.entries(recaps).map(([name, summary]) => (
+            <p key={name} className="resume-session-who-summary">
+              <strong>{name}.</strong> {summary}
+            </p>
+          ))}
+          {locked && (
+            <PlanNote
+              feature="character-recap"
+              title="Resumen de personajes con Lecta+"
+              detail="Recuerda quién es cada personaje sin spoilers."
+            />
+          )}
+        </div>
+      )}
 
       {/* Toggle de dosificación si hay > 25 repasos FSRS pendientes */}
       {hasPendingReviewsDosing && (

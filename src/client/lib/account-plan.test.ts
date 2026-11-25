@@ -45,6 +45,12 @@ describe("account-plan", () => {
     expect(planStore.get()).toBeNull();
   });
 
+  it("planFromAccountState conserva trialEndedAt", () => {
+    const snap = planFromAccountState({ ok: true, plan: "free", starterCoat: null, planExpiresAt: null, trialEndedAt: 1234 });
+    expect(snap?.trialEndedAt).toBe(1234);
+    expect(planFromAccountState({ ok: true, plan: "free", trialEndedAt: null })?.trialEndedAt).toBeUndefined();
+  });
+
   it("planFromAccountState: sin plan conserva la caché (null)", () => {
     expect(planFromAccountState({ ok: true, resetAt: 1 })).toBeNull();
     expect(planFromAccountState(null)).toBeNull();

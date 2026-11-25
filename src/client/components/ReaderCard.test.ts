@@ -80,7 +80,7 @@ describe("ReaderCard (Carné de Lector)", () => {
     try {
       render({ plan: "lecta_plus", starterCoat: null, expiresAt: null, trialEndsAt: Date.UTC(2026, 11, 4, 12) });
       expect(host.textContent).toContain("Prueba de Lecta+ · quedan 3 días");
-      expect(host.textContent).toContain("sin ningún cargo");
+      expect(host.textContent).toContain("vuelves a Gratis. Tus palabras, tu gato y tu progreso se quedan");
       expect(host.querySelector(".reader-card__periods")).not.toBeNull();
       expect(host.textContent).toContain("Hacerme Lecta+");
       expect(host.textContent).not.toContain("Administrar suscripción");

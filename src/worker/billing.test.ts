@@ -156,6 +156,39 @@ describe("POST /api/billing/checkout", () => {
   });
 });
 
+describe("embudo: app:checkout-start", () => {
+  const landingWrites = () =>
+    queryMock.mock.calls
+      .filter((call) => String(call[0]).includes("lecta_landing_daily"))
+      .map((call) => (call[1] as unknown[]).slice(1));
+
+  it("registra el periodo y la fuente trial/free tras crear el Checkout", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "lecta_plus", trialEndsAt: Date.now() + 1000 }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
+    const res = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "monthly" }) },
+      env,
+    );
+    expect(res.status).toBe(200);
+    await vi.waitFor(() => expect(landingWrites()).toEqual([["app:checkout-start:monthly", "trial"]]));
+  });
+
+  it("un fallo al escribir el evento no rompe la respuesta", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(plan());
+    withClientMock.mockRejectedValue(new Error("db caída"));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
+    const res = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "yearly" }) },
+      env,
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("prueba inversa (sin prueba de Stripe)", () => {
   it("durante la prueba se puede pagar y el checkout no lleva trial_period_days", async () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
@@ -276,6 +309,36 @@ describe("POST /api/billing/webhook", () => {
     expect(res.status).toBe(200);
     const upsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
     expect(upsert?.[1]).toEqual(["u2", "cus_2", "sub_2", 9000, expect.any(Number)]);
+  });
+
+  it("checkout-complete se registra una vez con la compra y no con subscription.updated activa", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "e" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{}] };
+      return { rows: [] };
+    });
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "lecta_plus", trialEndsAt: Date.now() + 1000 }));
+    const sub = {
+      id: "sub_2",
+      customer: "cus_2",
+      status: "active",
+      items: { data: [{ current_period_end: 9, price: { recurring: { interval: "year" } } }] },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(sub));
+    const landing = () =>
+      queryMock.mock.calls
+        .filter((call) => String(call[0]).includes("lecta_landing_daily"))
+        .map((call) => (call[1] as unknown[]).slice(1));
+    await deliver({
+      id: "evt_co",
+      type: "checkout.session.completed",
+      data: { object: { status: "complete", subscription: "sub_2", customer: "cus_2", client_reference_id: "u2" } },
+    });
+    await vi.waitFor(() => expect(landing()).toEqual([["app:checkout-complete:yearly", "trial"]]));
+    // Renovación: subscription.updated activa, sin evento nuevo.
+    await deliver(subEvent("customer.subscription.updated", { ...sub, metadata: { user_id: "u2" } }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(landing()).toHaveLength(1);
   });
 
   it("incomplete registra el evento sin escribir el plan", async () => {

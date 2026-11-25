@@ -9,7 +9,8 @@ import { normalizeLandingSource, recordLandingEvent } from "./landing-events";
 import { readFreeAiRemaining } from "./free-courtesy";
 import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
 import { getSession } from "./session";
-import { hasLectaPlus, isStarterCoat } from "../shared/plan";
+import { hasLectaPlus, isStarterCoat, REVERSE_TRIAL_MS } from "../shared/plan";
+import { USER_AI_SCOPES } from "./ai-units";
 
 export const account = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -64,9 +65,59 @@ account.get("/api/account/state", async (context) => {
           freeAiRemaining: freeAiLeft,
           // Fin de la prueba inversa en curso; null si no está en prueba.
           trialEndsAt: snapshot.trialEndsAt,
+          // Fin de una prueba ya vencida (plan free); null si no tuvo o sigue en curso.
+          trialEndedAt: snapshot.trialEndedAt ?? null,
         }
       : {}),
   });
+});
+
+// Resumen de uso durante la prueba inversa (una consulta acotada a su
+// ventana). Sin prueba (nunca la tuvo) responde 404.
+account.get("/api/account/trial-summary", async (context) => {
+  const session = await getSession(context);
+  if (!session?.user?.id) {
+    return context.json({ error: "No autorizado" }, 401);
+  }
+  const userId = session.user.id;
+  if (!getConnectionString(context.env)) {
+    return context.json({ error: "Servicio no disponible" }, 503);
+  }
+  try {
+    const summary = await withClient(context.env, async (client) => {
+      const plan = await getUserPlan(client, userId);
+      const end = plan.trialEndsAt ?? plan.trialEndedAt ?? null;
+      if (plan.degraded || end === null) return null;
+      const start = end - REVERSE_TRIAL_MS;
+      const res = (await client.query(
+        `SELECT
+           (SELECT COALESCE(SUM(units_used), 0) FROM lecta_ai_quota
+             WHERE user_id = $1 AND scope = ANY($2::STRING[])
+               AND bucket_hour >= $3 AND bucket_hour <= $4)::INT8 AS ai_uses,
+           (SELECT count(*) FROM lecta_user_words
+             WHERE user_id = $1 AND deleted = false
+               AND saved_at >= $5 AND saved_at <= $6)::INT8 AS words_saved,
+           (SELECT count(*) FROM user_books
+             WHERE user_id = $1 AND paper_only = false)::INT8 AS cloud_books,
+           EXISTS (SELECT 1 FROM kindle_link_codes
+             WHERE user_id = $1 AND status = 'linked') AS kindle_linked`,
+        [userId, [...USER_AI_SCOPES], Math.floor(start / 3_600_000), Math.floor(end / 3_600_000), start, end],
+      )) as { rows?: Array<Record<string, unknown>> };
+      const row = res.rows?.[0] ?? {};
+      return {
+        aiUses: Number(row.ai_uses) || 0,
+        wordsSaved: Number(row.words_saved) || 0,
+        cloudBooks: Number(row.cloud_books) || 0,
+        kindleLinked: row.kindle_linked === true,
+        trialEndsAt: end,
+      };
+    });
+    if (!summary) return context.json({ error: "Sin prueba" }, 404);
+    return context.json(summary);
+  } catch (error) {
+    console.error("Error al leer el resumen de la prueba:", error);
+    return context.json({ error: "No se pudo leer el resumen" }, 500);
+  }
 });
 
 // Pelaje inicial elegido en el landing o en el onboarding. Se escribe una

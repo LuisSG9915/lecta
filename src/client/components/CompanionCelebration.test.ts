@@ -122,6 +122,7 @@ vi.mock("idb", () => ({
 
 import * as idb from "../lib/idb";
 import * as game from "../lib/game";
+import { planStore, resetPlanStoreForTests } from "../lib/account-plan";
 import { CompanionProvider, useCompanion } from "./CompanionProvider";
 // Carga el chunk diferido antes de que la suite instale temporizadores falsos:
 // con ellos activos, el import() dinámico no llega a resolverse.
@@ -229,6 +230,34 @@ describe("CompanionCelebration (componente)", () => {
     expect(card?.getAttribute("role")).toBe("status");
     expect(toastText()).toBe("Primera palabra");
     expect(onSeen).toHaveBeenCalledWith(achItem(["Primera palabra"]));
+  });
+
+  it("racha de 7 días en free suma la línea del pelaje de Lecta+; en Lecta+ no", async () => {
+    await idb.setDbUser("u-streak");
+    const render = (plan: "free" | "lecta_plus") => {
+      planStore.set("u-streak", { plan, starterCoat: null, expiresAt: null });
+      act(() =>
+        root.render(
+          h(CompanionCelebration, {
+            ...props,
+            items: [{ kind: "achievements", ids: ["racha_7"], titles: ["Semana lectora"] }],
+            blocked: false,
+            onSeen: vi.fn(),
+          }),
+        ),
+      );
+    };
+    try {
+      render("free");
+      expect(toastText()).toContain("Semana lectora");
+      expect(toastText()).toContain("Con Lecta+");
+      act(() => root.unmount());
+      root = createRoot(host);
+      render("lecta_plus");
+      expect(toastText()).toBe("Semana lectora");
+    } finally {
+      resetPlanStoreForTests();
+    }
   });
 
   it("varios logros se agrupan: «el primero y N más»", () => {

@@ -66,6 +66,7 @@ const DiscoverRail = lazy(() => import("./DiscoverRail"));
 // «Más clásicos»: la búsqueda en el índice propio de Gutenberg carga
 // diferida — solo la pestaña «Libros gratuitos» la usa.
 const GutenbergSearch = lazy(() => import("./GutenbergSearch"));
+const TrialWarningNote = lazy(() => import("./TrialWarningNote"));
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
@@ -894,6 +895,10 @@ export default function Shelf({
           event.currentTarget.value = "";
         }}
       />
+
+      <Suspense fallback={null}>
+        <TrialWarningNote />
+      </Suspense>
 
       {isFirstTimeReader ? (
         <section className="shelf-welcome-hero" aria-label="Primera lectura en 1 clic">

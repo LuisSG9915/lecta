@@ -3,8 +3,10 @@
 // vía que escribe el plan. El cliente solo envía `period`: nunca montos ni
 // Price IDs.
 import { Hono } from "hono";
-import { hasLectaPlus } from "../shared/plan";
+import { hasLectaPlus, planSource, type PlanSource } from "../shared/plan";
+import { runInBackground } from "./background";
 import { isMissingTableError, withClient, type WorkerEnv } from "./db";
+import { recordLandingEvent } from "./landing-events";
 import { loadUserPlan, upsertPlanFromStripe } from "./plan-store";
 import { getSession } from "./session";
 import { STRIPE_VERSION, stripeRequest } from "./stripe";
@@ -12,6 +14,11 @@ import { STRIPE_VERSION, stripeRequest } from "./stripe";
 export { STRIPE_VERSION };
 
 const SIGNATURE_TOLERANCE_S = 300;
+
+/** Embudo de compra: contador diario anónimo; un fallo nunca rompe la respuesta. */
+function trackPlanEvent(env: WorkerEnv, event: string, source: PlanSource): Promise<unknown> {
+  return recordLandingEvent(env, { event, source }).catch(() => false);
+}
 
 type QueryClient = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
 
@@ -66,7 +73,9 @@ type StripeSubscription = {
   status?: string;
   ended_at?: number | null;
   metadata?: Record<string, string>;
-  items?: { data?: Array<{ current_period_end?: number }> };
+  items?: {
+    data?: Array<{ current_period_end?: number; price?: { recurring?: { interval?: string } } }>;
+  };
 };
 
 /**
@@ -155,6 +164,10 @@ billing.post("/api/billing/checkout", async (c) => {
   if (!result.ok || !url) {
     return c.json({ error: "No se pudo abrir el pago. Inténtalo de nuevo." }, 502);
   }
+  runInBackground(
+    c,
+    trackPlanEvent(c.env, `app:checkout-start:${period}`, planSource(plan.plan, plan.trialEndsAt)),
+  );
   return c.json({ url });
 });
 
@@ -191,6 +204,7 @@ billing.post("/api/billing/webhook", async (c) => {
   const event = JSON.parse(raw) as {
     id?: string;
     type?: string;
+    created?: number;
     data?: { object?: Record<string, unknown> };
   };
   const type = event.type ?? "";
@@ -200,6 +214,7 @@ billing.post("/api/billing/webhook", async (c) => {
   // La red con Stripe va fuera de la transacción.
   let subscription: StripeSubscription = object as StripeSubscription;
   let referenceUser: string | null = null;
+  let completeSource: PlanSource = "free";
   if (type === "checkout.session.completed") {
     if (object.status !== "complete" || typeof object.subscription !== "string") {
       return c.json({ received: true });
@@ -208,6 +223,15 @@ billing.post("/api/billing/webhook", async (c) => {
     const fetched = await stripeRequest(c.env, "GET", `/subscriptions/${object.subscription}`);
     if (!fetched.ok) return c.json({ error: "Stripe no respondió" }, 502);
     subscription = fetched.body as StripeSubscription;
+    // Fuente = plan ANTES de aplicar el pago (después siempre sería plus).
+    if (referenceUser) {
+      try {
+        const before = await loadUserPlan(c.env, referenceUser);
+        if (before && !before.degraded) completeSource = planSource(before.plan, before.trialEndsAt);
+      } catch {
+        /* sin fuente: se cuenta como free */
+      }
+    }
   } else {
     referenceUser = subscription.metadata?.user_id ?? null;
   }
@@ -243,6 +267,7 @@ billing.post("/api/billing/webhook", async (c) => {
           stripeCustomerId: customer,
           stripeSubscriptionId: subscription.id ?? null,
           planExpiresAt: expiresAt,
+          eventCreated: typeof event.created === "number" ? event.created * 1000 : undefined,
         });
       }
       await client.query("COMMIT");
@@ -258,5 +283,11 @@ billing.post("/api/billing/webhook", async (c) => {
     return c.json({ error: "Servicio temporalmente no disponible" }, 503);
   }
   if (outcome === "no-account") return c.json({ error: "Cuenta no encontrada" }, 500);
+  // Solo la compra inicial: las renovaciones y cambios llegan como subscription.*.
+  if (outcome === "applied" && type === "checkout.session.completed") {
+    const interval = subscription.items?.data?.[0]?.price?.recurring?.interval;
+    const period = interval === "year" ? "yearly" : interval === "month" ? "monthly" : null;
+    if (period) runInBackground(c, trackPlanEvent(c.env, `app:checkout-complete:${period}`, completeSource));
+  }
   return c.json({ received: true });
 });

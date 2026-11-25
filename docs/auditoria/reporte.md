@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-23T13:54:20.076Z
+Generado: 2026-11-25T07:11:31.021Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `8de1ca2482ebc5f040d2cc9e99767e49c80a8550`
+Commit: `558a5fd45094eea82117185d155315eca43785f8`
 Red: no (solo forma de las referencias)
 
-**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: FAIL** — 1 afirmaciones aprobadas, 2 refutadas, 0 refutadas por auditoría, 11 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -27,7 +27,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":291,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (3 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":134,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":133,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":494,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":134,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":133,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":498,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -131,19 +131,19 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:3580 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":3580,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
+- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:3580-3584 no contiene /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","asked":3582,"excerpt":["3580:         onRetryPrep={() => void retryPrep()}","3581:         onClosePrep={() => {","3582:           releaseOverlay();","3583:           closePrepLayer();","3584:         }}"]}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:814 coincide con /award: false/
@@ -161,11 +161,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
@@ -176,8 +176,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:279 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":279,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2162-2164 no contiene /if \(!existing \|\| existing\.deleted\) return null/
-  - observado: `{"file":"src/client/lib/idb.ts","asked":2163,"excerpt":["2162:   lemma: string,","2163:   scope?: DbScope,","2164: ): Promise<KnownWord | null> {"]}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2168 coincide con /if \(!existing \|\| existing\.deleted\) return null/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2168,"text":"if (!existing || existing.deleted) return null;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`
@@ -186,11 +186,11 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia waring2003: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ676380"}`
 
-### ⚠️ H6-fsrs-manual — Tarjetas FSRS limpias y consolidación de fin de capítulo conectada
+### ❌ H6-fsrs-manual — Tarjetas FSRS limpias y consolidación de fin de capítulo conectada
 
 > Las tarjetas nacen vacías, sin dificultad ni estabilidad prefijadas por origen de captura, y resolver el reto de cierre consolida la tarjeta de verdad en FSRS con Rating.Good y un solo repaso registrado.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — Antes el reto de fin de capítulo solo pagaba XP y las tarjetas se creaban con D/S inventados por origen. Hoy la tarjeta nace limpia y el ejercicio resuelto la avanza con Rating.Good.
 - evidencia: `src/client/lib/fsrs.ts:1-28`
@@ -203,8 +203,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:128 coincide con /export async function consolidateEpisodicWord/
   - observado: `{"file":"src/client/lib/reviews.ts","line":128,"text":"export async function consolidateEpisodicWord("}`
-- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:141 coincide con /consolidateEpisodicWord\(current\.item/
-  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":141,"text":"void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"}`
+- ❌ **FAIL** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:140-142 no contiene /consolidateEpisodicWord\(current\.item/
+  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","asked":141,"excerpt":["140:     if (current) {","141:       // El reto se califica por lo que pasó antes de acertar: error o","142:       // pista = Again, primer intento = Hard. Una palabra nueva solo se"]}`
 - ⚠️ **UNVERIFIED** · referencia ye2022: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1145/3534678.3539081","url":null}`
 - ⚠️ **UNVERIFIED** · referencia lindsey2014: forma válida; sin red no se resuelven metadatos (usar --online)

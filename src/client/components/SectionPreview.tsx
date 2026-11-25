@@ -884,6 +884,7 @@ function FullSectionPreview(props: SectionPreviewProps) {
           ) : null}
           {props.planHiddenCount && props.planHiddenCount > 0 ? (
             <PlanNote
+              feature="prep-list-preview"
               title={`Ves 3 de ${3 + props.planHiddenCount} palabras de este capítulo.`}
               detail="La lista completa de palabras previstas es de Lecta+."
             />

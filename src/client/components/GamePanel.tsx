@@ -43,6 +43,7 @@ import {
   type EvaluateSentenceResult,
   type MicroStoryResult,
 } from "../lib/learn";
+import PlanNote from "./PlanNote";
 import { PracticeCompanionHeader } from "./PracticeCompanionHeader";
 import { scheduleReview, Rating, type Card, type Grade } from "../lib/fsrs";
 
@@ -180,6 +181,8 @@ export function GamePanel(props: GamePanelProps) {
   const [styleHint, setStyleHint] = useState("Poético y misterioso");
   const [generatingStory, setGeneratingStory] = useState(false);
   const [storyResult, setStoryResult] = useState<MicroStoryResult | null>(null);
+  // Aviso de Lecta+: una vez por sesión de la vista, por función.
+  const [planNoteSeen, setPlanNoteSeen] = useState({ microstory: false, evaluate: false });
 
   const [isConsolidationMuted, setIsConsolidationMuted] = useState(
     () => !isConsolidationActive(bookId),
@@ -280,6 +283,7 @@ export function GamePanel(props: GamePanelProps) {
           scope,
         );
         setEvalResult(result);
+        if (result.locked) setPlanNoteSeen((p) => ({ ...p, evaluate: true }));
         // Reto superado: la palabra vuelve al cuaderno como repaso
         // real (tarjeta FSRS + historial), no como juego suelto.
         if (result.ok && result.score >= 60 && currentWord.key) {
@@ -307,6 +311,7 @@ export function GamePanel(props: GamePanelProps) {
           scope,
         );
         setStoryResult(result);
+        if (result.locked) setPlanNoteSeen((p) => ({ ...p, microstory: true }));
       } finally {
         setGeneratingStory(false);
       }
@@ -480,6 +485,14 @@ export function GamePanel(props: GamePanelProps) {
               ) : null}
             </div>
 
+            {evalResult?.locked && planNoteSeen.evaluate ? (
+              <PlanNote
+                feature="evaluate"
+                title="Esta revisión la hizo el gato sin IA."
+                detail="Con Lecta+ la IA evalúa tu frase con el sentido de tu libro."
+              />
+            ) : null}
+
             {evalResult ? (
               <div className="ai-result-panel" role="region" aria-label="Resultado de la evaluación">
                 <div className="ai-result-badges">
@@ -549,6 +562,14 @@ export function GamePanel(props: GamePanelProps) {
                 <span className="ai-fallback-badge">Modo sin conexión</span>
               ) : null}
             </div>
+
+            {storyResult?.locked && planNoteSeen.microstory ? (
+              <PlanNote
+                feature="microstory"
+                title="Este cuento lo armó el gato con tus palabras."
+                detail="Con Lecta+ lo escribe la IA con frases de tu libro."
+              />
+            ) : null}
 
             {storyResult ? (
               <div className="ai-story-card" role="region" aria-label="Cuento generado">

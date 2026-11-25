@@ -10,7 +10,7 @@ import {
 } from "../shared/plan";
 import type { CompanionCoatId } from "../shared/companion-data";
 import { createTtlCache } from "./ai";
-import { isMissingTableError, withClient, type WorkerEnv } from "./db";
+import { isMissingColumnError, isMissingTableError, withClient, type WorkerEnv } from "./db";
 
 type QueryClient = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
 
@@ -22,6 +22,8 @@ export type UserPlanSnapshot = {
   stripeSubscriptionId: string | null;
   /** Fin de la prueba inversa en curso (ms); null si la cuenta no está en prueba. */
   trialEndsAt: number | null;
+  /** Fin de una prueba ya vencida con plan efectivo free; ausente si no aplica. */
+  trialEndedAt?: number;
   /** true si la tabla aún no existe (42P01): el plan es un fail-open. */
   degraded: boolean;
 };
@@ -89,11 +91,14 @@ export async function getUserPlan(
   const expiresAt = toStamp(row.plan_expires_at);
   let plan = effectivePlan(normalizePlan(row.plan), expiresAt, now);
   let trialEndsAt: number | null = null;
+  let trialEndedAt: number | undefined;
   if (plan === "free") {
     const ends = reverseTrialEndsAt(toStamp(row.user_created_at));
     if (ends !== null && now < ends) {
       plan = "lecta_plus";
       trialEndsAt = ends;
+    } else if (ends !== null) {
+      trialEndedAt = ends;
     }
   }
   return {
@@ -103,6 +108,7 @@ export async function getUserPlan(
     stripeCustomerId: toText(row.stripe_customer_id),
     stripeSubscriptionId: toText(row.stripe_subscription_id),
     trialEndsAt,
+    ...(trialEndedAt !== undefined ? { trialEndedAt } : {}),
     degraded: false,
   };
 }
@@ -172,6 +178,8 @@ export type StripePlanPatch = {
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   planExpiresAt: number | null;
+  /** `event.created` de Stripe en ms: un evento más viejo que el aplicado se ignora. */
+  eventCreated?: number;
 };
 
 /**
@@ -185,24 +193,49 @@ export async function upsertPlanFromStripe(
   patch: StripePlanPatch,
   now = Date.now(),
 ): Promise<void> {
-  await client.query(
-    `INSERT INTO lecta_user_plan
-       (user_id, plan, stripe_customer_id, stripe_subscription_id, plan_expires_at, created_at, updated_at)
-     VALUES ($1, 'lecta_plus', $2, $3, $4, $5, $5)
-     ON CONFLICT (user_id) DO UPDATE SET
+  const base = [
+    userId,
+    patch.stripeCustomerId ?? null,
+    patch.stripeSubscriptionId ?? null,
+    patch.planExpiresAt,
+    now,
+  ];
+  const setCommon = `
        plan = CASE WHEN lecta_user_plan.plan = 'founder_lifetime'
                    THEN lecta_user_plan.plan ELSE 'lecta_plus' END,
        stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, lecta_user_plan.stripe_customer_id),
        stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, lecta_user_plan.stripe_subscription_id),
        plan_expires_at = EXCLUDED.plan_expires_at,
-       updated_at = EXCLUDED.updated_at`,
-    [
-      userId,
-      patch.stripeCustomerId ?? null,
-      patch.stripeSubscriptionId ?? null,
-      patch.planExpiresAt,
-      now,
-    ],
-  );
+       updated_at = EXCLUDED.updated_at`;
+  const legacy = () =>
+    client.query(
+      `INSERT INTO lecta_user_plan
+       (user_id, plan, stripe_customer_id, stripe_subscription_id, plan_expires_at, created_at, updated_at)
+     VALUES ($1, 'lecta_plus', $2, $3, $4, $5, $5)
+     ON CONFLICT (user_id) DO UPDATE SET${setCommon}`,
+      base,
+    );
+  if (patch.eventCreated === undefined) {
+    await legacy();
+  } else {
+    // Savepoint: un 42703 (034 sin aplicar) no debe envenenar la transacción.
+    await client.query("SAVEPOINT stripe_order");
+    try {
+      await client.query(
+        `INSERT INTO lecta_user_plan
+       (user_id, plan, stripe_customer_id, stripe_subscription_id, plan_expires_at, created_at, updated_at, stripe_event_created)
+     VALUES ($1, 'lecta_plus', $2, $3, $4, $5, $5, $6)
+     ON CONFLICT (user_id) DO UPDATE SET${setCommon},
+       stripe_event_created = EXCLUDED.stripe_event_created
+     WHERE lecta_user_plan.stripe_event_created IS NULL
+        OR lecta_user_plan.stripe_event_created <= EXCLUDED.stripe_event_created`,
+        [...base, patch.eventCreated],
+      );
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+      await client.query("ROLLBACK TO SAVEPOINT stripe_order");
+      await legacy();
+    }
+  }
   invalidateUserPlan(userId);
 }

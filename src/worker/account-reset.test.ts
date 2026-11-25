@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { resetAccountDataDb } from "./db";
 import { app } from "./app";
 import type { WorkerEnv } from "./db";
@@ -543,5 +543,73 @@ describe("guardia de reinicio en escrituras (x-lecta-reset)", () => {
     const res = await putAnnotations({}, envWithDb);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("trialEndedAt y GET /api/account/trial-summary", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    // La prueba inversa arranca el 2026-11-25: hay que viajar al futuro para vencerla.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-02-01T00:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const env = { DATABASE_URL: "postgres://mock" };
+  const DAY = 86_400_000;
+  const setup = async (createdAtMs: number, onSummary?: (params: unknown[] | undefined) => void) => {
+    const sessionModule = await import("./session");
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u_trial", email: "t@test.com" } as never,
+      session: {} as never,
+    });
+    const dbModule = await import("./db");
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({
+        query: vi.fn(async (sql: string, params?: unknown[]) => {
+          if (sql.includes("lecta_user_plan")) {
+            return { rows: [{ plan: null, user_created_at: String(createdAtMs) }] };
+          }
+          if (sql.includes("lecta_ai_quota") && sql.includes("ai_uses")) {
+            onSummary?.(params);
+            return { rows: [{ ai_uses: "7", words_saved: "3", cloud_books: "2", kindle_linked: true }] };
+          }
+          return { rows: [] };
+        }),
+      } as never),
+    );
+  };
+
+  it("en prueba: trialEndedAt null; vencida: el número", async () => {
+    await setup(Date.now());
+    let body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body.trialEndedAt).toBeNull();
+    const created = Date.now() - 30 * DAY;
+    vi.restoreAllMocks();
+    await setup(created);
+    body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body.plan).toBe("free");
+    expect(typeof body.trialEndedAt).toBe("number");
+  });
+
+  it("trial-summary: sin prueba 404", async () => {
+    await setup(Number.NaN);
+    const res = await app.request("/api/account/trial-summary", {}, env);
+    expect(res.status).toBe(404);
+  });
+
+  it("trial-summary: cuenta vencida, scopes sin free-courtesy y ventana en horas", async () => {
+    let params: unknown[] | undefined;
+    await setup(Date.now() - 30 * DAY, (p) => (params = p));
+    const res = await app.request("/api/account/trial-summary", {}, env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ aiUses: 7, wordsSaved: 3, cloudBooks: 2, kindleLinked: true });
+    expect(params?.[1]).toEqual(["explain", "page-recap", "translate", "evaluate", "story", "companion-note"]);
+    expect(params?.[1]).not.toContain("free-courtesy");
+    const end = body.trialEndsAt as number;
+    expect(params?.[3]).toBe(Math.floor(end / 3_600_000));
+    expect(params?.[4]).toBe(end - 14 * DAY);
   });
 });

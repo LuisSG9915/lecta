@@ -45,6 +45,7 @@ import {
 import type { GameState } from "../lib/gamification";
 import { triggerHaptic } from "../lib/haptics";
 import Icon from "./Icon";
+import PlanNote from "./PlanNote";
 
 export {
   ARTICLE_LABELS,
@@ -386,6 +387,19 @@ export function CompanionCloset({
             );
           })}
         </div>
+      ) : null}
+
+      {/* Pelaje bloqueado en free: ya se ve puesto en el gato (vista previa,
+          sin guardar); la nota dice por qué no se queda. */}
+      {planCtx?.plan === "free" &&
+      tryOnArticle !== null &&
+      COMPANION_ARTICLES[tryOnArticle] === "coat" &&
+      !owned.has(tryOnArticle) ? (
+        <PlanNote
+          feature="coat"
+          title="Así te quedaría"
+          detail="Cambiar de pelaje es de Lecta+. Cierra el armario y vuelves al tuyo."
+        />
       ) : null}
 
       {/* Rejilla: prendas o pelajes, con nombre y requisito — nunca un

@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildCohorts, isTestEmail, summarizeActive } from "./retention-stats.mjs";
+import { readFileSync } from "node:fs";
+import {
+  PLAN_GRACE_MS,
+  REVERSE_TRIAL_MS,
+  REVERSE_TRIAL_START,
+  buildCohorts,
+  classifyPlan,
+  isTestEmail,
+  summarizeActive,
+  trialEndsAt,
+} from "./retention-stats.mjs";
 
 const DAY = 86_400_000;
 // Lunes 2026-11-02 00:00 UTC
@@ -51,5 +61,52 @@ describe("retention:stats", () => {
         founder_lifetime: { total: 1, active7: 0, active30: 1 },
       },
     });
+  });
+});
+
+describe("retention:stats planes", () => {
+  const T = Date.UTC(2026, 10, 30);
+  const base = { expiresAt: null, hasSubscription: false };
+
+  it("prueba activa", () => {
+    expect(classifyPlan({ ...base, plan: "free", created: T - 2 * DAY }, T)).toBe("trial");
+    // cuenta anterior al lanzamiento: la prueba cuenta desde 2026-11-25
+    expect(classifyPlan({ ...base, plan: "free", created: Date.UTC(2026, 9, 1) }, T)).toBe("trial");
+  });
+
+  it("prueba vencida", () => {
+    expect(classifyPlan({ ...base, plan: "free", created: T - 20 * DAY }, Date.UTC(2026, 11, 20))).toBe("free");
+    expect(classifyPlan({ ...base, plan: "free", created: Date.UTC(2026, 9, 1) }, Date.UTC(2026, 11, 20))).toBe("free");
+  });
+
+  it("pagado y fundador", () => {
+    const paid = { plan: "lecta_plus", hasSubscription: true, expiresAt: T + 10 * DAY, created: T - 40 * DAY };
+    expect(classifyPlan(paid, T)).toBe("plus_paid");
+    expect(classifyPlan({ ...paid, expiresAt: T - 10 * DAY }, T)).toBe("trial");
+    expect(classifyPlan({ ...paid, hasSubscription: false }, T)).toBe("trial");
+    expect(classifyPlan({ ...base, plan: "founder_lifetime", created: T - 90 * DAY }, T)).toBe("founder_lifetime");
+  });
+
+  it("columna prueba → pago por cohorte", () => {
+    const created = MON + DAY;
+    const end = trialEndsAt(created);
+    const users = [
+      { created, plan: "plus_paid", trialEnd: end, days: [] },
+      { created, plan: "free", trialEnd: end, days: [] },
+      { created, plan: "trial", trialEnd: NOW + DAY, days: [] },
+      { created, plan: "founder_lifetime", days: [] },
+    ];
+    const [c] = buildCohorts(users, NOW);
+    expect(c.trialEnded).toBe(2);
+    expect(c.trialPaid).toBe(1);
+  });
+
+  it("constantes iguales a src/shared/plan.ts", () => {
+    const src = readFileSync(new URL("../src/shared/plan.ts", import.meta.url), "utf8");
+    const days = (name) => Number(new RegExp(`${name} = (\\d+) \\* 24 \\* 60 \\* 60 \\* 1000`).exec(src)?.[1]) * DAY;
+    expect(REVERSE_TRIAL_MS).toBe(days("REVERSE_TRIAL_MS"));
+    expect(PLAN_GRACE_MS).toBe(days("PLAN_GRACE_MS"));
+    const m = /REVERSE_TRIAL_START = Date\.UTC\((\d+), (\d+), (\d+)\)/.exec(src);
+    expect(REVERSE_TRIAL_START).toBe(Date.UTC(Number(m[1]), Number(m[2]), Number(m[3])));
   });
 });

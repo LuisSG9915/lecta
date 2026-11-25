@@ -128,6 +128,7 @@ export function FreeModes({
       </div>
       {locked ? (
         <PlanNote
+          feature="notebook-modes"
           title="Acepción, Contexto, Oración nueva y el Taller son de Lecta+."
           detail="Los demás modos, tu repaso diario y tu Herbario siguen aquí, sin límite."
         />

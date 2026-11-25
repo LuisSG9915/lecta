@@ -11,6 +11,7 @@ import {
 } from "../../lib/focus-telemetry";
 import { markSectionPreviewed } from "../../lib/chapter-analysis";
 import PlanNote from "../PlanNote";
+import TrialWarningNote from "../TrialWarningNote";
 import { memo } from "react";
 
 const RICH_CHAPTER_KEY_WORDS = 12;
@@ -95,6 +96,8 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
 
   return (
     <>
+  {/* Fin de la prueba: solo entre secciones, nunca al abrir el libro. */}
+  <TrialWarningNote armAt={sectionIndex} />
   {/* Marcador de retomar: máxima prioridad en la franja — es el
       mensaje de apertura cuando el libro llevaba días cerrado.
       Mientras está visible, el resto de avisos espera; al
@@ -133,6 +136,7 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
   {prepPlanNote && !isDeepReading ? (
     <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
       <PlanNote
+        feature="prep-list-notice"
         title="La lista completa de palabras previstas es de Lecta+."
         detail="Ábrela para ver 3, o sigue leyendo: tocar cualquier palabra te da su significado."
       />

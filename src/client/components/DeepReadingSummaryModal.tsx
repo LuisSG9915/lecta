@@ -38,6 +38,8 @@ export interface DeepReadingSummaryModalProps {
   chapterId?: string;
   onShareQuote?: (quote?: string) => void;
   onWordConsolidated?: (word: SavedWord) => void;
+  /** Cuenta free con la cortesía de IA de hoy agotada: avisa sin llamar a la IA. */
+  aiCourtesyExhausted?: boolean;
 }
 
 export default function DeepReadingSummaryModal({
@@ -53,6 +55,7 @@ export default function DeepReadingSummaryModal({
   chapterId,
   onShareQuote,
   onWordConsolidated,
+  aiCourtesyExhausted,
 }: DeepReadingSummaryModalProps) {
   const companion = useCompanionSafe();
   const durationText =
@@ -317,6 +320,21 @@ export default function DeepReadingSummaryModal({
           «{companion?.name ?? "Michi"} celebra tu lectura{wordsRead ? `: ${wordsRead.toLocaleString("es")} palabras leídas` : ""}.»
         </p>
       </div>
+
+      {aiCourtesyExhausted && isChapter ? (
+        <p className="meta deep-summary-ai-note">
+          Hoy ya usaste tus explicaciones con IA. Con Lecta+ habríamos explicado en este capítulo qué quiere decir cada palabra difícil en su frase.{" "}
+          <a
+            href="/?carne=1"
+            onClick={(e) => {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent("lecta:open-carne"));
+            }}
+          >
+            Ver Lecta+
+          </a>
+        </p>
+      ) : null}
 
       <div className="deep-summary-stats-grid">
         <div>

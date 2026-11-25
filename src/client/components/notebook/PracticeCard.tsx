@@ -333,6 +333,7 @@ export function PracticeCard({
           ) : null}
           {verifyError === VERIFY_PLAN_REQUIRED ? (
             <PlanNote
+              feature="ai-check"
               title="Comprobar con IA es de Lecta+."
               detail="Califica tu oración tú mismo, justo debajo."
             />

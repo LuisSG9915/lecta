@@ -116,6 +116,7 @@ vi.mock("idb", () => ({
 
 import * as idb from "../lib/idb";
 import * as game from "../lib/game";
+import { planStore, resetPlanStoreForTests } from "../lib/account-plan";
 import { emptyGameState, type GameChest, type GameState } from "../lib/gamification";
 import { startCare } from "../lib/companion-interactions";
 import {
@@ -554,6 +555,36 @@ describe("CompanionPanel", () => {
     expect(host.querySelector(".companion-bubble")?.textContent).toContain(
       "Nivel 6",
     );
+  });
+
+  it("en free, un pelaje bloqueado se prueba con nota de Lecta+ y al cerrar vuelve el equipado", async () => {
+    await idb.setDbUser("u-free");
+    planStore.set("u-free", { plan: "free", starterCoat: null, expiresAt: null });
+    try {
+      const scope = idb.captureDbScope();
+      act(() =>
+        root.render(h(CompanionPanel, baseProps({ state: makeState() }))),
+      );
+      await flush();
+      await openCloset("Pelaje");
+      expect(host.querySelector(".plan-note")).toBeNull();
+
+      click(card("Crema Canela")!);
+      await flush();
+      expect(host.querySelector(".plan-note")?.textContent).toContain("Lecta+");
+      expect(host.querySelector('[data-trying="true"]')).not.toBeNull();
+      expect(await game.readCompanionField("equipped.coat", scope)).toBeUndefined();
+
+      // Cerrar el armario (cambiar de pestaña) suelta la vista previa.
+      click(button("Recompensas") ?? button("Vitrina")!);
+      await flush();
+      await openCloset("Pelaje");
+      expect(host.querySelector(".plan-note")).toBeNull();
+      expect(host.querySelector('[data-trying="true"]')).toBeNull();
+      expect(await game.readCompanionField("equipped.coat", scope)).toBeUndefined();
+    } finally {
+      resetPlanStoreForTests();
+    }
   });
 
   it("un pelaje desbloqueado sí se equipa", async () => {

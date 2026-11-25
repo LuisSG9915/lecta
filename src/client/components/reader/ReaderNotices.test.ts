@@ -2,6 +2,7 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as accountPlan from "../../lib/account-plan";
 import { ReaderNotices, type ReaderNoticesProps } from "./ReaderNotices";
 import {
   isFocusSuggestionMuted,
@@ -279,5 +280,51 @@ describe("ReaderNotices: franja de ayuda de vocabulario al abrir libro nuevo", (
       calNotice: true,
     });
     expect(strip).toBeNull();
+  });
+});
+
+describe("ReaderNotices: aviso del fin de la prueba", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    vi.spyOn(accountPlan.planStore, "get").mockReturnValue({
+      plan: "lecta_plus",
+      starterCoat: null,
+      expiresAt: null,
+      trialEndsAt: Date.now() + 36 * 3_600_000,
+    });
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  const render = (sectionIndex: number) =>
+    act(() =>
+      root.render(h(ReaderNotices, { ...propsWithKeyWords(0), previewSuggested: false, chapterAnalysis: null, sectionIndex })),
+    );
+
+  it("no aparece al abrir el libro; sí al cambiar de sección y se oculta al descartarlo", () => {
+    render(2);
+    expect(container.querySelector(".trial-note")).toBeNull();
+    render(3);
+    expect(container.querySelector(".trial-note")?.textContent).toContain("Seguir con Lecta+");
+    act(() => (container.querySelector(".trial-note__close") as HTMLButtonElement).click());
+    expect(container.querySelector(".trial-note")).toBeNull();
+    expect(localStorage.getItem("lecta:trial-warning:2")).not.toBeNull();
+  });
+
+  it("sin trialEndsAt no pinta nada", () => {
+    vi.spyOn(accountPlan.planStore, "get").mockReturnValue({ plan: "free", starterCoat: null, expiresAt: null });
+    render(2);
+    render(3);
+    expect(container.querySelector(".trial-note")).toBeNull();
   });
 });

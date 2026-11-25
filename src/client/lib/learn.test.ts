@@ -316,6 +316,53 @@ describe("generateMicroStoryWithAi", () => {
 
 
 
+describe("locked por 402 LECTA_PLUS_REQUIRED", () => {
+  const reply = (status: number, body: unknown) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),
+      ),
+    );
+  const evalInput = { word: "efímero", targetSense: "Pasajero", userSentence: "El destello fue efímero en la noche oscura." };
+  const storyInput = { words: [{ word: "perenne" }, { word: "brisa" }] };
+
+  it("evaluate: 402 -> locked true, 500 -> false, mismo resultado local", async () => {
+    reply(402, { code: "LECTA_PLUS_REQUIRED" });
+    const a = await evaluateSentenceWithAi(evalInput);
+    reply(500, { error: "x" });
+    const b = await evaluateSentenceWithAi(evalInput);
+    expect(a.locked).toBe(true);
+    expect(b.locked).toBe(false);
+    expect(a.source).toBe("local");
+    expect({ ...a, locked: undefined, source: undefined }).toEqual({
+      ...evaluateSentenceLocally(evalInput),
+      locked: undefined,
+      source: undefined,
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("story: 402 -> locked true, 500 -> false, mismo resultado local", async () => {
+    reply(402, { code: "LECTA_PLUS_REQUIRED" });
+    const a = await generateMicroStoryWithAi(storyInput);
+    reply(500, { error: "x" });
+    const b = await generateMicroStoryWithAi(storyInput);
+    expect(a.locked).toBe(true);
+    expect(b.locked).toBe(false);
+    expect(a.story).toBe(generateMicroStoryLocally(storyInput).story);
+    vi.unstubAllGlobals();
+  });
+
+  it("respuesta de IA: source ai, locked false", async () => {
+    reply(200, { title: "T", story: "S [[perenne]]", wordsUsed: ["perenne"] });
+    const r = await generateMicroStoryWithAi(storyInput);
+    expect(r.source).toBe("ai");
+    expect(r.locked).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("isWordKnownBy", () => {
   it("reconoce la evidencia por lema y por forma", () => {
     const keys = knownKeysFor([known("correr")]);

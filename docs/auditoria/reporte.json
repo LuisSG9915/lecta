@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-23T13:54:20.076Z",
+  "generatedAt": "2026-11-25T07:11:31.021Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "8de1ca2482ebc5f040d2cc9e99767e49c80a8550",
+  "commit": "558a5fd45094eea82117185d155315eca43785f8",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 2,
+    "unverified": 11,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 12,
+    "codeFail": 2,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 494,
+                "line": 498,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -497,7 +497,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -507,7 +507,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -518,12 +518,18 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:3580 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
+          "status": "FAIL",
+          "detail": "src/client/components/Reader.tsx:3580-3584 no contiene /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 3580,
-            "text": "applyPreviewKnownSignal(currentLang, beta);"
+            "asked": 3582,
+            "excerpt": [
+              "3580:         onRetryPrep={() => void retryPrep()}",
+              "3581:         onClosePrep={() => {",
+              "3582:           releaseOverlay();",
+              "3583:           closePrepLayer();",
+              "3584:         }}"
+            ]
           }
         },
         {
@@ -618,7 +624,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -628,7 +634,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -661,16 +667,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/lib/idb.ts:2162-2164 no contiene /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
+          "status": "PASS",
+          "detail": "src/client/lib/idb.ts:2168 coincide con /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "asked": 2163,
-            "excerpt": [
-              "2162:   lemma: string,",
-              "2163:   scope?: DbScope,",
-              "2164: ): Promise<KnownWord | null> {"
-            ]
+            "line": 2168,
+            "text": "if (!existing || existing.deleted) return null;"
           }
         },
         {
@@ -719,7 +721,7 @@
       "title": "Tarjetas FSRS limpias y consolidación de fin de capítulo conectada",
       "statement": "Las tarjetas nacen vacías, sin dificultad ni estabilidad prefijadas por origen de captura, y resolver el reto de cierre consolida la tarjeta de verdad en FSRS con Rating.Good y un solo repaso registrado.",
       "section": "H6",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -730,7 +732,7 @@
           "src/client/components/DeepReadingSummaryModal.tsx:125-148"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -774,12 +776,16 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/DeepReadingSummaryModal.tsx:141 coincide con /consolidateEpisodicWord\\(current\\.item/",
+          "status": "FAIL",
+          "detail": "src/client/components/DeepReadingSummaryModal.tsx:140-142 no contiene /consolidateEpisodicWord\\(current\\.item/",
           "observed": {
             "file": "src/client/components/DeepReadingSummaryModal.tsx",
-            "line": 141,
-            "text": "void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"
+            "asked": 141,
+            "excerpt": [
+              "140:     if (current) {",
+              "141:       // El reto se califica por lo que pasó antes de acertar: error o",
+              "142:       // pista = Again, primer intento = Hard. Una palabra nueva solo se"
+            ]
           }
         },
         {

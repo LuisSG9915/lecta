@@ -1,7 +1,12 @@
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { captcha, magicLink } from "better-auth/plugins";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
+import {
+  DISPOSABLE_EMAIL_MESSAGE,
+  isDisposableEmail,
+} from "../shared/email-normalize";
 import { invalidateUserPlan } from "./plan-store";
 import { cancelBillingForDeletion } from "./stripe";
 import {
@@ -159,6 +164,36 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
         // 5 min: acota la ventana en que una sesión revocada sigue
         // válida desde el caché firmado, sin consultar la base.
         maxAge: 5 * 60,
+      },
+    },
+    // F12: correos temporales no abren cuenta. Solo el ALTA: el before de
+    // /sign-up/email corre antes de tocar la base y databaseHooks cubre la
+    // creación por enlace mágico; el inicio de sesión de cuentas existentes
+    // nunca pasa por aquí.
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email") return;
+        const email = (ctx.body as { email?: unknown } | undefined)?.email;
+        if (typeof email === "string" && isDisposableEmail(email)) {
+          throw new APIError("BAD_REQUEST", {
+            code: "DISPOSABLE_EMAIL",
+            message: DISPOSABLE_EMAIL_MESSAGE,
+          });
+        }
+      }),
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            if (typeof user.email === "string" && isDisposableEmail(user.email)) {
+              throw new APIError("BAD_REQUEST", {
+                code: "DISPOSABLE_EMAIL",
+                message: DISPOSABLE_EMAIL_MESSAGE,
+              });
+            }
+          },
+        },
       },
     },
     // Verificación obligatoria del correo (2026-11-23): sin ella cualquiera

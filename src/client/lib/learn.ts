@@ -178,6 +178,10 @@ export interface EvaluateSentenceResult {
   improvedVersion: string | null;
   offlineFallback?: boolean;
   error?: string;
+  /** Quién produjo el resultado (solo lo fijan las funciones `...WithAi`). */
+  source?: "ai" | "local";
+  /** true solo si el respaldo local vino de un 402 LECTA_PLUS_REQUIRED. */
+  locked?: boolean;
 }
 
 // Fallback determinista local para cuando no hay conexión o la IA está desactivada
@@ -239,7 +243,7 @@ export async function evaluateSentenceWithAi(
   const isOnline = typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
   if (!useAi || !isOnline) {
-    return evaluateSentenceLocally(input);
+    return { ...evaluateSentenceLocally(input), source: "local", locked: false };
   }
 
   try {
@@ -259,7 +263,11 @@ export async function evaluateSentenceWithAi(
     );
 
     if (!response.ok) {
-      return evaluateSentenceLocally(input);
+      return {
+        ...evaluateSentenceLocally(input),
+        source: "local",
+        locked: await isPlusRequired(response),
+      };
     }
 
     const data = (await response.json()) as {
@@ -272,7 +280,7 @@ export async function evaluateSentenceWithAi(
     };
 
     if (typeof data.isCorrect !== "boolean" || !data.feedback) {
-      return evaluateSentenceLocally(input);
+      return { ...evaluateSentenceLocally(input), source: "local", locked: false };
     }
 
     return {
@@ -282,9 +290,11 @@ export async function evaluateSentenceWithAi(
       catReaction: data.catReaction ?? (data.isCorrect ? "purring" : "curious"),
       feedback: data.feedback,
       improvedVersion: data.improvedVersion ?? null,
+      source: "ai",
+      locked: false,
     };
   } catch {
-    return evaluateSentenceLocally(input);
+    return { ...evaluateSentenceLocally(input), source: "local", locked: false };
   }
 }
 
@@ -302,6 +312,18 @@ export interface MicroStoryResult {
   wordsUsed: string[];
   offlineFallback?: boolean;
   error?: string;
+  source?: "ai" | "local";
+  locked?: boolean;
+}
+
+async function isPlusRequired(response: Response): Promise<boolean> {
+  if (response.status !== 402) return false;
+  try {
+    const body = (await response.clone().json()) as { code?: string };
+    return body.code === "LECTA_PLUS_REQUIRED";
+  } catch {
+    return false;
+  }
 }
 
 // Fallback poético determinista con palabras envueltas en [[palabra]]
@@ -353,7 +375,7 @@ export async function generateMicroStoryWithAi(
   const isOnline = typeof navigator === "undefined" ? true : navigator.onLine !== false;
 
   if (!useAi || !isOnline) {
-    return generateMicroStoryLocally(input);
+    return { ...generateMicroStoryLocally(input), source: "local", locked: false };
   }
 
   try {
@@ -371,7 +393,11 @@ export async function generateMicroStoryWithAi(
     );
 
     if (!response.ok) {
-      return generateMicroStoryLocally(input);
+      return {
+        ...generateMicroStoryLocally(input),
+        source: "local",
+        locked: await isPlusRequired(response),
+      };
     }
 
     const data = (await response.json()) as {
@@ -382,7 +408,7 @@ export async function generateMicroStoryWithAi(
     };
 
     if (!data.title || !data.story) {
-      return generateMicroStoryLocally(input);
+      return { ...generateMicroStoryLocally(input), source: "local", locked: false };
     }
 
     return {
@@ -390,9 +416,11 @@ export async function generateMicroStoryWithAi(
       title: data.title,
       story: data.story,
       wordsUsed: data.wordsUsed ?? [],
+      source: "ai",
+      locked: false,
     };
   } catch {
-    return generateMicroStoryLocally(input);
+    return { ...generateMicroStoryLocally(input), source: "local", locked: false };
   }
 }
 

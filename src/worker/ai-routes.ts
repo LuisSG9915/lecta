@@ -9,6 +9,7 @@ import { computeAiCacheKey, getCachedAiText, setCachedAiText } from "./ai-cache"
 import { EXPLAIN_UNITS_PER_HOUR, EVALUATE_UNITS_PER_HOUR, STORY_UNITS_PER_HOUR, PAGE_RECAP_UNITS_PER_HOUR, TRANSLATE_UNITS_PER_HOUR, COMPANION_NOTE_UNITS_PER_HOUR } from "./ai-units";
 import { createTtlCache, EVALUATE_CALL_OPTIONS, EVALUATE_SYSTEM_PROMPT, EXPLAIN_PASSAGE_CALL_OPTIONS, EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS, EXPLAIN_PASSAGE_SYSTEM_PROMPT, buildCompactExplainPrompt, normalizePassage, COMPANION_NOTE_SYSTEM_PROMPT, buildCompanionNotePrompt, parseCompanionNote, STORY_CALL_OPTIONS, STORY_SYSTEM_PROMPT, buildEvaluatePrompt, buildExplainInPassagePrompt, buildStoryPrompt, parseEvaluateSentence, parseMicroStory, parsePassageExplanation, type EvaluatedSentence, type MicroStory, type PassageExplanation, callDeepSeek, COMPANION_NOTE_CALL_OPTIONS, PAGE_RECAP_CALL_OPTIONS, PAGE_RECAP_SYSTEM_PROMPT, buildPageRecapPrompt, parsePageRecap, deterministicPageRecapFallback, CHARACTER_RECAP_CALL_OPTIONS, CHARACTER_RECAP_SYSTEM_PROMPT, buildCharacterRecapPrompt, parseCharacterRecap, deterministicCharacterRecapFallback, type CharacterRecapResponse, logAiCall, AI_TASK_BUDGETS, buildParagraphTranslationPrompt } from "./ai";
 import { consumeRateUnits } from "./rate-limit";
+import { guardDailyAi } from "./ai-daily";
 
 export const aiRoutes = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -52,6 +53,14 @@ aiRoutes.post("/api/ai/evaluate-sentence", requireLectaPlus, async (context) => 
       429,
     );
   }
+  const daily = await guardDailyAi(
+    context.env,
+    session.user.id,
+    context.get("aiDailyLimit"),
+    "evaluate",
+    "Llegaste al límite de evaluaciones por hora. Intenta más tarde.",
+  );
+  if (daily.deny) return context.json(daily.deny, 429);
 
   const ai = await callDeepSeek(
     context.env,
@@ -70,6 +79,7 @@ aiRoutes.post("/api/ai/evaluate-sentence", requireLectaPlus, async (context) => 
   );
 
   if (!ai.ok) {
+    await daily.refund();
     return context.json(
       {
         error:
@@ -84,6 +94,7 @@ aiRoutes.post("/api/ai/evaluate-sentence", requireLectaPlus, async (context) => 
   }
 
   if (!parsed) {
+    await daily.refund();
     return context.json({ error: "La IA no devolvió una evaluación válida." }, 502);
   }
 
@@ -134,6 +145,14 @@ aiRoutes.post("/api/ai/micro-story", requireLectaPlus, async (context) => {
       429,
     );
   }
+  const daily = await guardDailyAi(
+    context.env,
+    session.user.id,
+    context.get("aiDailyLimit"),
+    "story",
+    "Llegaste al límite de micro-relatos por hora. Intenta más tarde.",
+  );
+  if (daily.deny) return context.json(daily.deny, 429);
 
   const ai = await callDeepSeek(
     context.env,
@@ -152,6 +171,7 @@ aiRoutes.post("/api/ai/micro-story", requireLectaPlus, async (context) => {
   );
 
   if (!ai.ok) {
+    await daily.refund();
     return context.json(
       {
         error:
@@ -166,6 +186,7 @@ aiRoutes.post("/api/ai/micro-story", requireLectaPlus, async (context) => {
   }
 
   if (!parsed) {
+    await daily.refund();
     return context.json({ error: "La IA no devolvió un micro-relato estructurado correctamente." }, 502);
   }
 
@@ -189,7 +210,7 @@ export interface ExplainInPassageResponse extends PassageExplanation {
   cached?: boolean;
 }
 
-// Cortesía de IA free (3 al día UTC, free-courtesy.ts): se descuenta DENTRO
+// Cortesía de IA free (3 al día CDMX, free-courtesy.ts): se descuenta DENTRO
 // del handler, solo cuando de verdad se va a llamar a la IA (tras el caché), y
 // se devuelve si la IA falla. Lecta+/fundador no consumen nada.
 const COURTESY_EXHAUSTED = {
@@ -198,17 +219,24 @@ const COURTESY_EXHAUSTED = {
 } as const;
 
 type CourtesyGuard =
-  | { deny: { body: Record<string, string>; status: 402 | 503 } }
+  | { deny: { body: Record<string, string>; status: 402 | 429 | 503 } }
   | { deny?: undefined; refund: () => Promise<void> };
 
 async function guardAiCourtesy(
   env: WorkerEnv,
   userId: string,
   lectaPlus: boolean,
+  daily?: { limit: number | null | undefined; hourlyScope: string; hourlyMessage: string },
 ): Promise<CourtesyGuard> {
-  if (lectaPlus) return { refund: async () => undefined };
+  if (lectaPlus) {
+    // Tope diario invisible (F11): mismo texto y 429 que el tope por hora.
+    if (!daily) return { refund: async () => undefined };
+    const guard = await guardDailyAi(env, userId, daily.limit, daily.hourlyScope, daily.hourlyMessage);
+    if (guard.deny) return { deny: { body: { error: guard.deny.error }, status: 429 } };
+    return { refund: guard.refund };
+  }
   // Un solo instante para descontar y devolver: si la IA falla pasada la
-  // medianoche UTC, el reintegro vuelve al bucket del día en que se consumió.
+  // medianoche de CDMX, el reintegro vuelve al bucket del día en que se consumió.
   const at = Date.now();
   let ok: boolean;
   try {
@@ -293,7 +321,11 @@ aiRoutes.post("/api/ai/explain-in-passage", requireSessionWithPlan, async (conte
     );
   }
 
-  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"));
+  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"), {
+    limit: context.get("aiDailyLimit"),
+    hourlyScope: "explain",
+    hourlyMessage: "Llegaste al límite de explicaciones por hora. Intenta más tarde.",
+  });
   if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
 
   const systemPrompt = isCompact
@@ -427,6 +459,14 @@ aiRoutes.post("/api/ai/companion-note", requireLectaPlus, async (context) => {
       429,
     );
   }
+  const daily = await guardDailyAi(
+    context.env,
+    session.user.id,
+    context.get("aiDailyLimit"),
+    "companion-note",
+    "Llegaste al límite de cartas del compañero por ahora. Intenta más tarde.",
+  );
+  if (daily.deny) return context.json(daily.deny, 429);
 
   const ai = await callDeepSeek(
     context.env,
@@ -438,7 +478,10 @@ aiRoutes.post("/api/ai/companion-note", requireLectaPlus, async (context) => {
   );
 
   const parsed = ai.ok ? parseCompanionNote(ai.content) : null;
-  if (!parsed) return fallback();
+  if (!parsed) {
+    await daily.refund();
+    return fallback();
+  }
 
   const serialized = JSON.stringify(parsed);
   setCachedAiText(cacheKey, serialized);
@@ -489,7 +532,11 @@ aiRoutes.post("/api/ai/page-recap", requireSessionWithPlan, async (context) => {
     );
   }
 
-  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"));
+  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"), {
+    limit: context.get("aiDailyLimit"),
+    hourlyScope: "page-recap",
+    hourlyMessage: "Llegaste al límite de resúmenes con IA por ahora. Intenta más tarde.",
+  });
   if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
 
   const budget = AI_TASK_BUDGETS.page_recap;
@@ -556,7 +603,11 @@ aiRoutes.post("/api/ai/translate", requireSessionWithPlan, async (context) => {
     );
   }
 
-  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"));
+  const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"), {
+    limit: context.get("aiDailyLimit"),
+    hourlyScope: "translate",
+    hourlyMessage: "Llegaste al límite de traducciones con IA por ahora. Intenta más tarde.",
+  });
   if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
 
   const { prompt, budget } = buildParagraphTranslationPrompt(text);
@@ -636,6 +687,16 @@ aiRoutes.post("/api/ai/character-recap", requireLectaPlus, async (context) => {
   if (!allowed) {
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
   }
+  const daily = await guardDailyAi(
+    context.env,
+    session.user.id,
+    context.get("aiDailyLimit"),
+    "explain",
+    "",
+  );
+  if (daily.deny) {
+    return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
+  }
 
   const budget = AI_TASK_BUDGETS.character_cards;
   const ai = await callDeepSeek(
@@ -659,6 +720,7 @@ aiRoutes.post("/api/ai/character-recap", requireLectaPlus, async (context) => {
   );
 
   if (!ai.ok || !parsed) {
+    await daily.refund();
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
   }
 

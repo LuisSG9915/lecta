@@ -643,7 +643,7 @@ export interface CharacterRecapInput {
 
 export type CharacterRecapResult =
   | { ok: true; summary: string; role?: string; fallback?: boolean }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: typeof LECTA_PLUS_REQUIRED };
 
 export async function requestCharacterRecap(
   input: CharacterRecapInput,
@@ -664,9 +664,14 @@ export async function requestCharacterRecap(
       role?: string;
       fallback?: boolean;
       error?: string;
+      code?: unknown;
     };
     if (!response.ok) {
-      return { ok: false, error: data.error ?? "No se pudo obtener el resumen del personaje." };
+      return {
+        ok: false,
+        error: data.error ?? "No se pudo obtener el resumen del personaje.",
+        ...planCode(response.status, data),
+      };
     }
     if (!data.summary) {
       return { ok: false, error: "La IA no devolvió un resumen válido." };

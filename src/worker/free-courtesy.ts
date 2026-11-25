@@ -1,4 +1,4 @@
-// Cortesía de IA para cuentas free: 3 consultas al día UTC (2026-11-24; antes
+// Cortesía de IA para cuentas free: 3 consultas al día de CDMX (2026-11-24; antes
 // 5 al mes), contadas en `lecta_ai_quota` con scope "free-courtesy" y un
 // bucket_hour fijo por día. Sin migración. Falla CERRADA: si la tabla o
 // una columna faltan (42P01/42703) o no hay base, quedan 0 restantes.
