@@ -2,8 +2,9 @@
 // (docs: AGENTS.md «Producción»). Solo para respuestas que no dependen de la
 // sesión: la clave es una URL sintética sin cookies. La copia guardada lleva
 // su max-age; al navegador siempre le llega no-store, así que una palabra
-// recién enriquecida nunca queda vieja en su caché HTTP. En workers.dev la
-// Cache API no guarda nada; sin `caches` (pruebas, vite dev) solo se calcula.
+// recién enriquecida nunca queda vieja en su caché HTTP. Verificado el
+// 2026-11-24: guarda en lectal.app y también en workers.dev. Sin `caches`
+// (pruebas, vite dev) solo se calcula.
 import type { Context } from "hono";
 import { runInBackground } from "./background";
 
