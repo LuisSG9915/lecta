@@ -8,6 +8,7 @@ import {
   sendErrorDigest,
 } from "./error-signatures";
 import { purgeLandingEvents } from "./landing-events";
+import { runReengage } from "./reengage";
 import { buildUserDigest, buildDigestHtml, isEmptyDigest, sendDigestEmail } from "./weekly-digest";
 
 export { EnrichmentWorkflow };
@@ -55,44 +56,46 @@ const handler: ExportedHandler<WorkerEnv> = {
       })(),
     );
 
-    // Resumen semanal por correo: solo los lunes (UTC). Fan-out a las
-    // cuentas con opt-in. Cada envío falla en silencio para no abortar
-    // el resto; un pequeño delay evita saturar Resend.
-    if (new Date().getUTCDay() === 1) {
-      ctx.waitUntil(
-        (async () => {
-          let users: { user_id: string; email: string; token: string | null }[];
+    // Correo de regreso a los 7 días (docs/designs/2026-11-24-correo-de-regreso.md)
+    // y, los lunes, el resumen semanal. Van en serie en un solo waitUntil:
+    // juntos en paralelo pasarían el tope de Resend (2 por segundo). El
+    // resumen va a las cuentas con opt-in; cada envío falla en silencio para
+    // no abortar el resto.
+    ctx.waitUntil(
+      (async () => {
+        await runReengage(env).catch(() => undefined);
+        if (new Date().getUTCDay() !== 1) return;
+        let users: { user_id: string; email: string; token: string | null }[];
+        try {
+          const result = await withClient(env, (client) =>
+            client.query<{ user_id: string; email: string; token: string | null }>(
+              `SELECT p.user_id, u.email, p.digest_unsubscribe_token AS token
+                 FROM lecta_user_plan p
+                 JOIN "user" u ON u.id = p.user_id
+                WHERE p.digest_opt_in = true AND u.email IS NOT NULL`,
+            ),
+          );
+          users = result?.rows ?? [];
+        } catch {
+          users = [];
+        }
+        const base = "https://lectal.app";
+        for (const u of users) {
           try {
-            const result = await withClient(env, (client) =>
-              client.query<{ user_id: string; email: string; token: string | null }>(
-                `SELECT p.user_id, u.email, p.digest_unsubscribe_token AS token
-                   FROM lecta_user_plan p
-                   JOIN "user" u ON u.id = p.user_id
-                  WHERE p.digest_opt_in = true AND u.email IS NOT NULL`,
-              ),
-            );
-            users = result?.rows ?? [];
+            const data = await buildUserDigest(env, u.user_id);
+            if (isEmptyDigest(data)) continue;
+            const unsubUrl = u.token
+              ? `${base}/api/digest/unsubscribe?token=${encodeURIComponent(u.token)}`
+              : base;
+            const html = buildDigestHtml(data, unsubUrl);
+            await sendDigestEmail(env, u.email, html, "Tu semana en Lecta");
+            await new Promise((r) => setTimeout(r, 500));
           } catch {
-            users = [];
+            // falla en silencio por usuario
           }
-          const base = "https://lectal.app";
-          for (const u of users) {
-            try {
-              const data = await buildUserDigest(env, u.user_id);
-              if (isEmptyDigest(data)) continue;
-              const unsubUrl = u.token
-                ? `${base}/api/digest/unsubscribe?token=${encodeURIComponent(u.token)}`
-                : base;
-              const html = buildDigestHtml(data, unsubUrl);
-              await sendDigestEmail(env, u.email, html, "Tu semana en Lecta");
-              await new Promise((r) => setTimeout(r, 500));
-            } catch {
-              // falla en silencio por usuario
-            }
-          }
-        })(),
-      );
-    }
+        }
+      })(),
+    );
   },
 };
 

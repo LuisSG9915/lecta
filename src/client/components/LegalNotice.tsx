@@ -78,6 +78,13 @@ export default function LegalNotice({
               descargar una copia completa de tus datos en formato JSON o eliminar tu cuenta
               en cualquier momento desde los ajustes de perfil.
             </p>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Correo de regreso</h4>
+            <p>
+              Si tienes cuenta y llevas una semana sin leer, te enviamos un solo correo con el libro que
+              dejaste y las palabras de tu Cuaderno que toca repasar; como máximo uno cada 30 días. Usamos
+              tu correo y tu actividad de lectura solo para eso. Cada correo trae un enlace para no volver a
+              recibirlo.
+            </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Consultas de Inteligencia Artificial</h4>
             <p>
               Si activas la ayuda de inteligencia artificial para definiciones o explicaciones en contexto,
