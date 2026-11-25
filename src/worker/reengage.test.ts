@@ -110,6 +110,19 @@ describe("runReengage", () => {
     expect(String(mark?.[0])).not.toMatch(/SET[^;]*plan\s*=/);
   });
 
+  it("con un libro de hash sha256 el botón abre ese libro directo", async () => {
+    const hash = "ab".repeat(32);
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql === ELIGIBLE_SQL) return { rows: [{ id: "u1", email: "lector@correo.mx" }] };
+      if (sql.includes("FROM lecta_user_positions")) return { rows: [{ book_hash: hash, progress: 0.5 }] };
+      return { rows: [], rowCount: 1 };
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    await runReengage(env, NOW, noSleep);
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body.html).toContain(`https://lectal.app/?src=regreso&amp;abrir=${hash}`);
+  });
+
   it("si Resend falla no marca el envío", async () => {
     respond([{ id: "u1", email: "lector@correo.mx" }]);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("x", { status: 500 }));

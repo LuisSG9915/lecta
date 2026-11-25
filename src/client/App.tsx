@@ -114,6 +114,7 @@ import type {
 import type { SubtitleGuide } from "./components/SubtitleShelf";
 import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { primeSyncChanges } from "./lib/sync-changes";
+import { findDeepLinkItem, parseOpenBookParam } from "./lib/deep-link";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
 import { extractEpubMeta } from "../shared/epub-meta";
@@ -180,14 +181,24 @@ export default function App() {
         : null;
     const carneRaw = carneParam !== null;
     const probar = params.get("probar");
+    // ?abrir=<sha256>: enlace directo a un libro (correo de regreso).
+    const abrir = params.get("abrir");
     if (gato) rememberStarterCoat(gato);
     rememberLandingSource(src);
     if (
-      token || urlError || deleted || gato !== null || src !== null || carneRaw || probar !== null
+      token || urlError || deleted || gato !== null || src !== null || carneRaw || probar !== null ||
+      abrir !== null
     ) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-    return { token, urlError, deleted, carne, trial: parseTrialBook(probar) };
+    return {
+      token,
+      urlError,
+      deleted,
+      carne,
+      trial: parseTrialBook(probar),
+      openHash: parseOpenBookParam(abrir),
+    };
   });
   const [book, setBook] = useState<BookSelection | null>(null);
   // «Probar con un clásico» (lib/trial.ts): loading → reading → ended.
@@ -2156,6 +2167,24 @@ export default function App() {
   // lector mientras dura la prueba; nunca la estantería ni el resto.
   const sessionInconclusive =
     Boolean(sessionError) && sessionError?.status !== 401 && !sessionUserId;
+  // Enlace directo (?abrir=, correo de regreso): con sesión y el libro ya en
+  // la estantería se abre una sola vez, por el mismo camino que un toque
+  // (local, remoto, catálogo o adjuntar). Si no está, queda la estantería.
+  // Va en un setTimeout: abrir cambia estado y no debe correr dentro del efecto.
+  const deepLinkDone = useRef(false);
+  const openDeepLink = useEffectEvent((item: ShelfItem) => {
+    if (deepLinkDone.current) return;
+    deepLinkDone.current = true;
+    openShelfItem(item);
+  });
+  useEffect(() => {
+    if (!sessionUserId || checkingLibrary) return;
+    const item = findDeepLinkItem(library, authLink.openHash);
+    if (!item) return;
+    const timer = setTimeout(() => openDeepLink(item), 0);
+    return () => clearTimeout(timer);
+  }, [library, sessionUserId, checkingLibrary, authLink.openHash]);
+
   const trialOpen = !sessionUserId && (trial === "loading" || trial === "reading");
   const showWelcome =
     !trialOpen &&

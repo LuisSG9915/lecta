@@ -51,7 +51,21 @@ const unsubscribeUrl = (userId: string, token: string) =>
 
 // ---------- Contenido ----------
 
-export type ReengageData = { title: string | null; progress: number | null; dueWords: number };
+export type ReengageData = {
+  title: string | null;
+  progress: number | null;
+  dueWords: number;
+  /** sha256 del libro: el botón lo abre directo (?abrir=). */
+  bookHash?: string | null;
+};
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/** «Seguir leyendo»: abre el libro si hay hash; si no, la estantería. */
+export function continueUrl(bookHash?: string | null): string {
+  const hash = bookHash && SHA256.test(bookHash) ? bookHash : null;
+  return `${BASE_URL}/?src=regreso${hash ? `&abrir=${hash}` : ""}`;
+}
 
 /** Progreso 0–1 (o ya en %) a porcentaje entero, o null si no hay. */
 export function progressPercent(value: unknown): number | null {
@@ -81,7 +95,7 @@ export function buildReengageHtml(data: ReengageData, unsubUrl: string): string 
   <h1 style="font-size:22px;margin:0 0 16px;">Hace una semana que no lees</h1>
   ${progressLine}
   ${wordsLine}
-  <p style="margin:0 0 24px;"><a href="${BASE_URL}/?src=regreso" style="background:#b3472a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Seguir leyendo</a></p>
+  <p style="margin:0 0 24px;"><a href="${escapeHtml(continueUrl(data.bookHash))}" style="background:#b3472a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Seguir leyendo</a></p>
   <p style="color:#9a958e;font-size:12px;margin-top:24px;">Te escribimos una sola vez cuando dejas de leer una semana. <a href="${escapeHtml(unsubUrl)}" style="color:#9a958e;">No volver a recibir este correo</a>.</p>
 </body>
 </html>`;
@@ -158,6 +172,7 @@ async function readUserData(client: QueryClient, userId: string, catalog: Catalo
   );
   return {
     title,
+    bookHash: hash,
     progress: progressPercent(pos.rows[0]?.progress),
     dueWords: Number(due.rows[0]?.n ?? 0),
   };
