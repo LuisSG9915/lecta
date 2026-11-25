@@ -52,7 +52,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
 
     // 4. Paginación hacia el siguiente capítulo
     const nextBtn = page.locator(
-      'button.page-nav-btn[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Siguiente")',
+      'button.reader-nav-next[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Siguiente")',
     ).first();
     await nextBtn.scrollIntoViewIfNeeded().catch(() => {});
     await nextBtn.click();
@@ -71,7 +71,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
 
     // Avanzar de capítulo usando botón de navegación o flecha
     const nextBtn = page.locator(
-      'button.page-nav-btn[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Capítulo dos"), button:has-text("Siguiente")',
+      'button.reader-nav-next[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Capítulo dos"), button:has-text("Siguiente")',
     ).first();
     await nextBtn.scrollIntoViewIfNeeded().catch(() => {});
     if (await nextBtn.isVisible().catch(() => false)) {

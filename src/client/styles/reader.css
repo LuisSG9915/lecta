@@ -275,8 +275,8 @@
 
 .reader-body {
   padding-block-start: 4.5rem;
-  padding-block-end: calc(84px + env(safe-area-inset-bottom, 0px));
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-block-end: calc(56px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   padding-inline: var(--s-5);
 }
 
@@ -1291,62 +1291,31 @@ mark.saved-passage--dario {
 
 .page-nav {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-4);
-  max-inline-size: 48rem;
-  margin-inline: auto;
-  inline-size: 100%;
-  padding-block-start: var(--s-3);
-  border-top: 1px solid var(--rule);
-}
-
-.page-nav-center {
-  display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--s-1);
+  max-inline-size: 48rem;
+  margin-inline: auto;
+  inline-size: 100%;
+  padding-block-start: var(--s-1);
 }
 
 .page-nav-count {
   font-variant-numeric: tabular-nums;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-nav-thread {
-  inline-size: 5rem;
+  inline-size: 100%;
   block-size: 2px;
 }
 
-.page-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  min-height: 2.75rem; /* 44px táctil */
-  padding: 0.5rem 0.85rem;
-  border: 1px solid transparent;
-  border-radius: var(--r-1);
-  background: none;
-  font-family: var(--font-ui);
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition:
-    color var(--dur-1) var(--ease-out),
-    background-color var(--dur-1) var(--ease-out),
-    border-color var(--dur-1) var(--ease-out);
-}
-
-.page-nav-btn:hover:not(:disabled) {
-  color: var(--vermilion);
-  background: var(--paper-raised);
-  border-color: var(--rule);
-}
-
-.page-nav-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  pointer-events: none;
+/* En páginas el título de capítulo vive en el pie, no arriba. */
+.reader[data-layout="pages"] .chapter-title {
+  display: none;
 }
 
 /* Aviso de descubrimiento para pulsación larga en táctil */

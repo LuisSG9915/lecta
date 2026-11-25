@@ -506,45 +506,21 @@ export function ReaderContent(props: ReaderContentProps) {
   {settings.layout === "pages" ? (
     <>
       {chapterEndCard}
-    <nav className="page-nav" aria-label="Navegación de páginas">
-      <button
-        type="button"
-        className="page-nav-btn"
-        disabled={sectionIndex === 0 && page === 0}
-        onClick={() => {
-          triggerHaptic("selection");
-          void goPage(-1);
-        }}
-        aria-label="Página anterior"
-      >
-        <span aria-hidden="true">‹</span> Anterior
-      </button>
-      <div className="page-nav-center">
-        <span className="page-nav-count meta" aria-live="polite">
-          {pageCount ? `Página ${page + 1} de ${pageCount}` : ""}
-        </span>
-        {pageCount > 1 ? (
-          <div className="thread page-nav-thread" aria-hidden="true">
-            <div
-              className="thread-fill"
-              style={{ "--thread-value": `${Math.round(((page + 1) / pageCount) * 100)}%` } as CSSProperties}
-            />
-          </div>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        className="page-nav-btn"
-        disabled={sectionIndex + 1 >= sectionTotal && page + 1 >= pageCount}
-        onClick={() => {
-          triggerHaptic("selection");
-          void goPage(1);
-        }}
-        aria-label="Página siguiente"
-      >
-        Siguiente <span aria-hidden="true">›</span>
-      </button>
-    </nav>
+    <div className="page-nav" role="group" aria-label="Progreso de lectura">
+      <span className="page-nav-count meta" aria-live="polite">
+        {pageCount
+          ? `${sectionTitle ? `${sectionTitle} · ` : ""}${page + 1} / ${pageCount}`
+          : ""}
+      </span>
+      {pageCount > 1 ? (
+        <div className="thread page-nav-thread" aria-hidden="true">
+          <div
+            className="thread-fill"
+            style={{ "--thread-value": `${Math.round(((page + 1) / pageCount) * 100)}%` } as CSSProperties}
+          />
+        </div>
+      ) : null}
+    </div>
     </>
   ) : (
     <>

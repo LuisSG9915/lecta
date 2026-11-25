@@ -473,7 +473,7 @@ test.describe("Lecta — Journeys Críticos de Estabilización", () => {
       // 2. Avanzar al Capítulo dos en Contexto A
       const nextBtnA = pageA
         .locator(
-          'button.page-nav-btn[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Siguiente")',
+          'button.reader-nav-next[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Siguiente")',
         )
         .first();
       await nextBtnA.scrollIntoViewIfNeeded().catch(() => {});
