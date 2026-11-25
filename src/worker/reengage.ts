@@ -8,6 +8,7 @@
 import { Hono } from "hono";
 import { isMissingColumnError, withClient, type WorkerEnv } from "./db";
 import { escapeHtml } from "./kindle/views";
+import { getSession } from "./session";
 
 const DAY = 86_400_000;
 export const REENGAGE_AFTER_MS = 7 * DAY;
@@ -268,6 +269,48 @@ reengage.get("/api/reengage/unsubscribe", async (c) => {
       `<h1>¿Dejar de recibir el correo de regreso?</h1><p>Es el aviso que te enviamos cuando llevas una semana sin leer.</p><form method="post" action="${escapeHtml(action)}"><button type="submit" style="padding:10px 18px;">Sí, darme de baja</button></form>`,
     ),
   );
+});
+
+// Casilla de «Tú»: activo salvo baja. Sin la 033 (42703) se muestra activo
+// y guardar responde 503.
+reengage.get("/api/reengage/preferences", async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: "No autenticado." }, 401);
+  let enabled = true;
+  try {
+    await withClient(c.env, async (client) => {
+      const r = await client.query<{ reengage_opt_out: boolean }>(
+        "SELECT reengage_opt_out FROM lecta_user_plan WHERE user_id = $1",
+        [session.user.id],
+      );
+      if (r.rows[0]) enabled = !r.rows[0].reengage_opt_out;
+    });
+  } catch {
+    // tabla o columna ausente: activo por defecto
+  }
+  return c.json({ enabled });
+});
+
+reengage.post("/api/reengage/preferences", async (c) => {
+  const session = await getSession(c);
+  if (!session) return c.json({ error: "No autenticado." }, 401);
+  const body = (await c.req.json().catch(() => null)) as { enabled?: unknown } | null;
+  const enabled = body?.enabled !== false;
+  const now = Date.now();
+  try {
+    await withClient(c.env, (client) =>
+      client.query(
+        `INSERT INTO lecta_user_plan (user_id, plan, reengage_opt_out, created_at, updated_at)
+         VALUES ($1, 'free', $2, $3, $3)
+         ON CONFLICT (user_id) DO UPDATE SET reengage_opt_out = EXCLUDED.reengage_opt_out,
+           updated_at = EXCLUDED.updated_at`,
+        [session.user.id, !enabled, now],
+      ),
+    );
+  } catch {
+    return c.json({ error: "No se pudo guardar la preferencia." }, 503);
+  }
+  return c.json({ enabled });
 });
 
 reengage.post("/api/reengage/unsubscribe", async (c) => {

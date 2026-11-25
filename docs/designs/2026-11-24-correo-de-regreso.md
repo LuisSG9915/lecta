@@ -39,5 +39,5 @@ lo activa).
 
 ## Fuera
 
-Casilla en «Tú» para darse de baja (basta el enlace), enlace directo a un libro, cuentas que
-nunca tuvieron actividad.
+Enlace directo a un libro y cuentas que nunca tuvieron actividad. La casilla en «Tú» se agregó
+después (`GET/POST /api/reengage/preferences`, tarjeta «Correos de Lecta»).

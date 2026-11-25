@@ -26,6 +26,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
   return {
     ...actual,
     captureDbScope: vi.fn(() => "lecta"),
+    isDbScopeActive: vi.fn(() => true),
     listKnowledge: vi.fn(async () => []),
     listSavedWords: vi.fn(async () => []),
     loadSessionValue: vi.fn(async () => null),
@@ -258,6 +259,44 @@ describe("Account componente Tú y Login", () => {
     expect(accountCard?.textContent).toContain("Eliminar cuenta");
     expect(accountCard?.textContent).toContain("Empezar de cero");
     expect(accountCard?.textContent).not.toContain("Iniciar sesión o crear cuenta");
+  });
+
+  it("la casilla del correo de regreso lee la preferencia y guarda el cambio", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: { id: "u_123", email: "lector@lecta.app", name: "Lector", createdAt: new Date(), updatedAt: new Date(), emailVerified: true },
+        session: { id: "s_123", userId: "u_123", token: "tok", expiresAt: new Date(), createdAt: new Date(), updatedAt: new Date() },
+      },
+      isPending: false,
+    } as never);
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).startsWith("/api/reengage/preferences")) {
+        return init?.method === "POST"
+          ? new Response(JSON.stringify({ enabled: true }), { status: 200 })
+          : new Response(JSON.stringify({ enabled: false }), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(h(Account, { presentation: "page", onClose: vi.fn(), onOpenCalibration: vi.fn() }));
+      await flush();
+      await flush();
+      const toggle = host.querySelector('[role="switch"][aria-label="Recibir el correo de regreso"]');
+      expect(toggle).toBeTruthy();
+      expect(toggle?.getAttribute("aria-checked")).toBe("false");
+      await act(async () => {
+        (toggle as HTMLElement).click();
+      });
+      await flush();
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) => String(url).startsWith("/api/reengage/preferences") && init?.method === "POST",
+      );
+      expect(JSON.parse(String(post?.[1]?.body))).toEqual({ enabled: true });
+      expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("con resetToken abre el diálogo directamente en modo Restablecer contraseña", async () => {

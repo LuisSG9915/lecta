@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import type { WorkerEnv } from "./db";
 
 const queryMock = vi.hoisted(() => vi.fn());
+const getSessionMock = vi.hoisted(() => vi.fn());
+vi.mock("./session", () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock("./db", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./db")>()),
   withClient: async (_env: unknown, run: (client: { query: typeof queryMock }) => Promise<unknown>) =>
@@ -148,5 +150,47 @@ describe("baja", () => {
     const res = await app.request("/api/reengage/unsubscribe?u=u1&t=" + "0".repeat(64), { method: "POST" }, env);
     expect(res.status).toBe(404);
     expect(queryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("preferencia en «Tú»", () => {
+  const app = new Hono<{ Bindings: WorkerEnv }>().route("/", reengage);
+
+  beforeEach(() => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+  });
+
+  it("GET: activo por defecto y refleja la baja guardada", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    expect(await (await app.request("/api/reengage/preferences", {}, env)).json()).toEqual({ enabled: true });
+    queryMock.mockResolvedValueOnce({ rows: [{ reengage_opt_out: true }] });
+    expect(await (await app.request("/api/reengage/preferences", {}, env)).json()).toEqual({ enabled: false });
+  });
+
+  it("GET sin la columna (033 pendiente): activo", async () => {
+    queryMock.mockRejectedValueOnce(Object.assign(new Error("x"), { code: "42703" }));
+    expect(await (await app.request("/api/reengage/preferences", {}, env)).json()).toEqual({ enabled: true });
+  });
+
+  it("POST guarda la baja por UPSERT sin tocar el plan", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    const res = await app.request(
+      "/api/reengage/preferences",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: false }) },
+      env,
+    );
+    expect(await res.json()).toEqual({ enabled: false });
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toContain("reengage_opt_out = EXCLUDED.reengage_opt_out");
+    expect(sql).not.toMatch(/SET[^;]*\bplan\s*=/);
+    expect(params.slice(0, 2)).toEqual(["u1", true]);
+  });
+
+  it("POST sin la columna responde 503 y sin sesión 401", async () => {
+    queryMock.mockRejectedValueOnce(Object.assign(new Error("x"), { code: "42703" }));
+    const body = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: true }) };
+    expect((await app.request("/api/reengage/preferences", body, env)).status).toBe(503);
+    getSessionMock.mockResolvedValueOnce(null);
+    expect((await app.request("/api/reengage/preferences", body, env)).status).toBe(401);
   });
 });

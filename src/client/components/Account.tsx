@@ -255,6 +255,8 @@ export default function Account({
   const [gameOn, setGameOn] = useState(true);
   // Resumen semanal por correo: preferencia del servidor.
   const [digestOptIn, setDigestOptIn] = useState(false);
+  // Correo de regreso a los 7 días: opt-out, activo salvo baja.
+  const [reengageOn, setReengageOn] = useState(true);
   const [digestSending, setDigestSending] = useState(false);
   // con sesión sincroniza por la cuenta, sin ella queda en el dispositivo.
   const [presence, setPresence] = useState<ReadingPresence>("visits");
@@ -372,6 +374,12 @@ export default function Account({
     void loadGameEnabled(scope).then((on) => {
       if (!cancelled) setGameOn(on);
     });
+    void accountFetch("/api/reengage/preferences", undefined, scope)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { enabled?: boolean } | null) => {
+        if (!cancelled && data && typeof data.enabled === "boolean") setReengageOn(data.enabled);
+      })
+      .catch(() => undefined);
     void accountFetch("/api/digest/preferences", undefined, scope)
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { optIn?: boolean } | null) => {
@@ -531,6 +539,27 @@ export default function Account({
       setUseAi(!next);
       setError("No se pudo guardar la preferencia. Intenta de nuevo.");
     });
+  };
+
+  const toggleReengage = () => {
+    const next = !reengageOn;
+    setReengageOn(next);
+    void accountFetch("/api/reengage/preferences", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: next }),
+    }, captureDbScope())
+      .then((res) => {
+        if (!res.ok) throw new Error("fail");
+        return res.json() as Promise<{ enabled?: boolean }>;
+      })
+      .then((data) => {
+        if (typeof data?.enabled === "boolean") setReengageOn(data.enabled);
+      })
+      .catch(() => {
+        setReengageOn(!next);
+        setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+      });
   };
 
   const toggleDigestOptIn = () => {
@@ -1059,13 +1088,27 @@ export default function Account({
         </div>
       </section>
 
-      <section className="account-card" aria-label="Resumen semanal por correo">
+      <section className="account-card" aria-label="Correos de Lecta">
         <div className="account-card-header">
-          <strong className="account-card-title">Resumen semanal por correo</strong>
+          <strong className="account-card-title">Correos de Lecta</strong>
           <p className="account-card-desc">
-            Un correo cada lunes con tu tiempo de lectura, palabras guardadas y
-            repasos de la semana.
+            El resumen de los lunes y el aviso cuando llevas una semana sin leer.
           </p>
+        </div>
+        <div className="setting-row setting-row--toggle">
+          <div className="setting-info">
+            <span className="setting-label">Correo de regreso</span>
+            <p className="setting-hint">
+              {reengageOn
+                ? "Activo: si dejas de leer una semana, te recordamos tu libro y tus palabras (máximo uno al mes)."
+                : "Desactivado: no te escribiremos cuando dejes de leer."}
+            </p>
+          </div>
+          <Toggle
+            label="Recibir el correo de regreso"
+            checked={reengageOn}
+            onChange={toggleReengage}
+          />
         </div>
         <div className="setting-row setting-row--toggle">
           <div className="setting-info">
