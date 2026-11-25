@@ -12,6 +12,7 @@ import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
 import { calibrationBankVersion, type CalibrationProfile } from "../shared/calibration-bank";
 import { getSession } from "./session";
+import { withEdgeCache } from "./edge-cache";
 import { consumeRateUnits } from "./rate-limit";
 import { computeAiCacheKey, getCachedAiText, setCachedAiText } from "./ai-cache";
 import { ITEM_UNITS_PER_HOUR, VERIFY_UNITS_PER_HOUR, EXPLAIN_UNITS_PER_HOUR } from "./ai-units";
@@ -23,18 +24,23 @@ lexiconRoutes.get("/api/lexicon/lookup", async (context) => {
   const language = context.req.query("lang")?.trim() || "es";
   if (!form || form.length > 100) return context.json({ found: false }, 400);
 
-  let entries;
-  try {
-    entries = await withClient(context.env, (client) => findEntries(client, language, form), true);
-  } catch {
-    return context.json({ error: "No se pudo consultar el catálogo." }, 502);
-  }
+  // Cache API (10 min acierto, 1 min «no encontrada»): la SQL ya compara con
+  // lower($2), así que la forma va en minúsculas en la clave.
+  const key = `lexicon/lookup?v=1&lang=${encodeURIComponent(language)}&form=${encodeURIComponent(form.toLowerCase())}`;
+  return withEdgeCache(context, key, { ttlSeconds: 600, missTtlSeconds: 60 }, async () => {
+    let entries;
+    try {
+      entries = await withClient(context.env, (client) => findEntries(client, language, form), true);
+    } catch {
+      return context.json({ error: "No se pudo consultar el catálogo." }, 502);
+    }
 
-  if (!entries) return context.json({ error: "El catálogo no está configurado." }, 503);
-  return context.json(
-    { found: entries.length > 0, entries },
-    entries.length > 0 ? 200 : 404,
-  );
+    if (!entries) return context.json({ error: "El catálogo no está configurado." }, 503);
+    return context.json(
+      { found: entries.length > 0, entries },
+      entries.length > 0 ? 200 : 404,
+    );
+  });
 });
 
 // Muestra de lemas para la calibración inicial de vocabulario:
@@ -55,23 +61,26 @@ lexiconRoutes.get("/api/lexicon/sample", async (context) => {
   if (language !== "es" && language !== "en")
     return context.json({ error: "La muestra solo existe en español e inglés por ahora." }, 400);
 
-  const cacheKey = `${language}:${profile}`;
-  const cached = sampleCache.get(cacheKey);
-  if (cached) return context.json({ ...cached, cached: true });
+  const edgeKey = `lexicon/sample?v=1&language=${language}&profile=${profile}`;
+  return withEdgeCache(context, edgeKey, { ttlSeconds: 3600 }, async () => {
+    const cacheKey = `${language}:${profile}`;
+    const cached = sampleCache.get(cacheKey);
+    if (cached) return context.json({ ...cached, cached: true });
 
-  let words;
-  try {
-    words = await withClient(context.env, (client) =>
-      sampleForCalibration(client, language, profile),
-    true);
-  } catch {
-    return context.json({ error: "No se pudo consultar el catálogo." }, 502);
-  }
+    let words;
+    try {
+      words = await withClient(context.env, (client) =>
+        sampleForCalibration(client, language, profile),
+      true);
+    } catch {
+      return context.json({ error: "No se pudo consultar el catálogo." }, 502);
+    }
 
-  if (!words) return context.json({ error: "El catálogo no está configurado." }, 503);
-  const payload = { words, version: calibrationBankVersion(language, profile) };
-  sampleCache.set(cacheKey, payload);
-  return context.json(payload);
+    if (!words) return context.json({ error: "El catálogo no está configurado." }, 503);
+    const payload = { words, version: calibrationBankVersion(language, profile) };
+    sampleCache.set(cacheKey, payload);
+    return context.json(payload);
+  });
 });
 
 lexiconRoutes.post("/api/lexicon/batch", async (context) => {

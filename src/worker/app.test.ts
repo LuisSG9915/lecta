@@ -82,12 +82,45 @@ describe("GET /api/lexicon/lookup", () => {
     const response = await app.request("/api/lexicon/lookup?form=perenne", {}, {});
     expect(response.status).toBe(503);
   });
+
+  it("responde desde la Cache API sin tocar el catálogo, con clave normalizada", async () => {
+    const match = vi.fn(async (req: Request) =>
+      req.url === "http://lectal.app/__edge/lexicon/lookup?v=1&lang=es&form=perenne"
+        ? Response.json({ found: true, entries: [{ lemma: "perenne" }] })
+        : undefined,
+    );
+    vi.stubGlobal("caches", { default: { match, put: vi.fn() } });
+    try {
+      const response = await app.request("http://lectal.app/api/lexicon/lookup?form=%20Perenne%20", {}, {});
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-lecta-cache")).toBe("hit");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("GET /api/lexicon/sample", () => {
   it("rejects languages without a sample", async () => {
     const response = await app.request("/api/lexicon/sample?language=fr");
     expect(response.status).toBe(400);
+  });
+
+  it("responde desde la Cache API por idioma y perfil", async () => {
+    const match = vi.fn(async (req: Request) =>
+      req.url === "http://lectal.app/__edge/lexicon/sample?v=1&language=en&profile=learner"
+        ? Response.json({ words: [], version: "x" })
+        : undefined,
+    );
+    vi.stubGlobal("caches", { default: { match, put: vi.fn() } });
+    try {
+      const response = await app.request("http://lectal.app/api/lexicon/sample?language=en&profile=learner", {}, {});
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-lecta-cache")).toBe("hit");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("reports a missing catalog configuration", async () => {
