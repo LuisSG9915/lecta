@@ -14,6 +14,7 @@ export const LANDING_EVENT_MAX_BODY_BYTES = 512;
 export const LANDING_EVENT_LIMIT_PER_MINUTE = 60;
 export const LANDING_SOURCE_MAX = 32;
 export const LANDING_KEEP_DAYS = 90;
+export const PLAN_EVENTS_KEEP_DAYS = 180;
 
 /** Eventos que acepta `POST /api/landing-events`. */
 export const LANDING_EVENTS = new Set([
@@ -125,6 +126,50 @@ export async function recordLandingEvent(
     return true;
   });
   return written === true;
+}
+
+/**
+ * Eventos `app:*` con sesión: suma 1 en `lecta_plan_events` (migración 035,
+ * FK con CASCADE: borrar la cuenta borra sus filas). Sin base, sin tabla
+ * (42P01) o con cualquier fallo devuelve `false`; nunca lanza.
+ */
+export async function recordPlanEvent(
+  env: WorkerEnv,
+  userId: string,
+  event: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  if (!userId || !event.startsWith("app:")) return false;
+  try {
+    const written = await withClient(env, async (client) => {
+      await client.query(
+        `INSERT INTO lecta_plan_events (user_id, day, event, hits)
+         VALUES ($1, $2::DATE, $3, 1)
+         ON CONFLICT (user_id, day, event) DO UPDATE SET
+           hits = lecta_plan_events.hits + 1`,
+        [userId, now.toISOString().slice(0, 10), event],
+      );
+      return true;
+    });
+    return written === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Retención de `lecta_plan_events` (180 días). Lo llama el cron diario. */
+export async function purgePlanEvents(
+  env: WorkerEnv,
+  keepDays: number = PLAN_EVENTS_KEEP_DAYS,
+): Promise<number> {
+  const deleted = await withClient(env, async (client) => {
+    const result = await client.query(
+      `DELETE FROM lecta_plan_events WHERE day < current_date - $1::INT8`,
+      [Math.max(1, Math.trunc(keepDays))],
+    );
+    return result.rowCount ?? 0;
+  });
+  return deleted ?? 0;
 }
 
 /** Retención. Lo llama el cron diario. */

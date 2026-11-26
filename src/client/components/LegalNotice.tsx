@@ -108,6 +108,9 @@ export default function LegalNotice({
               <a href="mailto:contacto@lectal.app">contacto@lectal.app</a>. Las notificaciones formales se reciben
               en ese mismo correo mientras se publica en este aviso el domicilio para oír y recibir notificaciones.
             </p>
+            <p>
+              Con tu sesión iniciada registramos, por cuenta y como simples contadores por día, qué avisos de Lecta+ viste (por ejemplo, un límite o el fin de la prueba), para medir cuáles ayudan. Se conservan 180 días y se borran con tu cuenta.
+            </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Derechos ARCO y procedimiento de revocación</h4>
             <p>
               Conforme a la LFPDPPP, tienes derecho a ejercer tus derechos de Acceso, Rectificación, Cancelación y Oposición (derechos ARCO), así como revocar en cualquier momento el consentimiento otorgado para el tratamiento de tus datos personales.

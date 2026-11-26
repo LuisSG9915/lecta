@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as dbModule from "./db";
+import * as sessionModule from "./session";
 import type { WorkerEnv } from "./db";
 import { app } from "./app";
 import {
@@ -9,7 +10,9 @@ import {
   normalizeLandingSource,
   parseLandingEvent,
   purgeLandingEvents,
+  purgePlanEvents,
   recordLandingEvent,
+  recordPlanEvent,
   resetLandingLimiter,
 } from "./landing-events";
 
@@ -135,6 +138,39 @@ describe("recordLandingEvent / purgeLandingEvents", () => {
   });
 });
 
+describe("recordPlanEvent / purgePlanEvents (F19)", () => {
+  it("hace UPSERT por cuenta, día y evento", async () => {
+    const client = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 1 }) };
+    withFakeClient(client);
+    expect(await recordPlanEvent(env, "u1", "app:paywall:ai", new Date("2026-11-25T10:00:00Z"))).toBe(true);
+    const [sql, params] = client.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("ON CONFLICT (user_id, day, event)");
+    expect(params).toEqual(["u1", "2026-11-25", "app:paywall:ai"]);
+  });
+
+  it("tabla ausente (42P01) o fallo ⇒ false sin lanzar", async () => {
+    withFakeClient({
+      query: vi.fn().mockRejectedValue(Object.assign(new Error("no table"), { code: "42P01" })),
+    });
+    expect(await recordPlanEvent(env, "u1", "app:paywall:ai")).toBe(false);
+  });
+
+  it("no escribe sin usuario ni para eventos que no son app:*", async () => {
+    const client = { query: vi.fn() };
+    withFakeClient(client);
+    expect(await recordPlanEvent(env, "", "app:paywall:ai")).toBe(false);
+    expect(await recordPlanEvent(env, "u1", "view")).toBe(false);
+    expect(client.query).not.toHaveBeenCalled();
+  });
+
+  it("purga lo anterior a 180 días", async () => {
+    const client = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 2 }) };
+    withFakeClient(client);
+    expect(await purgePlanEvents(env)).toBe(2);
+    expect(client.query.mock.calls[0]?.[1]).toEqual([180]);
+  });
+});
+
 describe("POST /api/landing-events", () => {
   const post = (body: string) =>
     app.request(
@@ -166,6 +202,29 @@ describe("POST /api/landing-events", () => {
     }
     await settle();
     expect(client.query).not.toHaveBeenCalled();
+  });
+
+  it("app:* sin sesión solo escribe el contador anónimo", async () => {
+    const client = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 1 }) };
+    withFakeClient(client);
+    const res = await post(JSON.stringify({ event: "app:paywall", source: "free" }));
+    expect(res.status).toBe(204);
+    await settle();
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(String(client.query.mock.calls[0]?.[0])).toContain("lecta_landing_daily");
+  });
+
+  it("app:* con sesión escribe también por cuenta", async () => {
+    const client = { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 1 }) };
+    withFakeClient(client);
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({ user: { id: "u1" } } as never);
+    const res = await post(JSON.stringify({ event: "app:paywall", source: "free" }));
+    expect(res.status).toBe(204);
+    await settle();
+    await settle();
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    expect(sqls.some((q) => q.includes("lecta_plan_events"))).toBe(true);
+    expect(client.query.mock.calls.find((c) => String(c[0]).includes("lecta_plan_events"))?.[1]?.[0]).toBe("u1");
   });
 
   it("si la tabla no existe sigue respondiendo 204", async () => {

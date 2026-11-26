@@ -7,7 +7,7 @@ import {
   purgeErrorSignatures,
   sendErrorDigest,
 } from "./error-signatures";
-import { purgeLandingEvents } from "./landing-events";
+import { purgeLandingEvents, purgePlanEvents } from "./landing-events";
 import { runReengage } from "./reengage";
 import { readCachedCoach } from "./coach";
 import { loadUserPlan } from "./plan-store";
@@ -54,6 +54,7 @@ const handler: ExportedHandler<WorkerEnv> = {
       (async () => {
         await purgeErrorSignatures(env).catch(() => 0);
         await purgeLandingEvents(env).catch(() => 0);
+        await purgePlanEvents(env).catch(() => 0);
         const rows = await collectErrorDigest(env).catch(() => []);
         if (rows.length > 0) await sendErrorDigest(env, rows).catch(() => false);
       })(),

@@ -114,6 +114,38 @@ export function summarizeActive(users, now) {
   return out;
 }
 
+/** Familias de aviso de lecta_plan_events (F19) que mide el reporte. */
+export const PLAN_EVENT_FAMILIES = [
+  ["trialEnd", (e) => e === "app:trial-end-view"],
+  ["paywall", (e) => e.startsWith("app:paywall:")],
+  ["checkout", (e) => e.startsWith("app:checkout-start:")],
+];
+
+/**
+ * `users`: { created, plan, id }; `events`: Map id → lista de nombres de evento.
+ * Por semana de alta: cuentas que vieron cada familia y cuántas son plus_paid.
+ * El id solo se usa para cruzar; nunca sale en el resultado.
+ */
+export function buildPlanEventCohorts(users, events) {
+  const byWeek = new Map();
+  for (const user of users) {
+    const week = weekOf(user.created);
+    const row = byWeek.get(week) ?? { week, signups: 0 };
+    row.signups += 1;
+    const seen = events.get(user.id) ?? [];
+    for (const [name, matches] of PLAN_EVENT_FAMILIES) {
+      row[name] ??= 0;
+      row[name + "Paid"] ??= 0;
+      if (seen.some(matches)) {
+        row[name] += 1;
+        if (user.plan === "plus_paid") row[name + "Paid"] += 1;
+      }
+    }
+    byWeek.set(week, row);
+  }
+  return [...byWeek.values()].sort((a, b) => a.week.localeCompare(b.week));
+}
+
 export function rate(part, whole) {
   return whole > 0 ? `${part}/${whole} (${Math.round((part / whole) * 100)}%)` : "—";
 }
@@ -165,7 +197,26 @@ async function readUsers(weeks, now) {
       list.push(Number(row.t));
       daysById.set(row.user_id, list);
     }
+    // F19: tabla opcional (migración 035); ausente ⇒ planEvents = null.
+    let planEvents = null;
+    if (ids.length) {
+      try {
+        const ev = await client.query(
+          `SELECT user_id, event FROM lecta_plan_events WHERE user_id = ANY($1) GROUP BY user_id, event`,
+          [ids],
+        );
+        planEvents = new Map();
+        for (const row of ev.rows) {
+          const list = planEvents.get(row.user_id) ?? [];
+          list.push(String(row.event));
+          planEvents.set(row.user_id, list);
+        }
+      } catch (err) {
+        if (err?.code !== "42P01") throw err;
+      }
+    }
     return {
+      planEvents,
       database: db.rows[0]?.db,
       excluded: users.rows.length - real.length,
       users: real.map((row) => {
@@ -180,6 +231,7 @@ async function readUsers(weeks, now) {
           now,
         );
         return {
+          id: row.id,
           created,
           plan,
           trialEnd: plan === "founder_lifetime" ? undefined : trialEndsAt(created),
@@ -195,11 +247,13 @@ async function readUsers(weeks, now) {
 async function main() {
   const { weeks, json } = parseArgs(process.argv.slice(2));
   const now = Date.now();
-  const { database, excluded, users } = await readUsers(weeks, now);
+  const { database, excluded, users, planEvents } = await readUsers(weeks, now);
   const cohorts = buildCohorts(users, now);
   const active = summarizeActive(users, now);
+  const planCohorts = planEvents ? buildPlanEventCohorts(users, planEvents) : null;
   if (json) {
-    console.log(JSON.stringify({ database, weeks, excluded, cohorts, active }, null, 2));
+    const safe = users.length && planCohorts ? planCohorts : null;
+    console.log(JSON.stringify({ database, weeks, excluded, cohorts, active, planEvents: safe }, null, 2));
     return;
   }
   console.log(`Retención · ${database} · altas de las últimas ${weeks} semanas · ${excluded} cuentas de prueba excluidas\n`);
@@ -225,6 +279,23 @@ async function main() {
   for (const [plan, p] of Object.entries(active.byPlan)) {
     console.log(`  ${plan}: ${p.active7} en 7 días · ${p.active30} en 30 días · de ${p.total}`);
   }
+  if (!planCohorts) {
+    console.log("\nAvisos de Lecta+ por cohorte: sin lecta_plan_events (migración 035 pendiente).");
+    return;
+  }
+  console.log("\nAvisos de Lecta+ vistos por cohorte (cuentas que lo vieron · de ellas, plus_paid)");
+  const h2 = ["semana", "altas", "fin de prueba", "muro", "checkout"];
+  const l2 = planCohorts.map((c) => [
+    c.week,
+    c.signups,
+    `${c.trialEnd} · ${c.trialEndPaid}`,
+    `${c.paywall} · ${c.paywallPaid}`,
+    `${c.checkout} · ${c.checkoutPaid}`,
+  ]);
+  const w2 = h2.map((h, i) => Math.max(h.length, ...l2.map((l) => String(l[i]).length)));
+  const f2 = (cells) => cells.map((c, i) => String(c).padEnd(w2[i])).join("  ");
+  console.log(f2(h2));
+  for (const line of l2) console.log(f2(line));
 }
 
 // pathToFileURL: la ruta del repo lleva espacios («Desarrollos Devin»).

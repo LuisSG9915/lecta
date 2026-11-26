@@ -5,6 +5,7 @@ import {
   REVERSE_TRIAL_MS,
   REVERSE_TRIAL_START,
   buildCohorts,
+  buildPlanEventCohorts,
   classifyPlan,
   isTestEmail,
   summarizeActive,
@@ -108,5 +109,23 @@ describe("retention:stats planes", () => {
     expect(PLAN_GRACE_MS).toBe(days("PLAN_GRACE_MS"));
     const m = /REVERSE_TRIAL_START = Date\.UTC\((\d+), (\d+), (\d+)\)/.exec(src);
     expect(REVERSE_TRIAL_START).toBe(Date.UTC(Number(m[1]), Number(m[2]), Number(m[3])));
+  });
+});
+
+describe("retention:stats avisos (F19)", () => {
+  it("cuenta cuentas que vieron cada aviso y cuántas son plus_paid, sin ids", () => {
+    const created = MON + DAY;
+    const users = [
+      { id: "a", created, plan: "plus_paid" },
+      { id: "b", created, plan: "free" },
+      { id: "c", created, plan: "free" },
+    ];
+    const events = new Map([
+      ["a", ["app:paywall:ai", "app:checkout-start:monthly"]],
+      ["b", ["app:paywall:ai", "app:paywall:kindle", "app:trial-end-view"]],
+    ]);
+    const [c] = buildPlanEventCohorts(users, events);
+    expect(c).toMatchObject({ signups: 3, paywall: 2, paywallPaid: 1, trialEnd: 1, trialEndPaid: 0, checkout: 1, checkoutPaid: 1 });
+    expect(JSON.stringify(c)).not.toMatch(/"[abc]"/);
   });
 });

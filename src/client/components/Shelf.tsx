@@ -67,6 +67,7 @@ const DiscoverRail = lazy(() => import("./DiscoverRail"));
 // diferida — solo la pestaña «Libros gratuitos» la usa.
 const GutenbergSearch = lazy(() => import("./GutenbergSearch"));
 const TrialWarningNote = lazy(() => import("./TrialWarningNote"));
+const TrialStatusLine = lazy(() => import("./TrialStatusLine"));
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
@@ -898,6 +899,7 @@ export default function Shelf({
 
       <Suspense fallback={null}>
         <TrialWarningNote />
+        <TrialStatusLine />
       </Suspense>
 
       {isFirstTimeReader ? (

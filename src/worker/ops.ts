@@ -16,7 +16,9 @@ import {
   allowLandingEvent,
   parseLandingEvent,
   recordLandingEvent,
+  recordPlanEvent,
 } from "./landing-events";
+import { getSession } from "./session";
 
 export const ops = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -108,6 +110,20 @@ ops.post("/api/landing-events", async (context) => {
   if (!allowLandingEvent(ip, Date.now())) return context.body(null, 204);
 
   runInBackground(context, recordLandingEvent(context.env, landingEvent).catch(() => false));
+
+  // F19: un `app:*` con sesión suma también por cuenta. La sesión se resuelve
+  // en segundo plano (el 204 no espera) y solo si hay cookie (barato); sin
+  // sesión o ante cualquier fallo no se escribe nada por usuario.
+  if (landingEvent.event.startsWith("app:")) {
+    const { env } = context;
+    const request = { raw: context.req.raw, url: context.req.url };
+    runInBackground(
+      context,
+      getSession({ env, req: request })
+        .then((session) => (session ? recordPlanEvent(env, session.user.id, landingEvent.event) : false))
+        .catch(() => false),
+    );
+  }
   return context.body(null, 204);
 });
 
