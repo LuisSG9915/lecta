@@ -49,6 +49,7 @@ import { CompanionStage } from "./CompanionStage";
 import ReadingActivity from "./ReadingActivity";
 import JourneyInsights from "./JourneyInsights";
 const StudyPlanCard = lazy(() => import("./StudyPlanCard"));
+const FluencyForecastCard = lazy(() => import("./FluencyForecastCard"));
 import JourneyFold from "./JourneyFold";
 import { dayKeyOf } from "../lib/reading-activity";
 import { summarizeChapterFollows } from "../lib/chapter-follow";
@@ -1085,6 +1086,9 @@ export default function Journey({ onClose, books }: JourneyProps) {
                         </p>
                       </div>
                     </div>
+                    <Suspense fallback={null}>
+                      <FluencyForecastCard lang={g.lang} />
+                    </Suspense>
                   </article>
                 ))}
               </div>
