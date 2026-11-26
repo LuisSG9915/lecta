@@ -34,11 +34,12 @@ studyPlan.get("/api/study-plan", requireLectaPlus, async (c) => {
         async () =>
           (
             await client.query(
-              `SELECT (extract(epoch FROM (card->>'due')::timestamptz) * 1000)::INT8 AS due
+              `SELECT (extract(epoch FROM (CASE WHEN card->>'due' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN (card->>'due')::timestamptz END)) * 1000)::INT8 AS due
                  FROM lecta_user_words
                 WHERE user_id = $1 AND deleted = false AND card ? 'due'
                   AND (presented_at IS NOT NULL OR COALESCE((card->>'reps')::INT8, 0) > 0)
-                  AND (card->>'due')::timestamptz < now() + ($2 || ' days')::INTERVAL
+                  AND (CASE WHEN card->>'due' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN (card->>'due')::timestamptz END) < now() + ($2 || ' days')::INTERVAL
+                ORDER BY due ASC
                 LIMIT 5000`,
               [userId, String(STUDY_PLAN_DAYS)],
             )
@@ -50,7 +51,7 @@ studyPlan.get("/api/study-plan", requireLectaPlus, async (c) => {
             await client.query(
               `SELECT started_at, ended_at FROM lecta_user_activity
                 WHERE user_id = $1 AND started_at >= $2
-                ORDER BY started_at DESC LIMIT 500`,
+                ORDER BY started_at DESC, ended_at DESC LIMIT 500`,
               [userId, now - 14 * DAY_MS],
             )
           ).rows,
@@ -60,7 +61,7 @@ studyPlan.get("/api/study-plan", requireLectaPlus, async (c) => {
           (
             await client.query(
               `SELECT book_hash, section_index, progress FROM lecta_user_positions
-                WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+                WHERE user_id = $1 ORDER BY updated_at DESC, book_hash ASC LIMIT 1`,
               [userId],
             )
           ).rows,

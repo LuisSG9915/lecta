@@ -72,6 +72,15 @@ describe("eventos de plan (app:)", () => {
     expect(parseLandingEvent({ event: "app:plannote:" })).toBeNull();
   });
 
+  it("app:* solo acepta fuentes de plan; lo demás es unknown", () => {
+    expect(parseLandingEvent({ event: "app:paywall:coach", source: "free" })?.event).toBe("app:paywall:coach");
+    expect(parseLandingEvent({ event: "app:paywall:inventado", source: "free" })).toBeNull();
+    expect(parseLandingEvent({ event: "app:paywall", source: "plus" })?.source).toBe("plus");
+    expect(parseLandingEvent({ event: "app:paywall", source: "instagram.com" })?.source).toBe("unknown");
+    expect(parseLandingEvent({ event: "app:paywall" })?.source).toBe("unknown");
+    expect(parseLandingEvent({ event: "view" })?.source).toBe("direct");
+  });
+
   it("acepta los eventos fijos y los días de aviso permitidos", () => {
     for (const event of ["app:paywall", "app:carne-open", "app:trial-end-view", "app:trial-end-cta", "app:recap-locked", "app:trial-warning:3", "app:trial-warning:2", "app:trial-warning:1"]) {
       expect(parseLandingEvent({ event })?.event).toBe(event);

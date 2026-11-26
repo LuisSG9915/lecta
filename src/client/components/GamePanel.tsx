@@ -181,8 +181,6 @@ export function GamePanel(props: GamePanelProps) {
   const [styleHint, setStyleHint] = useState("Poético y misterioso");
   const [generatingStory, setGeneratingStory] = useState(false);
   const [storyResult, setStoryResult] = useState<MicroStoryResult | null>(null);
-  // Aviso de Lecta+: una vez por sesión de la vista, por función.
-  const [planNoteSeen, setPlanNoteSeen] = useState({ microstory: false, evaluate: false });
 
   const [isConsolidationMuted, setIsConsolidationMuted] = useState(
     () => !isConsolidationActive(bookId),
@@ -283,7 +281,6 @@ export function GamePanel(props: GamePanelProps) {
           scope,
         );
         setEvalResult(result);
-        if (result.locked) setPlanNoteSeen((p) => ({ ...p, evaluate: true }));
         // Reto superado: la palabra vuelve al cuaderno como repaso
         // real (tarjeta FSRS + historial), no como juego suelto.
         if (result.ok && result.score >= 60 && currentWord.key) {
@@ -311,7 +308,6 @@ export function GamePanel(props: GamePanelProps) {
           scope,
         );
         setStoryResult(result);
-        if (result.locked) setPlanNoteSeen((p) => ({ ...p, microstory: true }));
       } finally {
         setGeneratingStory(false);
       }
@@ -485,7 +481,7 @@ export function GamePanel(props: GamePanelProps) {
               ) : null}
             </div>
 
-            {evalResult?.locked && planNoteSeen.evaluate ? (
+            {evalResult?.locked ? (
               <PlanNote
                 feature="evaluate"
                 title="Esta revisión la hizo el gato sin IA."
@@ -563,7 +559,7 @@ export function GamePanel(props: GamePanelProps) {
               ) : null}
             </div>
 
-            {storyResult?.locked && planNoteSeen.microstory ? (
+            {storyResult?.locked ? (
               <PlanNote
                 feature="microstory"
                 title="Este cuento lo armó el gato con tus palabras."

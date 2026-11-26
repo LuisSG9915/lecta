@@ -10,7 +10,6 @@ import { readBookMeta } from "../lib/cover";
 import type { ShelfItem } from "./Shelf";
 import PlanNote from "./PlanNote";
 import { useUserPlan } from "../lib/account-plan";
-import { hasLectaPlus } from "../../shared/plan";
 
 export const ATTACH_MISMATCH_MESSAGE =
   "Este archivo es distinto al que abriste originalmente. Adjunta el mismo archivo EPUB o pasa a Lecta+ para sincronizar tus libros automáticamente.";
@@ -92,13 +91,13 @@ export default function AttachBookSheet({
         Tu posición y tus palabras de este libro ya están aquí. El archivo EPUB se quedó en el
         dispositivo donde lo agregaste: adjunta el mismo archivo para seguir leyendo.
       </p>
-      {hasLectaPlus(userPlan?.plan) ? null : (
+      {userPlan?.plan === "free" ? (
         <PlanNote
           feature="cloud"
           title="Biblioteca en la nube"
           detail="Con Lecta+ tus libros viajan solos entre tus aparatos, sin adjuntar nada."
         />
-      )}
+      ) : null}
       <label className="btn btn--primary attach-book-input">
         {busy ? "Comprobando…" : "Adjuntar el archivo EPUB"}
         <input

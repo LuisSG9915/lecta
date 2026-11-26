@@ -36,8 +36,19 @@ export function isoWeekKey(now: number): string {
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
-/** Cubeta de cuota de la semana (`202648`), distinta de las horas/días. */
-const weekBucket = (week: string) => Number(week.replace("-W", ""));
+/**
+ * Cubeta de cuota de la semana: hora epoch del lunes 00:00 UTC. Es una hora
+ * real reciente, así que la limpieza diaria de `lecta_ai_quota`
+ * (`bucket_hour < now-30d`) no la borra mientras la semana está en curso.
+ */
+export function weekBucket(now: number): number {
+  const d = new Date(now);
+  const day = d.getUTCDay() || 7;
+  return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - (day - 1)) / 3_600_000);
+}
+
+/** Un respaldo guardado tras una respuesta de IA inválida caduca pronto. */
+export const COACH_FALLBACK_TTL_MS = 60 * 60 * 1000;
 
 export const coachCacheKey = (userId: string, week: string) => `coach/v1/${userId}/${week}.json`;
 
@@ -51,20 +62,21 @@ export async function readCachedCoach(
   try {
     const obj = await env.BOOKS.get(coachCacheKey(userId, week));
     if (!obj) return null;
-    const data = (await obj.json()) as { text?: unknown; source?: unknown };
+    const data = (await obj.json()) as { text?: unknown; source?: unknown; createdAt?: unknown };
     if (typeof data.text !== "string" || !data.text) return null;
+    if (data.source !== "ai" && now - (Number(data.createdAt) || 0) > COACH_FALLBACK_TTL_MS) return null;
     return { text: data.text, source: data.source === "ai" ? "ai" : "fallback", week };
   } catch {
     return null;
   }
 }
 
-async function writeCachedCoach(env: WorkerEnv, userId: string, result: CoachResult): Promise<void> {
+async function writeCachedCoach(env: WorkerEnv, userId: string, result: CoachResult, now = Date.now()): Promise<void> {
   if (!env.BOOKS) return;
   try {
     await env.BOOKS.put(
       coachCacheKey(userId, result.week),
-      JSON.stringify({ text: result.text, source: result.source, createdAt: Date.now() }),
+      JSON.stringify({ text: result.text, source: result.source, createdAt: now }),
       { httpMetadata: { contentType: "application/json" } },
     );
   } catch {
@@ -127,7 +139,7 @@ export async function collectCoachInput(env: WorkerEnv, userId: string, now: num
             `SELECT COUNT(*)::INT8 AS n FROM lecta_user_words
               WHERE user_id = $1 AND deleted = false AND card ? 'due'
                 AND (presented_at IS NOT NULL OR COALESCE((card->>'reps')::INT8, 0) > 0)
-                AND (card->>'due')::timestamptz < now()`,
+                AND (CASE WHEN card->>'due' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN (card->>'due')::timestamptz END) < now()`,
             [userId],
           )
         ).rows,
@@ -138,7 +150,7 @@ export async function collectCoachInput(env: WorkerEnv, userId: string, now: num
           await q.query(
             `SELECT b.title FROM lecta_user_positions p
                JOIN user_books b ON b.user_id = p.user_id AND b.book_id = p.book_hash
-              WHERE p.user_id = $1 ORDER BY p.updated_at DESC LIMIT 1`,
+              WHERE p.user_id = $1 ORDER BY p.updated_at DESC, p.book_hash ASC LIMIT 1`,
             [userId],
           )
         ).rows,
@@ -170,7 +182,7 @@ export async function getWeeklyCoach(
   if (cached) return cached;
 
   const week = isoWeekKey(now);
-  const bucket = weekBucket(week);
+  const bucket = weekBucket(now);
   let allowed = true;
   try {
     allowed = await consumeRateUnits(env, userId, 1, 1, COACH_SCOPE, bucket);
@@ -183,7 +195,7 @@ export async function getWeeklyCoach(
   const input = await collectCoachInput(env, userId, now);
   const fallback = (): CoachResult => ({ text: deterministicCoachFallback(input), source: "fallback", week });
 
-  const daily = await guardDailyAi(env, userId, dailyLimit, COACH_SCOPE, "Límite diario de IA alcanzado.", now);
+  const daily = await guardDailyAi(env, userId, dailyLimit, COACH_SCOPE, { now });
   if (daily.deny) {
     await refundWeek();
     return fallback();
@@ -200,9 +212,17 @@ export async function getWeeklyCoach(
     !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
   );
   if (!parsed) {
-    await daily.refund();
     await refundWeek();
-    return fallback(); // no se guarda: el siguiente intento puede usar IA
+    if (!ai.ok) {
+      // IA caída o error de red: no cobra nada y el siguiente intento puede usar IA.
+      await daily.refund();
+      return fallback();
+    }
+    // La IA respondió pero con JSON inválido o truncado: el consumo diario se
+    // queda y el respaldo se guarda con TTL corto, así no hay llamadas sin tope.
+    const result = fallback();
+    await writeCachedCoach(env, userId, result, now);
+    return result;
   }
   const result: CoachResult = { text: parsed, source: "ai", week };
   await writeCachedCoach(env, userId, result);

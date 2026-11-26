@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as idb from "./idb";
 import {
   dismissTrialNotice,
   isTrialNoticeDismissed,
@@ -29,7 +30,18 @@ describe("trialNoticeDay", () => {
 });
 
 describe("marcas y hoja del día 15", () => {
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+  it("las marcas son por cuenta", () => {
+    vi.spyOn(idb, "getActiveUserId").mockReturnValue("a");
+    markTrialEndSeen();
+    dismissTrialNotice(3);
+    vi.spyOn(idb, "getActiveUserId").mockReturnValue("b");
+    expect(shouldShowTrialEnd({ trialEndedAt: 1, bookOpen: false, deepLinkPending: false })).toBe(true);
+    expect(isTrialNoticeDismissed(3)).toBe(false);
+  });
   it("descarte por día", () => {
     expect(isTrialNoticeDismissed(2)).toBe(false);
     dismissTrialNotice(2);

@@ -404,7 +404,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(host.querySelector(".btn--explain-passage")).toBeNull();
     expect(explainInPassage).not.toHaveBeenCalled();
     expect(host.querySelector(".plan-note")?.textContent).toContain(
-      "Se acabaron tus usos de IA de cortesía de hoy. Mañana tienes 3 más.",
+      "Ya usaste tus 3 de hoy. Mañana hay más.",
     );
     // El significado del diccionario sigue a la vista.
     expect(host.textContent).toContain("De corta duración.");

@@ -70,6 +70,12 @@ describe("ReaderCard (Carné de Lector)", () => {
     expect(host.querySelector("[role='alert']")?.textContent).toContain("ya tiene Lecta+");
   });
 
+  it("free tras la prueba: plan Gratis con la cortesía, no «Cuaderno Abierto»", () => {
+    render({ plan: "free", starterCoat: null, expiresAt: null, trialEndedAt: Date.UTC(2026, 11, 9) });
+    expect(host.textContent).toContain("Plan Gratis · 3 explicaciones con IA al día");
+    expect(host.textContent).not.toContain("Lector de Cuaderno Abierto");
+  });
+
   it("plan desconocido no pinta nada", () => {
     render(null);
     expect(host.querySelector(".reader-card")).toBeNull();
@@ -80,7 +86,7 @@ describe("ReaderCard (Carné de Lector)", () => {
     try {
       render({ plan: "lecta_plus", starterCoat: null, expiresAt: null, trialEndsAt: Date.UTC(2026, 11, 4, 12) });
       expect(host.textContent).toContain("Prueba de Lecta+ · quedan 3 días");
-      expect(host.textContent).toContain("vuelves a Gratis. Tus palabras, tu gato y tu progreso se quedan");
+      expect(host.textContent).toContain("estarás en Gratis: 3 explicaciones con IA al día, sin nube ni Kindle. Tus palabras y tu gato se quedan.");
       expect(host.querySelector(".reader-card__periods")).not.toBeNull();
       expect(host.textContent).toContain("Hacerme Lecta+");
       expect(host.textContent).not.toContain("Administrar suscripción");

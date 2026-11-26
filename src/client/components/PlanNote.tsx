@@ -20,7 +20,7 @@ export default function PlanNote({ title, detail, feature }: { title: string; de
           onClick={(e) => {
             // Abre el Carné sin recargar ni desmontar el lector (App escucha).
             e.preventDefault();
-            trackPlanEvent("app:paywall");
+            trackPlanEvent(`app:paywall:${feature}`);
             window.dispatchEvent(new CustomEvent("lecta:open-carne"));
           }}
         >

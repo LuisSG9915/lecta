@@ -3774,6 +3774,28 @@
   }
 }
 
+/* Coach y plan de estudio (Lecta+): misma tarjeta que los bloques del recorrido. */
+.journey-coach,
+.journey-study-plan {
+  max-width: 65ch;
+  margin-top: var(--s-4);
+  padding: var(--s-4);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  color: var(--ink);
+}
+
+.journey-coach p,
+.journey-study-plan p {
+  margin: var(--s-1) 0 0;
+}
+
+.journey-fluency-forecast {
+  max-width: 65ch;
+  margin-top: var(--s-3);
+}
+
 .journey-insight-title {
   margin: 0;
   font-family: var(--font-ui);

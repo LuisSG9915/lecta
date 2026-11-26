@@ -8,12 +8,16 @@ import { accountFetch } from "../lib/account-fetch";
 import { captureDbScope } from "../lib/idb";
 import type { PlanSnapshot } from "../lib/account-plan";
 import { trackPlanEvent } from "../lib/plan-events";
+import { formatTrialDate, FREE_AFTER_TRIAL } from "../lib/trial-notice";
 
 type Period = "monthly" | "yearly";
 
-export const PRICES: Record<Period, { label: string; price: string; note: string }> = {
-  monthly: { label: "Mensual", price: "$59 MXN al mes", note: "" },
-  yearly: { label: "Anual", price: "$499 MXN al año", note: "Son $42 al mes." },
+export const PRICES: Record<
+  Period,
+  { label: string; price: string; short: string; perMonth: string; note: string }
+> = {
+  monthly: { label: "Mensual", price: "$59 MXN al mes", short: "$59", perMonth: "$59", note: "" },
+  yearly: { label: "Anual", price: "$499 MXN al año", short: "$499", perMonth: "$42", note: "Son $42 al mes." },
 };
 
 const DAY_MS = 86_400_000;
@@ -121,8 +125,14 @@ export default function ReaderCard({
                 Prueba de Lecta+ · {daysLeft === 1 ? "queda 1 día" : `quedan ${daysLeft} días`}
               </strong>
               <p className="reader-card__detail">
-                El {dateLabel(trialEndsAt)} vuelves a Gratis. Tus palabras, tu gato y tu progreso se
-                quedan; la IA, la nube y el Kindle vuelven a Lecta+.
+                Desde el {formatTrialDate(trialEndsAt)} estarás en Gratis: {FREE_AFTER_TRIAL}
+              </p>
+            </>
+          ) : plan.plan === "free" && plan.trialEndedAt ? (
+            <>
+              <strong className="reader-card__state">Plan Gratis · 3 explicaciones con IA al día</strong>
+              <p className="reader-card__detail">
+                Lecta+ suma Kindle, más explicaciones con IA, palabras previstas y Biblioteca en la nube.
               </p>
             </>
           ) : (

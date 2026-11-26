@@ -207,6 +207,27 @@ describe("prueba inversa (sin prueba de Stripe)", () => {
     expect(form.has("customer")).toBe(false);
   });
 
+  it("con >48 h de prueba el checkout lleva trial_end; con menos no", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    const bodyFor = async (trialEndsAt: number) => {
+      loadUserPlanMock.mockResolvedValue(plan({ plan: "lecta_plus", trialEndsAt }));
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
+      await app.request(
+        "/api/billing/checkout",
+        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "yearly" }) },
+        env,
+      );
+      const [, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+      fetchMock.mockRestore();
+      return new URLSearchParams(String(init.body));
+    };
+    const far = Date.now() + 5 * 86_400_000;
+    expect((await bodyFor(far)).get("subscription_data[trial_end]")).toBe(String(Math.floor(far / 1000)));
+    expect((await bodyFor(Date.now() + 36 * 3_600_000)).has("subscription_data[trial_end]")).toBe(false);
+  });
+
   it("el portal conserva /?carne=1 como return_url", async () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     loadUserPlanMock.mockResolvedValue(plan({ stripeCustomerId: "cus_1" }));
@@ -231,6 +252,12 @@ describe("POST /api/billing/portal", () => {
 describe("POST /api/billing/webhook", () => {
   const deliver = async (event: unknown) => {
     const body = JSON.stringify(event);
+    // Los eventos subscription.* releen la suscripción: por defecto Stripe
+    // devuelve lo mismo que trae el evento.
+    const ev = event as { type?: string; data?: { object?: unknown } };
+    if (ev.type?.startsWith("customer.subscription.") && !vi.isMockFunction(globalThis.fetch)) {
+      vi.spyOn(globalThis, "fetch").mockImplementation(async () => jsonResponse(ev.data?.object));
+    }
     return app.request(
       "/api/billing/webhook",
       { method: "POST", headers: { "stripe-signature": await sign(body) }, body },
@@ -339,6 +366,53 @@ describe("POST /api/billing/webhook", () => {
     await deliver(subEvent("customer.subscription.updated", { ...sub, metadata: { user_id: "u2" } }));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(landing()).toHaveLength(1);
+  });
+
+  it("mismo segundo en desorden: el estado vigente de Stripe manda (cancelada gana a updated activa)", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "e" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{}] };
+      return { rows: [{ user_id: "u1" }] };
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ id: "sub_1", customer: "cus_1", status: "canceled", ended_at: 50, metadata: { user_id: "u1" } }),
+    );
+    const res = await deliver({
+      ...subEvent("customer.subscription.updated", {
+        status: "active",
+        metadata: { user_id: "u1" },
+        items: { data: [{ current_period_end: 9_999 }] },
+      }),
+      created: 100,
+    });
+    expect(res.status).toBe(200);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/subscriptions/sub_1");
+    const upsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
+    expect(upsert?.[1]?.[3]).toBe(50_000);
+  });
+
+  it("checkout-complete no se cuenta si el WHERE de orden descarta el evento", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "e" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{}] };
+      return { rows: [] }; // upsert sin RETURNING: descartado
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        id: "sub_2",
+        customer: "cus_2",
+        status: "active",
+        items: { data: [{ current_period_end: 9, price: { recurring: { interval: "year" } } }] },
+      }),
+    );
+    await deliver({
+      id: "evt_co",
+      type: "checkout.session.completed",
+      created: 5,
+      data: { object: { status: "complete", subscription: "sub_2", customer: "cus_2", client_reference_id: "u2" } },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(queryMock.mock.calls.some((call) => String(call[0]).includes("lecta_landing_daily"))).toBe(false);
   });
 
   it("incomplete registra el evento sin escribir el plan", async () => {

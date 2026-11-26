@@ -1372,8 +1372,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
               {planNoteShown || (planLocked && freeAiRemaining === 0) ? (
                 <PlanNote
                   feature="wordpanel"
-                  title="Se acabaron tus usos de IA de cortesía de hoy. Mañana tienes 3 más."
-                  detail="El significado de arriba siempre es tuyo; la explicación en contexto es de Lecta+."
+                  title="Ya usaste tus 3 de hoy. Mañana hay más."
+                  detail="El significado del diccionario siempre es tuyo; la explicación en contexto es de Lecta+."
                 />
               ) : !aiAllowed ? (
                 !canExplain ? (

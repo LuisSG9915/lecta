@@ -6,6 +6,7 @@ import pg from "pg";
 import {
   DISPOSABLE_EMAIL_MESSAGE,
   isDisposableEmail,
+  normalizeEmail,
 } from "../shared/email-normalize";
 import { invalidateUserPlan } from "./plan-store";
 import { cancelBillingForDeletion } from "./stripe";
@@ -126,6 +127,49 @@ function captchaPlugins(env: WorkerEnv) {
   ];
 }
 
+export const ACCOUNT_EXISTS_MESSAGE = "Ya hay una cuenta con este correo. Inicia sesión.";
+
+/** Dominios de las cuentas de smoke: nunca se tratan como alias. */
+const ALIAS_EXEMPT = /(^|\.)(example\.com|smoke\.test)$/;
+
+/**
+ * F12: ¿existe otra cuenta con el MISMO buzón pero otro correo literal
+ * (`a.b+x@gmail.com` vs `ab@gmail.com`)? Sin migración: la comparación va
+ * en SQL sobre "user", filtrada por dominio. Costo: sin índice por
+ * expresión es un recorrido de la tabla en cada ALTA (no en inicios de
+ * sesión); aceptable mientras "user" sea chica — si crece, columna
+ * `email_normalized` indexada.
+ */
+async function aliasAccountExists(env: WorkerEnv, email: string): Promise<boolean> {
+  const literal = email.trim().toLowerCase();
+  const normalized = normalizeEmail(literal);
+  const at = normalized.lastIndexOf("@");
+  if (at < 1) return false;
+  const domain = normalized.slice(at + 1);
+  if (ALIAS_EXEMPT.test(domain)) return false;
+  const local = normalized.slice(0, at);
+  const gmail = domain === "gmail.com" || domain === "googlemail.com";
+  const local_sql = "split_part(split_part(lower(email), '@', 1), '+', 1)";
+  const res = await withClient(env, (client) =>
+    client.query(
+      'SELECT 1 FROM "user" WHERE split_part(lower(email), \'@\', 2) = $1 AND ' +
+        `(CASE WHEN $3 THEN replace(${local_sql}, '.', '') ELSE ${local_sql} END) = $2 ` +
+        "AND lower(email) <> $4 LIMIT 1",
+      [domain, local, gmail, literal],
+    ),
+  );
+  return ((res as { rows?: unknown[] } | undefined)?.rows?.length ?? 0) > 0;
+}
+
+async function userExistsByEmail(env: WorkerEnv, email: string): Promise<boolean> {
+  const res = await withClient(env, (client) =>
+    client.query('SELECT 1 FROM "user" WHERE lower(email) = $1 LIMIT 1', [
+      email.trim().toLowerCase(),
+    ]),
+  );
+  return ((res as { rows?: unknown[] } | undefined)?.rows?.length ?? 0) > 0;
+}
+
 export function createScopedAuth(env: WorkerEnv, baseURL: string) {
   const pool = new pg.Pool({ connectionString: getConnectionString(env), max: 1 });
   if (typeof pool.on === "function") {
@@ -173,13 +217,19 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
     // nunca pasa por aquí.
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== "/sign-up/email") return;
+        const isSignUp = ctx.path === "/sign-up/email";
+        const isMagic = ctx.path === "/sign-in/magic-link";
+        if (!isSignUp && !isMagic) return;
         const email = (ctx.body as { email?: unknown } | undefined)?.email;
         if (typeof email === "string" && isDisposableEmail(email)) {
-          throw new APIError("BAD_REQUEST", {
-            code: "DISPOSABLE_EMAIL",
-            message: DISPOSABLE_EMAIL_MESSAGE,
-          });
+          // Enlace mágico: un desechable que ya tiene cuenta sigue entrando;
+          // si no existe, se corta antes de mandar el correo.
+          if (isSignUp || !(await userExistsByEmail(env, email))) {
+            throw new APIError("BAD_REQUEST", {
+              code: "DISPOSABLE_EMAIL",
+              message: DISPOSABLE_EMAIL_MESSAGE,
+            });
+          }
         }
       }),
     },
@@ -191,6 +241,13 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
               throw new APIError("BAD_REQUEST", {
                 code: "DISPOSABLE_EMAIL",
                 message: DISPOSABLE_EMAIL_MESSAGE,
+              });
+            }
+            // Cubre sign-up/email y la creación por enlace mágico.
+            if (typeof user.email === "string" && (await aliasAccountExists(env, user.email))) {
+              throw new APIError("BAD_REQUEST", {
+                code: "ACCOUNT_EXISTS",
+                message: ACCOUNT_EXISTS_MESSAGE,
               });
             }
           },

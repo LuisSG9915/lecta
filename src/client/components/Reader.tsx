@@ -3332,6 +3332,7 @@ export default function Reader({
         prep={prep}
         prepNotice={prepNotice}
         isDeepReading={isDeepReading}
+        ready={state === "ready"}
         acceptCalibrationNotice={acceptCalibrationNotice}
         dismissCalibrationNotice={dismissCalibrationNotice}
         helpNotice={helpNotice}

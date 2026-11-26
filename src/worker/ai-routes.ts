@@ -8,7 +8,7 @@ import { consumeFreeAiCourtesy, refundFreeAiCourtesy } from "./free-courtesy";
 import { computeAiCacheKey, getCachedAiText, setCachedAiText } from "./ai-cache";
 import { EXPLAIN_UNITS_PER_HOUR, EVALUATE_UNITS_PER_HOUR, STORY_UNITS_PER_HOUR, PAGE_RECAP_UNITS_PER_HOUR, TRANSLATE_UNITS_PER_HOUR, COMPANION_NOTE_UNITS_PER_HOUR } from "./ai-units";
 import { createTtlCache, EVALUATE_CALL_OPTIONS, EVALUATE_SYSTEM_PROMPT, EXPLAIN_PASSAGE_CALL_OPTIONS, EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS, EXPLAIN_PASSAGE_SYSTEM_PROMPT, buildCompactExplainPrompt, normalizePassage, COMPANION_NOTE_SYSTEM_PROMPT, buildCompanionNotePrompt, parseCompanionNote, STORY_CALL_OPTIONS, STORY_SYSTEM_PROMPT, buildEvaluatePrompt, buildExplainInPassagePrompt, buildStoryPrompt, parseEvaluateSentence, parseMicroStory, parsePassageExplanation, type EvaluatedSentence, type MicroStory, type PassageExplanation, callDeepSeek, COMPANION_NOTE_CALL_OPTIONS, PAGE_RECAP_CALL_OPTIONS, PAGE_RECAP_SYSTEM_PROMPT, buildPageRecapPrompt, parsePageRecap, deterministicPageRecapFallback, CHARACTER_RECAP_CALL_OPTIONS, CHARACTER_RECAP_SYSTEM_PROMPT, buildCharacterRecapPrompt, parseCharacterRecap, deterministicCharacterRecapFallback, type CharacterRecapResponse, logAiCall, AI_TASK_BUDGETS, buildParagraphTranslationPrompt } from "./ai";
-import { consumeRateUnits } from "./rate-limit";
+import { consumeRateUnitsAt } from "./rate-limit";
 import { guardDailyAi } from "./ai-daily";
 
 export const aiRoutes = new Hono<{ Bindings: WorkerEnv }>();
@@ -40,7 +40,7 @@ aiRoutes.post("/api/ai/evaluate-sentence", requireLectaPlus, async (context) => 
     return context.json({ error: "Inicia sesión para evaluar oraciones con IA." }, 401);
   }
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -58,7 +58,7 @@ aiRoutes.post("/api/ai/evaluate-sentence", requireLectaPlus, async (context) => 
     session.user.id,
     context.get("aiDailyLimit"),
     "evaluate",
-    "Llegaste al límite de evaluaciones por hora. Intenta más tarde.",
+    { hourlyBucket },
   );
   if (daily.deny) return context.json(daily.deny, 429);
 
@@ -132,7 +132,7 @@ aiRoutes.post("/api/ai/micro-story", requireLectaPlus, async (context) => {
     return context.json({ error: "Inicia sesión para generar micro-relatos con IA." }, 401);
   }
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -150,7 +150,7 @@ aiRoutes.post("/api/ai/micro-story", requireLectaPlus, async (context) => {
     session.user.id,
     context.get("aiDailyLimit"),
     "story",
-    "Llegaste al límite de micro-relatos por hora. Intenta más tarde.",
+    { hourlyBucket },
   );
   if (daily.deny) return context.json(daily.deny, 429);
 
@@ -226,12 +226,14 @@ async function guardAiCourtesy(
   env: WorkerEnv,
   userId: string,
   lectaPlus: boolean,
-  daily?: { limit: number | null | undefined; hourlyScope: string; hourlyMessage: string },
+  daily?: { limit: number | null | undefined; hourlyScope: string; hourlyBucket: number },
 ): Promise<CourtesyGuard> {
   if (lectaPlus) {
-    // Tope diario invisible (F11): mismo texto y 429 que el tope por hora.
+    // Tope diario invisible (F11): 429 con texto propio (DAILY_AI_LIMIT_MESSAGE).
     if (!daily) return { refund: async () => undefined };
-    const guard = await guardDailyAi(env, userId, daily.limit, daily.hourlyScope, daily.hourlyMessage);
+    const guard = await guardDailyAi(env, userId, daily.limit, daily.hourlyScope, {
+      hourlyBucket: daily.hourlyBucket,
+    });
     if (guard.deny) return { deny: { body: { error: guard.deny.error }, status: 429 } };
     return { refund: guard.refund };
   }
@@ -307,7 +309,7 @@ aiRoutes.post("/api/ai/explain-in-passage", requireSessionWithPlan, async (conte
     return context.json({ error: "Inicia sesión para pedir explicaciones literarias con IA." }, 401);
   }
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -324,7 +326,7 @@ aiRoutes.post("/api/ai/explain-in-passage", requireSessionWithPlan, async (conte
   const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"), {
     limit: context.get("aiDailyLimit"),
     hourlyScope: "explain",
-    hourlyMessage: "Llegaste al límite de explicaciones por hora. Intenta más tarde.",
+    hourlyBucket,
   });
   if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
 
@@ -446,7 +448,7 @@ aiRoutes.post("/api/ai/companion-note", requireLectaPlus, async (context) => {
 
   if (!context.env.DEEPSEEK_API_KEY) return fallback();
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -464,7 +466,7 @@ aiRoutes.post("/api/ai/companion-note", requireLectaPlus, async (context) => {
     session.user.id,
     context.get("aiDailyLimit"),
     "companion-note",
-    "Llegaste al límite de cartas del compañero por ahora. Intenta más tarde.",
+    { hourlyBucket },
   );
   if (daily.deny) return context.json(daily.deny, 429);
 
@@ -518,7 +520,7 @@ aiRoutes.post("/api/ai/page-recap", requireSessionWithPlan, async (context) => {
     return context.json(deterministicPageRecapFallback(text));
   }
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -535,7 +537,7 @@ aiRoutes.post("/api/ai/page-recap", requireSessionWithPlan, async (context) => {
   const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"), {
     limit: context.get("aiDailyLimit"),
     hourlyScope: "page-recap",
-    hourlyMessage: "Llegaste al límite de resúmenes con IA por ahora. Intenta más tarde.",
+    hourlyBucket,
   });
   if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
 
@@ -589,7 +591,7 @@ aiRoutes.post("/api/ai/translate", requireSessionWithPlan, async (context) => {
     return context.json({ translation: text });
   }
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -606,7 +608,7 @@ aiRoutes.post("/api/ai/translate", requireSessionWithPlan, async (context) => {
   const courtesy = await guardAiCourtesy(context.env, session.user.id, context.get("lectaPlus"), {
     limit: context.get("aiDailyLimit"),
     hourlyScope: "translate",
-    hourlyMessage: "Llegaste al límite de traducciones con IA por ahora. Intenta más tarde.",
+    hourlyBucket,
   });
   if (courtesy.deny) return context.json(courtesy.deny.body, courtesy.deny.status);
 
@@ -677,7 +679,7 @@ aiRoutes.post("/api/ai/character-recap", requireLectaPlus, async (context) => {
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
   }
 
-  const allowed = await consumeRateUnits(
+  const { ok: allowed, bucketHour: hourlyBucket } = await consumeRateUnitsAt(
     context.env,
     session.user.id,
     1,
@@ -692,7 +694,7 @@ aiRoutes.post("/api/ai/character-recap", requireLectaPlus, async (context) => {
     session.user.id,
     context.get("aiDailyLimit"),
     "explain",
-    "",
+    { hourlyBucket },
   );
   if (daily.deny) {
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));

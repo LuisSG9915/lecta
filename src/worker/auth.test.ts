@@ -13,6 +13,17 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("better-auth", () => ({ betterAuth: mocks.betterAuth }));
+vi.mock("better-auth/api", () => ({
+  createAuthMiddleware: (fn: unknown) => fn,
+  APIError: class extends Error {
+    constructor(
+      public status: string,
+      public body: { code?: string; message?: string },
+    ) {
+      super(body.message);
+    }
+  },
+}));
 vi.mock("better-auth/plugins", () => ({ magicLink: mocks.magicLink }));
 vi.mock("kysely", () => ({ Kysely: class {}, PostgresDialect: class {} }));
 vi.mock("pg", () => ({
@@ -150,6 +161,55 @@ describe("correo de autenticación", () => {
     };
     expect(body.to).toEqual([FAKE_EMAIL]);
     expect(body.html).toContain(FAKE_URL);
+  });
+});
+
+describe("alta: alias y desechables (F12)", () => {
+  type Hooks = {
+    hooks: { before: (ctx: { path: string; body: { email: string } }) => Promise<void> };
+    databaseHooks: { user: { create: { before: (u: { email: string }) => Promise<void> } } };
+  };
+  const hooks = () => {
+    createAuth(envWithDb, "https://lecta.test");
+    return lastAuthConfig() as unknown as Hooks;
+  };
+
+  it("alta con un alias de un buzón existente responde 400 ACCOUNT_EXISTS", async () => {
+    dbQueryMock.mockResolvedValue({ rows: [{ "?column?": 1 }] });
+    await expect(
+      hooks().databaseHooks.user.create.before({ email: "Ab+promo@Gmail.com" }),
+    ).rejects.toMatchObject({
+      body: { code: "ACCOUNT_EXISTS", message: "Ya hay una cuenta con este correo. Inicia sesión." },
+    });
+    const [sql, params] = dbQueryMock.mock.calls[0];
+    expect(String(sql)).toContain('FROM "user"');
+    // Gmail: sin puntos ni etiqueta; correo literal excluido.
+    expect(params).toEqual(["gmail.com", "ab", true, "ab+promo@gmail.com"]);
+  });
+
+  it("sin coincidencia crea la cuenta; example.com (smoke) ni consulta", async () => {
+    await expect(
+      hooks().databaseHooks.user.create.before({ email: "nuevo@correo.test" }),
+    ).resolves.toBeUndefined();
+    expect(dbQueryMock).toHaveBeenCalledTimes(1);
+    await hooks().databaseHooks.user.create.before({ email: "a+1@example.com" });
+    expect(dbQueryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("enlace mágico con desechable sin cuenta: 400 antes de enviar; con cuenta pasa", async () => {
+    const h = hooks();
+    dbQueryMock.mockResolvedValue({ rows: [] });
+    await expect(
+      h.hooks.before({ path: "/sign-in/magic-link", body: { email: "x@mailinator.com" } }),
+    ).rejects.toMatchObject({ body: { code: "DISPOSABLE_EMAIL" } });
+    dbQueryMock.mockResolvedValue({ rows: [{}] });
+    await expect(
+      h.hooks.before({ path: "/sign-in/magic-link", body: { email: "x@mailinator.com" } }),
+    ).resolves.toBeUndefined();
+    // El alta con contraseña sigue cortando siempre.
+    await expect(
+      h.hooks.before({ path: "/sign-up/email", body: { email: "x@mailinator.com" } }),
+    ).rejects.toMatchObject({ body: { code: "DISPOSABLE_EMAIL" } });
   });
 });
 

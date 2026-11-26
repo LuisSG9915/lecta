@@ -52,6 +52,8 @@ const StudyPlanCard = lazy(() => import("./StudyPlanCard"));
 const FluencyForecastCard = lazy(() => import("./FluencyForecastCard"));
 const CoachCard = lazy(() => import("./CoachCard"));
 import JourneyFold from "./JourneyFold";
+import PlanNote from "./PlanNote";
+import { useUserPlan } from "../lib/account-plan";
 import { dayKeyOf } from "../lib/reading-activity";
 import { summarizeChapterFollows } from "../lib/chapter-follow";
 import {
@@ -237,6 +239,8 @@ function withDeadline<T>(
 export default function Journey({ onClose, books }: JourneyProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
+  // Free con plan conocido: una sola nota de Lecta+ agrupa coach, plan y predicción.
+  const isFreePlan = useUserPlan()?.plan === "free";
 
   const [loading, setLoading] = useState(true);
   const [loadIssue, setLoadIssue] = useState(false);
@@ -1087,9 +1091,11 @@ export default function Journey({ onClose, books }: JourneyProps) {
                         </p>
                       </div>
                     </div>
-                    <Suspense fallback={null}>
-                      <FluencyForecastCard lang={g.lang} />
-                    </Suspense>
+                    {isFreePlan ? null : (
+                      <Suspense fallback={null}>
+                        <FluencyForecastCard lang={g.lang} />
+                      </Suspense>
+                    )}
                   </article>
                 ))}
               </div>
@@ -1170,10 +1176,21 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 «Últimas 8 semanas» viaja como primer bloque del análisis
                 para que las gráficas queden emparejadas en la misma
                 cuadrícula de dos columnas en escritorio. */}
-            <Suspense fallback={null}>
-              <CoachCard />
-              <StudyPlanCard books={books} />
-            </Suspense>
+            {isFreePlan ? (
+              <section className="journey-coach journey-plus-note" aria-label="Lecta+ en tu recorrido" data-testid="journey-plus-note">
+                <h3 className="journey-insight-title">Coach, plan de estudio y predicción</h3>
+                <PlanNote
+                  feature="coach"
+                  title="Hazlo con Lecta+"
+                  detail="Una nota semanal, qué repasar cada día y cuándo llegarías a entender casi todo un libro, según tu ritmo real."
+                />
+              </section>
+            ) : (
+              <Suspense fallback={null}>
+                <CoachCard />
+                <StudyPlanCard books={books} />
+              </Suspense>
+            )}
             <JourneyInsights
               intervals={intervals}
               positions={positions}

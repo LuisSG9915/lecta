@@ -27,6 +27,7 @@ fluencyForecast.get("/api/fluency-forecast", requireLectaPlus, async (c) => {
             `SELECT language, saved_at FROM lecta_user_words
               WHERE user_id = $1 AND deleted = false
                 AND COALESCE((card->>'reps')::INT8, 0) > 0
+              ORDER BY saved_at DESC, language ASC
               LIMIT 20000`,
             [userId],
           )

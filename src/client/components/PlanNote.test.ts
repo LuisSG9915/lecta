@@ -52,7 +52,7 @@ describe("PlanNote", () => {
     act(() => {
       host.querySelector("a")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    expect(events()).toEqual(["app:plannote:kindle", "app:paywall"]);
+    expect(events()).toEqual(["app:plannote:kindle", "app:paywall:kindle"]);
     act(() => root.unmount());
     vi.unstubAllGlobals();
   });

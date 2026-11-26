@@ -45,6 +45,15 @@ describe("getUserPlan", () => {
       expect(snap).toMatchObject({ plan: "free", trialEndsAt: null });
     });
 
+    it("trialEndedAt solo para quien nunca pagó y dentro de 30 días", async () => {
+      const at = (row: Record<string, unknown>, now: number) =>
+        getUserPlan(clientWith(() => ({ rows: [{ plan: "free", user_created_at: created, ...row }] })), "u1", { now });
+      expect((await at({}, ends + 86_400_000)).trialEndedAt).toBe(ends);
+      expect((await at({}, ends + 31 * 86_400_000)).trialEndedAt).toBeUndefined();
+      const exSub = await at({ stripe_subscription_id: "sub_1", stripe_customer_id: "cus_1" }, ends + 86_400_000);
+      expect(exSub.trialEndedAt).toBeUndefined();
+    });
+
     it("un fundador o un suscriptor vigente no está en prueba", async () => {
       const founder = clientWith(() => ({ rows: [{ plan: "founder_lifetime", user_created_at: created }] }));
       expect(await getUserPlan(founder, "u1", { now: created + 1 })).toMatchObject({
@@ -158,6 +167,14 @@ describe("upsertPlanFromStripe", () => {
     const [sql, params] = calls[1];
     expect(sql).toContain("stripe_event_created <= EXCLUDED.stripe_event_created");
     expect(params).toEqual(["u1", null, null, 5, 9, 3000]);
+  });
+
+  it("devuelve false si el WHERE de orden descartó el evento (sin RETURNING)", async () => {
+    const dropped = clientWith(() => ({ rows: [] }));
+    expect(await upsertPlanFromStripe(dropped, "u1", { planExpiresAt: 5, eventCreated: 3000 }, 9)).toBe(false);
+    expect(String(dropped.query.mock.calls[1][0])).toContain("RETURNING user_id");
+    const ok = clientWith(() => ({ rows: [{ user_id: "u1" }] }));
+    expect(await upsertPlanFromStripe(ok, "u1", { planExpiresAt: 5, eventCreated: 3000 }, 9)).toBe(true);
   });
 
   it("sin la columna 034 (42703) vuelve a la escritura de siempre", async () => {

@@ -48,6 +48,8 @@ const FREE: UserPlanSnapshot = {
   degraded: false,
 };
 
+const TRIAL_ENDED_WINDOW_MS = 30 * 86_400_000;
+
 const toStamp = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
   const n = Number(value);
@@ -97,7 +99,14 @@ export async function getUserPlan(
     if (ends !== null && now < ends) {
       plan = "lecta_plus";
       trialEndsAt = ends;
-    } else if (ends !== null) {
+    } else if (
+      ends !== null &&
+      now < ends + TRIAL_ENDED_WINDOW_MS &&
+      !toText(row.stripe_subscription_id) &&
+      !toText(row.stripe_customer_id)
+    ) {
+      // Solo quien nunca pagó y dentro de ~30 días: un ex suscriptor o una
+      // cuenta de hace meses no vuelve a ver el resumen de la prueba.
       trialEndedAt = ends;
     }
   }
@@ -185,14 +194,15 @@ export type StripePlanPatch = {
 /**
  * Única escritura de plan desde Stripe: deja `lecta_plus` con su
  * vencimiento. Nunca rebaja a un `founder_lifetime`. El paso a `free` lo
- * decide solo `getUserPlan` con la gracia.
+ * decide solo `getUserPlan` con la gracia. Devuelve false si el WHERE de
+ * orden descartó el evento por viejo.
  */
 export async function upsertPlanFromStripe(
   client: QueryClient,
   userId: string,
   patch: StripePlanPatch,
   now = Date.now(),
-): Promise<void> {
+): Promise<boolean> {
   const base = [
     userId,
     patch.stripeCustomerId ?? null,
@@ -207,6 +217,7 @@ export async function upsertPlanFromStripe(
        stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, lecta_user_plan.stripe_subscription_id),
        plan_expires_at = EXCLUDED.plan_expires_at,
        updated_at = EXCLUDED.updated_at`;
+  let applied = true;
   const legacy = () =>
     client.query(
       `INSERT INTO lecta_user_plan
@@ -221,16 +232,19 @@ export async function upsertPlanFromStripe(
     // Savepoint: un 42703 (034 sin aplicar) no debe envenenar la transacción.
     await client.query("SAVEPOINT stripe_order");
     try {
-      await client.query(
+      const res = (await client.query(
         `INSERT INTO lecta_user_plan
        (user_id, plan, stripe_customer_id, stripe_subscription_id, plan_expires_at, created_at, updated_at, stripe_event_created)
      VALUES ($1, 'lecta_plus', $2, $3, $4, $5, $5, $6)
      ON CONFLICT (user_id) DO UPDATE SET${setCommon},
        stripe_event_created = EXCLUDED.stripe_event_created
      WHERE lecta_user_plan.stripe_event_created IS NULL
-        OR lecta_user_plan.stripe_event_created <= EXCLUDED.stripe_event_created`,
+        OR lecta_user_plan.stripe_event_created <= EXCLUDED.stripe_event_created
+     RETURNING user_id`,
         [...base, patch.eventCreated],
-      );
+      )) as { rows?: unknown[] };
+      // Sin fila devuelta, el WHERE descartó el evento por viejo.
+      applied = (res.rows?.length ?? 0) > 0;
     } catch (err) {
       if (!isMissingColumnError(err)) throw err;
       await client.query("ROLLBACK TO SAVEPOINT stripe_order");
@@ -238,4 +252,5 @@ export async function upsertPlanFromStripe(
     }
   }
   invalidateUserPlan(userId);
+  return applied;
 }

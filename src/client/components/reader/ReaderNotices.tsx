@@ -44,6 +44,8 @@ export interface ReaderNoticesProps {
   prep: unknown;
   prepNotice: unknown;
   isDeepReading: boolean;
+  /** El libro ya cargó (state === "ready"): arma el aviso de fin de prueba. */
+  ready?: boolean;
   acceptCalibrationNotice: () => void | Promise<unknown>;
   dismissCalibrationNotice: () => void;
   // Franja de ayuda de vocabulario al abrir un libro nuevo: una sola
@@ -80,6 +82,7 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
   prep,
   prepNotice,
   isDeepReading,
+  ready = false,
   acceptCalibrationNotice,
   dismissCalibrationNotice,
   helpNotice,
@@ -97,7 +100,13 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
   return (
     <>
   {/* Fin de la prueba: solo entre secciones, nunca al abrir el libro. */}
-  <TrialWarningNote armAt={sectionIndex} />
+  <TrialWarningNote
+    armAt={sectionIndex}
+    ready={ready}
+    suppressed={Boolean(
+      resumeCard || isDeepReading || prepPlanNote || prepNotice || calNotice || helpNotice || fatigueNotice,
+    )}
+  />
   {/* Marcador de retomar: máxima prioridad en la franja — es el
       mensaje de apertura cuando el libro llevaba días cerrado.
       Mientras está visible, el resto de avisos espera; al
@@ -138,7 +147,7 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
       <PlanNote
         feature="prep-list-notice"
         title="La lista completa de palabras previstas es de Lecta+."
-        detail="Ábrela para ver 3, o sigue leyendo: tocar cualquier palabra te da su significado."
+        detail="Abre la lista para ver 3 palabras, o sigue leyendo: tocar cualquier palabra te da su significado."
       />
       <button
         type="button"

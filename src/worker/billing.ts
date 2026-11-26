@@ -14,6 +14,7 @@ import { STRIPE_VERSION, stripeRequest } from "./stripe";
 export { STRIPE_VERSION };
 
 const SIGNATURE_TOLERANCE_S = 300;
+const TRIAL_END_MIN_MS = 48 * 3_600_000 + 5 * 60_000;
 
 /** Embudo de compra: contador diario anónimo; un fallo nunca rompe la respuesta. */
 function trackPlanEvent(env: WorkerEnv, event: string, source: PlanSource): Promise<unknown> {
@@ -157,7 +158,13 @@ billing.post("/api/billing/checkout", async (c) => {
     cancel_url: `${origin}/?carne=cancelado`,
   };
   // Sin prueba de Stripe: toda cuenta ya tuvo 14 días de prueba inversa
-  // (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md).
+  // (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md). Pagar
+  // durante ella no regala ni pierde días: el cobro empieza al terminar la
+  // prueba (trial_end). Stripe exige trial_end ≥ 48 h en el futuro; con menos
+  // (margen de 5 min por la latencia) no se pasa y el cobro es inmediato.
+  if (plan.trialEndsAt !== null && plan.trialEndsAt > Date.now() + TRIAL_END_MIN_MS) {
+    form["subscription_data[trial_end]"] = String(Math.floor(plan.trialEndsAt / 1000));
+  }
   if (plan.stripeCustomerId) form.customer = plan.stripeCustomerId;
   const result = await stripeRequest(c.env, "POST", "/checkout/sessions", form);
   const url = typeof result.body.url === "string" ? result.body.url : null;
@@ -234,6 +241,19 @@ billing.post("/api/billing/webhook", async (c) => {
     }
   } else {
     referenceUser = subscription.metadata?.user_id ?? null;
+    // Dos eventos subscription.* del mismo segundo pueden llegar en desorden
+    // y `event.created` no los distingue: se lee el estado vigente de la
+    // suscripción (idempotente, gana siempre el estado terminal real).
+    if (typeof subscription.id === "string") {
+      const fetched = await stripeRequest(c.env, "GET", `/subscriptions/${subscription.id}`);
+      if (fetched.ok) {
+        const current = fetched.body as StripeSubscription;
+        referenceUser = referenceUser ?? current.metadata?.user_id ?? null;
+        subscription = current;
+      } else if (fetched.status !== 404) {
+        return c.json({ error: "Stripe no respondió" }, 502);
+      }
+    }
   }
   const expiresAt = expiresAtForSubscription(subscription, type);
   const customer =
@@ -262,8 +282,9 @@ billing.post("/api/billing/webhook", async (c) => {
         await client.query("ROLLBACK");
         return "no-account" as const;
       }
+      let wrote = false;
       if (expiresAt !== undefined) {
-        await upsertPlanFromStripe(client, userId, {
+        wrote = await upsertPlanFromStripe(client, userId, {
           stripeCustomerId: customer,
           stripeSubscriptionId: subscription.id ?? null,
           planExpiresAt: expiresAt,
@@ -271,7 +292,8 @@ billing.post("/api/billing/webhook", async (c) => {
         });
       }
       await client.query("COMMIT");
-      return "applied" as const;
+      // Un evento descartado por viejo no cuenta como compra.
+      return wrote ? ("applied" as const) : ("skipped" as const);
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
       if (isMissingTableError(err)) return "unavailable" as const;

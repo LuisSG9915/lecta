@@ -7,7 +7,7 @@
 // - `signup` no entra por el endpoint: lo escribe el worker cuando una cuenta
 //   reclama por primera vez el gato elegido en la landing.
 
-import { isPlanFeature } from "../shared/plan";
+import { isPlanFeature, PLAN_SOURCES } from "../shared/plan";
 import { withClient, type WorkerEnv } from "./db";
 
 export const LANDING_EVENT_MAX_BODY_BYTES = 512;
@@ -46,6 +46,7 @@ export const TRIAL_WARNING_DAYS = ["1", "2", "3"] as const;
 export function isAllowedLandingEvent(event: string): boolean {
   if (LANDING_EVENTS.has(event)) return true;
   if (event.startsWith("app:plannote:")) return isPlanFeature(event.slice("app:plannote:".length));
+  if (event.startsWith("app:paywall:")) return isPlanFeature(event.slice("app:paywall:".length));
   if (event.startsWith("app:trial-warning:")) {
     return (TRIAL_WARNING_DAYS as readonly string[]).includes(event.slice("app:trial-warning:".length));
   }
@@ -74,6 +75,14 @@ export function parseLandingEvent(raw: unknown): LandingEvent | null {
     if (key !== "event" && key !== "source") return null;
   }
   if (typeof input.event !== "string" || !isAllowedLandingEvent(input.event)) return null;
+  // `app:*` solo registra el plan (trial|free|plus), nunca texto libre.
+  if (input.event.startsWith("app:")) {
+    const source = typeof input.source === "string" ? input.source : "";
+    return {
+      event: input.event,
+      source: (PLAN_SOURCES as readonly string[]).includes(source) ? source : "unknown",
+    };
+  }
   return { event: input.event, source: normalizeLandingSource(input.source) };
 }
 

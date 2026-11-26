@@ -60,22 +60,38 @@ export default function ResumeSessionOverlay({
   const [recaps, setRecaps] = useState<Record<string, string>>({});
   const [locked, setLocked] = useState(false);
   const askedRef = useRef<Set<string>>(new Set());
+  const inflightRef = useRef<Set<string>>(new Set());
+  // Estado de la petición por nombre: «loading» mientras vuela, «error» si falló.
+  const [pending, setPending] = useState<Record<string, "loading" | "error">>({});
   const names = characters.slice(0, 3);
 
   // Solo al tocar: nada de red al montar. Una llamada por nombre.
   const askWho = async (name: string) => {
-    if (askedRef.current.has(name)) return;
-    askedRef.current.add(name);
+    if (askedRef.current.has(name) || inflightRef.current.has(name)) return;
+    inflightRef.current.add(name);
+    setPending((prev) => ({ ...prev, [name]: "loading" }));
     const result = await requestCharacterRecap({
       entityName: name,
       bookTitle,
       excerptsSoFar: lastReadSentences ? [lastReadSentences] : [],
     });
+    inflightRef.current.delete(name);
+    const clear = () =>
+      setPending((prev) => {
+        const { [name]: _gone, ...rest } = prev;
+        return rest;
+      });
     if (result.ok) {
+      askedRef.current.add(name);
+      clear();
       setRecaps((prev) => ({ ...prev, [name]: result.summary }));
     } else if (result.code === "LECTA_PLUS_REQUIRED") {
       trackPlanEvent("app:recap-locked");
+      askedRef.current.add(name);
+      clear();
       setLocked(true);
+    } else {
+      setPending((prev) => ({ ...prev, [name]: "error" }));
     }
   };
 
@@ -125,11 +141,20 @@ export default function ResumeSessionOverlay({
               {name}
             </button>
           ))}
-          {Object.entries(recaps).map(([name, summary]) => (
-            <p key={name} className="resume-session-who-summary">
-              <strong>{name}.</strong> {summary}
-            </p>
-          ))}
+          <div aria-live="polite">
+            {Object.entries(recaps).map(([name, summary]) => (
+              <p key={name} className="resume-session-who-summary">
+                <strong>{name}.</strong> {summary}
+              </p>
+            ))}
+            {Object.entries(pending).map(([name, status]) => (
+              <p key={name} className="resume-session-who-summary meta" data-status={status}>
+                {status === "loading"
+                  ? `Cargando ${name}…`
+                  : `No pudimos cargar a ${name}. Toca su nombre para reintentar.`}
+              </p>
+            ))}
+          </div>
           {locked && (
             <PlanNote
               feature="character-recap"

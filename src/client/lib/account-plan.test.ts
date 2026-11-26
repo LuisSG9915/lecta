@@ -45,6 +45,14 @@ describe("account-plan", () => {
     expect(planStore.get()).toBeNull();
   });
 
+  it("una prueba vencida en la caché no inventa trialEndedAt (solo lo manda el servidor)", () => {
+    const snap = planFromAccountState(
+      { ok: true, plan: "lecta_plus", trialEndsAt: 1000 },
+      2000,
+    );
+    expect(snap?.plan).toBe("free");
+    expect(snap?.trialEndedAt).toBeUndefined();
+  });
   it("planFromAccountState conserva trialEndedAt", () => {
     const snap = planFromAccountState({ ok: true, plan: "free", starterCoat: null, planExpiresAt: null, trialEndedAt: 1234 });
     expect(snap?.trialEndedAt).toBe(1234);

@@ -306,10 +306,31 @@ describe("ReaderNotices: aviso del fin de la prueba", () => {
     vi.restoreAllMocks();
   });
 
-  const render = (sectionIndex: number) =>
+  const render = (sectionIndex: number, extra: Record<string, unknown> = {}) =>
     act(() =>
-      root.render(h(ReaderNotices, { ...propsWithKeyWords(0), previewSuggested: false, chapterAnalysis: null, sectionIndex })),
+      root.render(
+        h(ReaderNotices, {
+          ...propsWithKeyWords(0),
+          previewSuggested: false,
+          chapterAnalysis: null,
+          ready: true,
+          sectionIndex,
+          ...extra,
+        }),
+      ),
     );
+
+  it("libro retomado en el capítulo 5 (0 al montar, 5 al restaurar): no sale", () => {
+    render(0, { ready: false });
+    render(5);
+    expect(container.querySelector(".trial-note")).toBeNull();
+  });
+
+  it("con la tarjeta de retomar a la vista no sale aunque cambie de capítulo", () => {
+    render(2);
+    render(3, { resumeCard: { label: "Cap. 3", lastReadText: "ayer", daysSince: 1, savedInRange: 0, rereadTo: null } });
+    expect(container.querySelector(".trial-note")).toBeNull();
+  });
 
   it("no aparece al abrir el libro; sí al cambiar de sección y se oculta al descartarlo", () => {
     render(2);
@@ -318,7 +339,7 @@ describe("ReaderNotices: aviso del fin de la prueba", () => {
     expect(container.querySelector(".trial-note")?.textContent).toContain("Seguir con Lecta+");
     act(() => (container.querySelector(".trial-note__close") as HTMLButtonElement).click());
     expect(container.querySelector(".trial-note")).toBeNull();
-    expect(localStorage.getItem("lecta:trial-warning:2")).not.toBeNull();
+    expect(localStorage.getItem("lecta:trial-warning:anon:2")).not.toBeNull();
   });
 
   it("sin trialEndsAt no pinta nada", () => {

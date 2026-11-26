@@ -71,7 +71,9 @@ export function planFromAccountState(body: unknown, now = Date.now()): PlanSnaps
   const trialEnd = typeof data.trialEndsAt === "number" && Number.isFinite(data.trialEndsAt)
     ? data.trialEndsAt
     : null;
-  // Una prueba ya terminada (caché leída sin red) vale como free.
+  // Una prueba ya terminada (caché leída sin red) vale como free, pero
+  // `trialEndedAt` solo lo da el servidor: la hoja del día 15 no se monta con
+  // la caché, que no sabe si la cuenta ya pagó.
   const trialOver = trialEnd !== null && trialEnd <= now;
   return {
     plan: trialOver ? "free" : normalizePlan(data.plan),
@@ -82,9 +84,7 @@ export function planFromAccountState(body: unknown, now = Date.now()): PlanSnaps
       : {}),
     ...(typeof data.trialEndedAt === "number" && Number.isFinite(data.trialEndedAt)
       ? { trialEndedAt: data.trialEndedAt }
-      : trialOver && trialEnd !== null
-        ? { trialEndedAt: trialEnd }
-        : {}),
+      : {}),
     ...("trialEndsAt" in data ? { trialEndsAt: trialOver ? null : trialEnd } : {}),
   };
 }

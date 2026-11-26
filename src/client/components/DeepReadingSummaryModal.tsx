@@ -323,7 +323,7 @@ export default function DeepReadingSummaryModal({
 
       {aiCourtesyExhausted && isChapter ? (
         <p className="meta deep-summary-ai-note">
-          Hoy ya usaste tus explicaciones con IA. Con Lecta+ habríamos explicado en este capítulo qué quiere decir cada palabra difícil en su frase.{" "}
+          Hoy ya usaste tus explicaciones con IA. Con Lecta+ no tienes ese tope de 3: toca cualquier palabra y te explicamos su sentido en la frase.{" "}
           <a
             href="/?carne=1"
             onClick={(e) => {

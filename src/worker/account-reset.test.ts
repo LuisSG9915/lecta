@@ -593,6 +593,23 @@ describe("trialEndedAt y GET /api/account/trial-summary", () => {
     expect(typeof body.trialEndedAt).toBe("number");
   });
 
+  it("trial-summary: kindleLinked sale de lecta_kindle_prefs cuando el código ya se consumió", async () => {
+    await setup(Date.now() - 30 * DAY);
+    const dbModule = await import("./db");
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("lecta_user_plan")) return { rows: [{ plan: null, user_created_at: String(Date.now() - 30 * DAY) }] };
+          if (sql.includes("ai_uses")) return { rows: [{ ai_uses: "0", words_saved: "0", cloud_books: "0", kindle_linked: false }] };
+          if (sql.includes("lecta_kindle_prefs")) return { rows: [{ "?column?": 1 }] };
+          return { rows: [] };
+        }),
+      } as never),
+    );
+    const body = (await (await app.request("/api/account/trial-summary", {}, env)).json()) as Record<string, unknown>;
+    expect(body.kindleLinked).toBe(true);
+  });
+
   it("trial-summary: sin prueba 404", async () => {
     await setup(Number.NaN);
     const res = await app.request("/api/account/trial-summary", {}, env);

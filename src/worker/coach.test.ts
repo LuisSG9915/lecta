@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import type { WorkerEnv } from "./db";
-import { coach, isoWeekKey } from "./coach";
+import { coach, coachCacheKey, isoWeekKey, readCachedCoach, weekBucket } from "./coach";
 import { buildCoachPrompt } from "./ai";
 
 const getSessionMock = vi.hoisted(() => vi.fn());
@@ -87,6 +87,40 @@ describe("GET /api/coach/weekly", () => {
     const res = await app().request("/api/coach/weekly", {}, makeEnv());
     expect(res.status).toBe(429);
     expect(callMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("coach: cuota, caché y JSON inválido", () => {
+  it("el bucket semanal es la hora del lunes UTC: sobrevive a la limpieza de 30 días", () => {
+    const now = Date.UTC(2026, 10, 25, 15); // miércoles
+    expect(weekBucket(now)).toBe(Date.UTC(2026, 10, 23) / 3_600_000);
+    expect(weekBucket(now)).toBeGreaterThan(Math.floor((now - 30 * 86_400_000) / 3_600_000));
+  });
+
+  it("lee la semana anterior (el cron del lunes)", async () => {
+    const env = makeEnv();
+    const monday = Date.UTC(2026, 10, 30, 5);
+    const prev = isoWeekKey(monday - 7 * 86_400_000);
+    await env.BOOKS!.put(coachCacheKey("u1", prev), JSON.stringify({ text: "semana pasada", source: "ai", createdAt: 1 }));
+    expect(await readCachedCoach(env, "u1", monday)).toBeNull();
+    expect((await readCachedCoach(env, "u1", monday - 7 * 86_400_000))?.text).toBe("semana pasada");
+  });
+
+  it("IA responde con JSON inválido: no devuelve cuota diaria y guarda respaldo con TTL", async () => {
+    callMock.mockResolvedValue({ ok: true, content: "no es json", finishReason: "stop" });
+    const env = makeEnv();
+    const refund = vi.fn(async () => undefined);
+    const rate = await import("./rate-limit");
+    const spy = vi.spyOn(rate, "refundRateUnits").mockImplementation(refund);
+    const res = await app().request("/api/coach/weekly", {}, env);
+    expect(((await res.json()) as { source: string }).source).toBe("fallback");
+    expect(env.BOOKS!.put).toHaveBeenCalledTimes(1);
+    // solo se devuelve la unidad semanal, nunca la diaria
+    for (const call of refund.mock.calls as unknown[][]) expect(call[3]).toBe("coach");
+    // segunda petición: sirve el respaldo, sin otra llamada a la IA
+    await app().request("/api/coach/weekly", {}, env);
+    expect(callMock).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });
 

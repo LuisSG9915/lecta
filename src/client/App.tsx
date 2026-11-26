@@ -163,14 +163,20 @@ type BookSelection = BookFileSelection & {
 };
 
 const LOCAL_ONLY_NOTICE_KEY = "lecta:local-only-notice:v1";
-/** true solo la primera vez (flag en localStorage; sin storage no se muestra). */
-function takeLocalOnlyNoticeOnce(): boolean {
+/** true si aún no se mostró (sin storage no se muestra). */
+function localOnlyNoticePending(): boolean {
   try {
-    if (localStorage.getItem(LOCAL_ONLY_NOTICE_KEY)) return false;
-    localStorage.setItem(LOCAL_ONLY_NOTICE_KEY, "1");
-    return true;
+    return !localStorage.getItem(LOCAL_ONLY_NOTICE_KEY);
   } catch {
     return false;
+  }
+}
+/** Se marca al pintarse de verdad, no al armarse: ver `localOnlyNotice`. */
+function markLocalOnlyNoticeSeen(): void {
+  try {
+    localStorage.setItem(LOCAL_ONLY_NOTICE_KEY, "1");
+  } catch {
+    /* sin storage: no se vuelve a mostrar de todos modos */
   }
 }
 
@@ -222,6 +228,10 @@ export default function App() {
   );
   const trialBookSeen = useRef(false);
   const [message, setMessage] = useState("");
+  // Aviso del primer EPUB propio en cuenta gratis. Con el libro abierto el
+  // estado llega a una región solo para lectores de pantalla, así que espera
+  // aquí y se pinta (y se marca como visto) cuando el libro se cierra.
+  const [localOnlyNotice, setLocalOnlyNotice] = useState("");
   const [error, setError] = useState(
     authLink.urlError ? "El enlace ya venció o fue usado. Pide uno nuevo." : "",
   );
@@ -1455,15 +1465,18 @@ export default function App() {
               scope,
             ).catch(() => null);
           }
-          setMessage(
+          if (
             sessionUserId &&
-              !metaOverride?.catalog &&
-              planStore.get() &&
-              !hasLectaPlus(planStore.get()?.plan) &&
-              takeLocalOnlyNoticeOnce()
-              ? "Libro guardado. Este libro vive solo en este dispositivo. Con Lecta+ te sigue al celular y al Kindle."
-              : "Libro guardado en este dispositivo.",
-          );
+            !metaOverride?.catalog &&
+            planStore.get() &&
+            !hasLectaPlus(planStore.get()?.plan) &&
+            localOnlyNoticePending()
+          ) {
+            setLocalOnlyNotice(
+              "Libro guardado. Este libro vive solo en este dispositivo. Con Lecta+ te sigue al celular y al Kindle.",
+            );
+          }
+          setMessage("Libro guardado en este dispositivo.");
           void refreshLibrary();
           // Análisis de vocabulario en segundo plano: alimenta la
           // insignia ~% de la tarjeta. Sin red sale con null y la
@@ -2444,7 +2457,7 @@ export default function App() {
                     deepLinkPending: authLink.openHash !== null,
                   }) ? (
                     <Suspense fallback={null}>
-                      <TrialEndSheet />
+                      <TrialEndSheet endedAt={userPlan?.trialEndedAt} />
                     </Suspense>
                   ) : null}
                 </Activity>
@@ -2576,9 +2589,15 @@ export default function App() {
         // Con el lector abierto el aviso de estado ya se pinta dentro del
         // lector: duplicarlo aquí lo anuncia dos veces a lectores de pantalla
         // y lo deja detrás del dock. Fuera del lector, esta es la única capa.
-        message={book ? null : message}
+        message={book ? null : localOnlyNotice || message}
         error={error}
-        onDismissMessage={() => setMessage("")}
+        onDismissMessage={() => {
+          if (localOnlyNotice) {
+            markLocalOnlyNoticeSeen();
+            setLocalOnlyNotice("");
+          }
+          setMessage("");
+        }}
         onDismissError={() => setError("")}
       />
 

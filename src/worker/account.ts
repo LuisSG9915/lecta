@@ -2,7 +2,7 @@
 // «borrar datos». Extraído de app.ts (R2 de la deuda de complejidad).
 import { Hono } from "hono";
 import { purgeR2Prefix } from "./auth";
-import { getConnectionString, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
+import { getConnectionString, isMissingTableError, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
 import { runInBackground } from "./background";
 import { purgeKindleBookCache } from "./kindle/cache";
 import { normalizeLandingSource, recordLandingEvent } from "./landing-events";
@@ -104,11 +104,26 @@ account.get("/api/account/trial-summary", async (context) => {
         [userId, [...USER_AI_SCOPES], Math.floor(start / 3_600_000), Math.floor(end / 3_600_000), start, end],
       )) as { rows?: Array<Record<string, unknown>> };
       const row = res.rows?.[0] ?? {};
+      // El código de vinculación se borra al consumirse: lo que persiste es
+      // la fila de preferencias del portal Kindle (tabla ausente = sin dato).
+      let kindleLinked = row.kindle_linked === true;
+      if (!kindleLinked) {
+        try {
+          const prefs = (await client.query(
+            `SELECT 1 FROM lecta_kindle_prefs WHERE user_id = $1 LIMIT 1`,
+            [userId],
+          )) as { rows?: unknown[] };
+          kindleLinked = (prefs.rows?.length ?? 0) > 0;
+        } catch (err) {
+          if (!isMissingTableError(err)) throw err;
+        }
+      }
       return {
+        // `explain` también cuenta las cartas de personaje (character-recap).
         aiUses: Number(row.ai_uses) || 0,
         wordsSaved: Number(row.words_saved) || 0,
         cloudBooks: Number(row.cloud_books) || 0,
-        kindleLinked: row.kindle_linked === true,
+        kindleLinked,
         trialEndsAt: end,
       };
     });

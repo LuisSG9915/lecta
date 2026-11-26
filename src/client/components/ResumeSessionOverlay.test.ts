@@ -169,4 +169,17 @@ describe("ResumeSessionOverlay «¿Quién era…?»", () => {
     });
     expect(container.querySelector(".plan-note")).not.toBeNull();
   });
+
+  it("si la red falla: avisa, deja reintentar y no anota el nombre", async () => {
+    const request = await mount({ ok: false, error: "net" });
+    await act(async () => {
+      nameBtn().click();
+    });
+    expect(container.textContent).toContain("No pudimos cargar a Dante");
+    expect(container.querySelector("[aria-live='polite']")).not.toBeNull();
+    await act(async () => {
+      nameBtn().click();
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
 });

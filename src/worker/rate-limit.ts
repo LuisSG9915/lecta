@@ -14,10 +14,22 @@ export async function consumeRateUnits(
   units: number,
   limit = ENRICH_UNITS_PER_HOUR,
   scope = "enrich",
+  bucketOverride?: number,
+): Promise<boolean> {
+  return (await consumeRateUnitsAt(env, userId, units, limit, scope, bucketOverride)).ok;
+}
+
+/** Como `consumeRateUnits`, pero devuelve también el bucket usado, para reintegrar en el mismo. */
+export async function consumeRateUnitsAt(
+  env: WorkerEnv,
+  userId: string,
+  units: number,
+  limit = ENRICH_UNITS_PER_HOUR,
+  scope = "enrich",
   // Cuota con ventana propia (p. ej. el mes de la cortesía de IA): por
   // defecto la hora natural.
   bucketOverride?: number,
-): Promise<boolean> {
+): Promise<{ ok: boolean; bucketHour: number }> {
   const now = Date.now();
   const bucketHour = bucketOverride ?? Math.floor(now / HOUR_MS);
   const result = await withClient(env, (client) =>
@@ -33,7 +45,7 @@ export async function consumeRateUnits(
       [userId, bucketHour, units, now, scope, limit],
     ),
   );
-  return Boolean(result?.rows[0]);
+  return { ok: Boolean(result?.rows[0]), bucketHour };
 }
 
 /** Devuelve unidades al mismo bucket (best-effort, nunca baja de 0). */

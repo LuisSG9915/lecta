@@ -94,7 +94,13 @@ const handler: ExportedHandler<WorkerEnv> = {
             let coachText: string | null = null;
             try {
               const snap = await loadUserPlan(env, u.user_id);
-              if (snap && hasLectaPlus(snap.plan)) coachText = (await readCachedCoach(env, u.user_id))?.text ?? null;
+              if (snap && hasLectaPlus(snap.plan)) {
+                // El lunes la semana ISO en curso aún no tiene texto: va primero la anterior.
+                const cached =
+                  (await readCachedCoach(env, u.user_id, Date.now() - 7 * 86_400_000)) ??
+                  (await readCachedCoach(env, u.user_id));
+                coachText = cached?.text ?? null;
+              }
             } catch {
               coachText = null;
             }

@@ -45,4 +45,9 @@ describe("AttachBookSheet: nota de la nube por plan", () => {
     render();
     expect(document.body.textContent).not.toContain("Biblioteca en la nube");
   });
+  it("plan aún sin cargar (null) no la muestra", () => {
+    plan = null;
+    render();
+    expect(document.body.textContent).not.toContain("Biblioteca en la nube");
+  });
 });
