@@ -10,6 +10,7 @@ import { vocabSync } from "./vocab-sync";
 import { ops } from "./ops";
 import { weeklyDigest } from "./weekly-digest";
 import { reengage } from "./reengage";
+import { studyPlan } from "./study-plan";
 import { createScopedAuth, closePoolSafe } from "./auth";
 import { checkAuthRateLimit, isLimitedAuthRequest } from "./auth-rate-limit";
 import { EPUB_MAX_BYTES } from "../shared/epub-check";
@@ -113,6 +114,7 @@ app.route("/", admin);
 app.route("/", billing);
 app.route("/", weeklyDigest);
 app.route("/", reengage);
+app.route("/", studyPlan);
 // Formularios del portal Kindle (login, ajustes, vocabulario, subrayados):
 // unos pocos cientos de bytes. `/k/login` es público, así que se corta
 // en la puerta antes de que parseBody() materialice el cuerpo.

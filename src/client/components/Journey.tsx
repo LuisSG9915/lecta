@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useModalBehavior } from "../lib/modal";
 import { reportClientError } from "../lib/client-errors";
 import {
@@ -48,6 +48,7 @@ import { displayTitle } from "../lib/cover";
 import { CompanionStage } from "./CompanionStage";
 import ReadingActivity from "./ReadingActivity";
 import JourneyInsights from "./JourneyInsights";
+const StudyPlanCard = lazy(() => import("./StudyPlanCard"));
 import JourneyFold from "./JourneyFold";
 import { dayKeyOf } from "../lib/reading-activity";
 import { summarizeChapterFollows } from "../lib/chapter-follow";
@@ -1164,6 +1165,9 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 «Últimas 8 semanas» viaja como primer bloque del análisis
                 para que las gráficas queden emparejadas en la misma
                 cuadrícula de dos columnas en escritorio. */}
+            <Suspense fallback={null}>
+              <StudyPlanCard books={books} />
+            </Suspense>
             <JourneyInsights
               intervals={intervals}
               positions={positions}

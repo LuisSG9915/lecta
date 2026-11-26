@@ -112,6 +112,7 @@ export const PLAN_FEATURES = [
   "character-recap",
   "cloud",
   "coat",
+  "study-plan",
 ] as const;
 
 export type PlanFeature = (typeof PLAN_FEATURES)[number];
