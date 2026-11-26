@@ -54,7 +54,7 @@ export const buildUserDigest = async (
   return data;
 };
 
-export const buildDigestHtml = (data: DigestData, unsubscribeUrl: string) => {
+export const buildDigestHtml = (data: DigestData, unsubscribeUrl: string, coachText?: string | null) => {
   const h = Math.floor(data.minutes / 60);
   const m = data.minutes % 60;
   const timeStr = h > 0 ? `${h} h ${m} min` : `${m} min`;
@@ -70,6 +70,8 @@ export const buildDigestHtml = (data: DigestData, unsubscribeUrl: string) => {
     <tr><td style="padding:8px 0;border-bottom:1px solid #e3ddd2;">Repasos hechos</td><td style="padding:8px 0;border-bottom:1px solid #e3ddd2;text-align:right;font-weight:600;">${data.reviews}</td></tr>
     <tr><td style="padding:8px 0;">Libros leídos</td><td style="padding:8px 0;text-align:right;font-weight:600;">${data.books}</td></tr>
   </table>
+  ${coachText ? `<h2 style="font-size:16px;margin:0 0 6px;">Tu coach</h2>
+  <p style="margin:0 0 20px;">${escapeHtml(coachText)}</p>` : ""}
   <p style="color:#5a554e;font-size:14px;">Sigue leyendo en <a href="https://lectal.app" style="color:#b3472a;">lectal.app</a>.</p>
   <p style="color:#9a958e;font-size:12px;margin-top:24px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#9a958e;">Darse de baja del resumen semanal</a></p>
 </body>

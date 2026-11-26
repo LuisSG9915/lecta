@@ -262,6 +262,10 @@ describe("purga total al borrar la cuenta", () => {
     expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ prefix: "user-books/u1/" }),
     );
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ prefix: "coach/v1/u1/" }),
+    );
+    expect(remove).toHaveBeenCalledWith(["coach/v1/u1/a.epub"]);
     expect(remove).toHaveBeenCalledWith(["books/u1/a.epub"]);
     expect(remove).toHaveBeenCalledWith(["user-books/u1/a.epub"]);
     expect(dbQueryMock).toHaveBeenCalledWith(

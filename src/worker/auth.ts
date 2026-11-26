@@ -63,6 +63,7 @@ export async function purgeUserData(
   if (env.BOOKS) {
     tasks.push(purgeR2Prefix(env.BOOKS, `books/${userId}/`));
     tasks.push(purgeR2Prefix(env.BOOKS, `user-books/${userId}/`));
+    tasks.push(purgeR2Prefix(env.BOOKS, `coach/v1/${userId}/`));
   }
   await Promise.all(tasks);
 }

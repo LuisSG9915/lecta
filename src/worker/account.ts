@@ -196,6 +196,7 @@ account.post("/api/account/reset", async (context) => {
         purgeR2Prefix(booksBucket, `books/${userId}/`),
         purgeR2Prefix(booksBucket, `covers/${userId}/`),
         purgeR2Prefix(booksBucket, `user-books/${userId}/`),
+        purgeR2Prefix(booksBucket, `coach/v1/${userId}/`),
         ...userBookIds.map((id) => purgeKindleBookCache(booksBucket, id)),
       ]);
     }

@@ -50,6 +50,7 @@ import ReadingActivity from "./ReadingActivity";
 import JourneyInsights from "./JourneyInsights";
 const StudyPlanCard = lazy(() => import("./StudyPlanCard"));
 const FluencyForecastCard = lazy(() => import("./FluencyForecastCard"));
+const CoachCard = lazy(() => import("./CoachCard"));
 import JourneyFold from "./JourneyFold";
 import { dayKeyOf } from "../lib/reading-activity";
 import { summarizeChapterFollows } from "../lib/chapter-follow";
@@ -1170,6 +1171,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 para que las gráficas queden emparejadas en la misma
                 cuadrícula de dos columnas en escritorio. */}
             <Suspense fallback={null}>
+              <CoachCard />
               <StudyPlanCard books={books} />
             </Suspense>
             <JourneyInsights

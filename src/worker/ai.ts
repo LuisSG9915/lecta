@@ -12,6 +12,7 @@ export const EVALUATE_PROMPT_VERSION = "evaluate-v1";
 export const STORY_PROMPT_VERSION = "story-v1";
 export const EXPLAIN_PASSAGE_PROMPT_VERSION = "explain-passage-v1";
 export const PAGE_RECAP_PROMPT_VERSION = "page-recap-v1";
+export const COACH_PROMPT_VERSION = "coach-v1";
 export const CHARACTER_RECAP_PROMPT_VERSION = "character-recap-v1";
 
 const POS_VALUES = new Set([
@@ -84,7 +85,8 @@ export type DeepSeekOperation =
   | "explain_passage"
   | "companion_note"
   | "page_recap"
-  | "character_recap";
+  | "character_recap"
+  | "coach";
 
 // Techo de tokens de salida por operación. En la muestra A/B de
 // enriquecimiento el máximo observado fue 343; 768 deja margen sin
@@ -101,6 +103,7 @@ export const AI_CALL_LIMITS = {
   companion_note: 120,
   page_recap: 90,
   character_recap: 256,
+  coach: 160,
 } as const satisfies Record<DeepSeekOperation, number>;
 
 export type LectaAiTaskType =
@@ -509,6 +512,59 @@ export const PAGE_RECAP_CALL_OPTIONS: DeepSeekCallOptions = {
   promptVersion: PAGE_RECAP_PROMPT_VERSION,
   maxTokens: AI_CALL_LIMITS.page_recap,
 };
+
+export const COACH_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "coach",
+  promptVersion: COACH_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.coach,
+  temperature: 0.5,
+};
+
+export const COACH_SYSTEM_PROMPT = `Eres el coach de lectura de Lecta. Recibes solo cifras agregadas de la última semana de un lector (nunca texto de libros). Escribe un párrafo breve (máximo 60 palabras) en español, cálido y concreto, que reconozca lo hecho y sugiera un único paso para la próxima semana. No inventes datos. Devuelve SOLO un JSON válido: {"coach":"<párrafo>"}`;
+
+export type CoachInput = {
+  daysRead: number;
+  minutes: number;
+  newWords: number;
+  reviews: number;
+  overdue: number;
+  currentBook?: string | null;
+};
+
+// Solo cifras y, como mucho, el título del libro actual: jamás pasajes.
+export function buildCoachPrompt(input: CoachInput): string {
+  const book = input.currentBook?.replace(/\s+/g, " ").trim().slice(0, 80);
+  return [
+    `Días con lectura (de 7): ${input.daysRead}`,
+    `Minutos leídos: ${input.minutes}`,
+    `Palabras nuevas guardadas: ${input.newWords}`,
+    `Repasos hechos: ${input.reviews}`,
+    `Palabras vencidas por repasar: ${input.overdue}`,
+    book ? `Libro actual: ${book}` : "Libro actual: ninguno",
+  ].join("\n");
+}
+
+export function parseCoach(content: string): string | null {
+  try {
+    const text = (JSON.parse(content) as { coach?: unknown }).coach;
+    if (typeof text !== "string") return null;
+    const clean = text.replace(/\s+/g, " ").trim();
+    return clean.length >= 20 && clean.length <= 600 ? clean : null;
+  } catch {
+    return null;
+  }
+}
+
+export function deterministicCoachFallback(input: CoachInput): string {
+  if (input.daysRead === 0 && input.reviews === 0) {
+    return "Esta semana no leíste: abre tu libro cinco minutos hoy y retoma el hábito sin presión.";
+  }
+  const due =
+    input.overdue > 0
+      ? ` Tienes ${input.overdue} palabras vencidas: repásalas primero.`
+      : " Mantén el ritmo la próxima semana.";
+  return `Leíste ${input.daysRead} de 7 días (${input.minutes} min) y guardaste ${input.newWords} palabras nuevas.${due}`;
+}
 
 export async function requestEnrichment(
   env: WorkerEnv,

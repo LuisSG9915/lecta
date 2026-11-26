@@ -114,6 +114,7 @@ export const PLAN_FEATURES = [
   "coat",
   "study-plan",
   "fluency",
+  "coach",
 ] as const;
 
 export type PlanFeature = (typeof PLAN_FEATURES)[number];

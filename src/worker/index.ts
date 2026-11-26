@@ -9,6 +9,9 @@ import {
 } from "./error-signatures";
 import { purgeLandingEvents } from "./landing-events";
 import { runReengage } from "./reengage";
+import { readCachedCoach } from "./coach";
+import { loadUserPlan } from "./plan-store";
+import { hasLectaPlus } from "../shared/plan";
 import { buildUserDigest, buildDigestHtml, isEmptyDigest, sendDigestEmail } from "./weekly-digest";
 
 export { EnrichmentWorkflow };
@@ -87,7 +90,15 @@ const handler: ExportedHandler<WorkerEnv> = {
             const unsubUrl = u.token
               ? `${base}/api/digest/unsubscribe?token=${encodeURIComponent(u.token)}`
               : base;
-            const html = buildDigestHtml(data, unsubUrl);
+            // Lecta+: reutiliza el texto ya generado (nunca llama a la IA en el cron).
+            let coachText: string | null = null;
+            try {
+              const snap = await loadUserPlan(env, u.user_id);
+              if (snap && hasLectaPlus(snap.plan)) coachText = (await readCachedCoach(env, u.user_id))?.text ?? null;
+            } catch {
+              coachText = null;
+            }
+            const html = buildDigestHtml(data, unsubUrl, coachText);
             await sendDigestEmail(env, u.email, html, "Tu semana en Lecta");
             await new Promise((r) => setTimeout(r, 500));
           } catch {
