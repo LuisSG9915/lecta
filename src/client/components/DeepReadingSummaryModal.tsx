@@ -325,6 +325,7 @@ export default function DeepReadingSummaryModal({
         <p className="meta deep-summary-ai-note">
           Hoy ya usaste tus explicaciones con IA. Con Lecta+ no tienes ese tope de 3: toca cualquier palabra y te explicamos su sentido en la frase.{" "}
           <a
+            className="deep-summary-ai-link"
             href="/?carne=1"
             onClick={(e) => {
               e.preventDefault();

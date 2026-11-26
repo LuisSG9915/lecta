@@ -3442,7 +3442,8 @@ mark.saved-word[data-level="settled"] {
 }
 .plan-note__link {
   color: var(--vermilion);
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
   align-items: center;
   min-height: 44px;
   white-space: nowrap;
@@ -3515,6 +3516,9 @@ mark.saved-word[data-level="settled"] {
   line-height: 1.45;
 }
 .trial-status__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0;
   border: 0;
   background: none;
@@ -3533,6 +3537,13 @@ mark.saved-word[data-level="settled"] {
 .trial-end__title {
   margin: 0;
 }
+.trial-end__title:focus:not(:focus-visible) {
+  outline: none;
+}
+/* Velo más denso: en noche el 0.55 base casi no separa la hoja del fondo. */
+.sheet-scrim:has(.trial-end) {
+  background: color-mix(in srgb, var(--scrim), black 35%);
+}
 .trial-end__figures {
   margin: 0;
   padding-inline-start: var(--s-4);
@@ -3545,4 +3556,10 @@ mark.saved-word[data-level="settled"] {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
+}
+
+.deep-summary-ai-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }

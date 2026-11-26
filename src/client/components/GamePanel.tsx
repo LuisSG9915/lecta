@@ -476,7 +476,7 @@ export function GamePanel(props: GamePanelProps) {
               >
                 {evaluating ? "El gato está leyendo…" : "Revisar con el Gato"}
               </button>
-              {evalResult?.offlineFallback ? (
+              {evalResult?.offlineFallback && !evalResult.locked ? (
                 <span className="ai-fallback-badge">Modo sin conexión</span>
               ) : null}
             </div>
@@ -554,7 +554,7 @@ export function GamePanel(props: GamePanelProps) {
               >
                 {generatingStory ? "Tejiendo historia…" : "Tejer Cuento con el Gato"}
               </button>
-              {storyResult?.offlineFallback ? (
+              {storyResult?.offlineFallback && !storyResult.locked ? (
                 <span className="ai-fallback-badge">Modo sin conexión</span>
               ) : null}
             </div>

@@ -35,15 +35,20 @@ describe("AttachBookSheet: nota de la nube por plan", () => {
       ),
     );
 
-  it("free ve la nota", () => {
+  it("free ve una sola invitación y el foco cae en Adjuntar", () => {
     plan = "free";
     render();
     expect(document.body.textContent).toContain("Biblioteca en la nube");
+    expect(document.body.textContent).not.toContain("Con Lecta+ tus libros viajan solos\n");
+    expect(document.querySelectorAll(".btn--quiet")).toHaveLength(0);
+    expect(document.querySelectorAll(".plan-note")).toHaveLength(1);
+    expect(document.querySelector("[data-autofocus]")?.getAttribute("type")).toBe("file");
   });
   it.each(["lecta_plus", "founder_lifetime"])("%s no la ve", (p) => {
     plan = p;
     render();
     expect(document.body.textContent).not.toContain("Biblioteca en la nube");
+    expect(document.body.textContent).not.toContain("Lecta+");
   });
   it("plan aún sin cargar (null) no la muestra", () => {
     plan = null;

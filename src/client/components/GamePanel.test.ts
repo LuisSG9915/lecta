@@ -333,6 +333,37 @@ describe("GamePanel", () => {
     expect(host.textContent).toContain("relicario");
   });
 
+  it("con 402 de Lecta+ no pinta «Modo sin conexión» junto a la PlanNote", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ code: "LECTA_PLUS_REQUIRED" }), { status: 402 }));
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "ai_workshop",
+            words: [{ word: "relicario", meaning: "Estuche de reliquias" }],
+          }),
+        }),
+      ),
+    );
+    await flush();
+    const textarea = host.querySelector("textarea")!;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+    act(() => {
+      setter?.call(textarea, "Guardó la carta en el viejo relicario de plata.");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await flush();
+    click(button("Revisar con el Gato")!);
+    await flush();
+    await flush();
+    expect(host.querySelector(".plan-note")).toBeTruthy();
+    expect(host.textContent).not.toContain("Modo sin conexión");
+    fetchSpy.mockRestore();
+  });
+
   it("permite tejer un Cuento de Tinta con las palabras del cuaderno", async () => {
     act(() =>
       root.render(

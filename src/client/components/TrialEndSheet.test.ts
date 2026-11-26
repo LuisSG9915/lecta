@@ -45,8 +45,8 @@ describe("TrialEndSheet", () => {
     expect(text).toContain("Terminó tu prueba de Lecta+");
     expect(text).not.toContain("Así usaste");
     expect(text).toContain("estás en Gratis: 3 explicaciones con IA al día");
-    expect(text).toContain("Anual · $499 (≈$42 al mes)");
-    expect(text).toContain("Mensual · $59");
+    expect(text).toContain("Anual · $499 MXN al año (≈$42 MXN al mes)");
+    expect(text).toContain("Mensual · $59 MXN al mes");
     expect(text).toContain("Seguir gratis");
     expect(document.activeElement?.tagName).toBe("H2");
     await act(async () => root.unmount());

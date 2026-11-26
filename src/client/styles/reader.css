@@ -7381,3 +7381,30 @@ b.lecta-anchor {
   border: 1px solid var(--rule);
   border-radius: var(--radius-md, 8px);
 }
+
+.resume-session-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.resume-session-who-label {
+  color: var(--ink-soft);
+}
+.resume-session-who-name {
+  min-height: 44px;
+  padding: 0 var(--s-3);
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.resume-session-who-name:hover {
+  border-color: var(--vermilion);
+}
+.resume-session-who > [aria-live] {
+  flex-basis: 100%;
+}

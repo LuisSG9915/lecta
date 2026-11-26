@@ -104,10 +104,10 @@ export default function TrialEndSheet({
         ) : null}
         <div className="trial-end__actions">
           <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void checkout("yearly")}>
-            {PRICES.yearly.label} · {PRICES.yearly.short} (≈{PRICES.yearly.perMonth} al mes)
+            {PRICES.yearly.label} · {PRICES.yearly.price} (≈{PRICES.yearly.perMonth} MXN al mes)
           </button>
           <button type="button" className="btn" disabled={busy} onClick={() => void checkout("monthly")}>
-            {PRICES.monthly.label} · {PRICES.monthly.short}
+            {PRICES.monthly.label} · {PRICES.monthly.price}
           </button>
           <button type="button" className="btn--quiet" onClick={close}>
             Seguir gratis

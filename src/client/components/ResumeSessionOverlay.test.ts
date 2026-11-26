@@ -168,6 +168,8 @@ describe("ResumeSessionOverlay «¿Quién era…?»", () => {
       nameBtn().click();
     });
     expect(container.querySelector(".plan-note")).not.toBeNull();
+    expect(container.querySelector("[aria-live='polite'] .plan-note")).not.toBeNull();
+    expect(container.textContent).toContain("¿Quién era…?");
   });
 
   it("si la red falla: avisa, deja reintentar y no anota el nombre", async () => {

@@ -130,12 +130,12 @@ export default function ResumeSessionOverlay({
 
       {names.length > 0 && (
         <div className="resume-session-who">
-          <span>¿Quién era… </span>
+          <span className="resume-session-who-label">¿Quién era…?</span>
           {names.map((name) => (
             <button
               key={name}
               type="button"
-              className="btn btn--link resume-session-who-name"
+              className="resume-session-who-name"
               onClick={() => void askWho(name)}
             >
               {name}
@@ -154,14 +154,14 @@ export default function ResumeSessionOverlay({
                   : `No pudimos cargar a ${name}. Toca su nombre para reintentar.`}
               </p>
             ))}
+            {locked && (
+              <PlanNote
+                feature="character-recap"
+                title="Resumen de personajes con Lecta+"
+                detail="Recuerda quién es cada personaje sin spoilers."
+              />
+            )}
           </div>
-          {locked && (
-            <PlanNote
-              feature="character-recap"
-              title="Resumen de personajes con Lecta+"
-              detail="Recuerda quién es cada personaje sin spoilers."
-            />
-          )}
         </div>
       )}
 

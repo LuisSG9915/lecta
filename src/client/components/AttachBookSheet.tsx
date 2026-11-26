@@ -18,17 +18,18 @@ export default function AttachBookSheet({
   item,
   onClose,
   onAttached,
-  onOpenCarne,
 }: {
   item: ShelfItem;
   onClose: () => void;
   /** El archivo coincidió y quedó guardado: abrir el libro. */
   onAttached: (item: ShelfItem) => void | Promise<void>;
-  onOpenCarne: () => void;
+  /** Reservado: la invitación a Lecta+ ya vive en PlanNote. */
+  onOpenCarne?: () => void;
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const userPlan = useUserPlan();
+  const isFree = userPlan?.plan === "free";
 
   const attach = async (file: File) => {
     setBusy(true);
@@ -85,13 +86,13 @@ export default function AttachBookSheet({
   return (
     <Sheet label="Adjunta tu archivo" onClose={onClose}>
       <div className="sheet-head">
-        <strong className="sheet-title">Adjunta tu archivo o pasa a Lecta+</strong>
+        <strong className="sheet-title">{isFree ? "Adjunta tu archivo o pasa a Lecta+" : "Adjunta tu archivo"}</strong>
       </div>
       <p className="meta">
         Tu posición y tus palabras de este libro ya están aquí. El archivo EPUB se quedó en el
         dispositivo donde lo agregaste: adjunta el mismo archivo para seguir leyendo.
       </p>
-      {userPlan?.plan === "free" ? (
+      {isFree ? (
         <PlanNote
           feature="cloud"
           title="Biblioteca en la nube"
@@ -104,6 +105,7 @@ export default function AttachBookSheet({
           type="file"
           accept=".epub,application/epub+zip"
           disabled={busy}
+          data-autofocus
           className="visually-hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -117,9 +119,6 @@ export default function AttachBookSheet({
           {error}
         </p>
       ) : null}
-      <button type="button" className="btn--quiet" onClick={onOpenCarne}>
-        Con Lecta+ tus libros viajan solos
-      </button>
     </Sheet>
   );
 }
