@@ -96,7 +96,14 @@ describe("expiresAtForSubscription", () => {
       ).toBe(50_000);
     }
   });
-  it("past_due no adelanta el vencimiento sobre el periodo impago", () => {
+  it("past_due vence al inicio del periodo impago (fin del último pagado)", () => {
+    expect(
+      expiresAtForSubscription(
+        { status: "past_due", items: { data: [{ current_period_start: 40, current_period_end: 50 }] } },
+        "x",
+        now,
+      ),
+    ).toBe(40_000);
     expect(
       expiresAtForSubscription({ status: "past_due", items: { data: [{ current_period_end: 50 }] } }, "x", now),
     ).toBeUndefined();
@@ -323,7 +330,37 @@ describe("POST /api/billing/webhook", () => {
     expect(sqlCalls()).toContain("COMMIT");
   });
 
-  it("past_due registra el evento sin adelantar plan_expires_at", async () => {
+  it("renovación con active y luego past_due: el vencimiento vuelve al inicio del periodo impago", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{ "?column?": 1 }] };
+      return { rows: [] };
+    });
+    const items = { data: [{ current_period_start: 900, current_period_end: 999 }] };
+    // El GET de la suscripción devuelve el estado vigente en cada entrega.
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ id: "sub_1", customer: "cus_1", status: "active", metadata: { user_id: "u1" }, items }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ id: "sub_1", customer: "cus_1", status: "past_due", metadata: { user_id: "u1" }, items }),
+    );
+    await deliver({
+      ...subEvent("customer.subscription.updated", { status: "active", metadata: { user_id: "u1" }, items }),
+      id: "evt_renew",
+    });
+    await deliver({
+      ...subEvent("customer.subscription.updated", { status: "past_due", metadata: { user_id: "u1" }, items }),
+      id: "evt_fail",
+    });
+    const upserts = queryMock.mock.calls
+      .filter((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"))
+      .map((call) => (call[1] as unknown[])[3]);
+    expect(upserts).toEqual([999_000, 900_000]);
+    fetchMock.mockRestore();
+  });
+
+  it("past_due sin inicio de periodo registra el evento sin tocar plan_expires_at", async () => {
     queryMock.mockImplementation(async (sql: string) => {
       if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_past" }] };
       if (sql.includes('FROM "user"')) return { rows: [{ "?column?": 1 }] };

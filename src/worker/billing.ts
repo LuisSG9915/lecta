@@ -84,7 +84,11 @@ type StripeSubscription = {
   ended_at?: number | null;
   metadata?: Record<string, string>;
   items?: {
-    data?: Array<{ current_period_end?: number; price?: { recurring?: { interval?: string } } }>;
+    data?: Array<{
+      current_period_start?: number;
+      current_period_end?: number;
+      price?: { recurring?: { interval?: string } };
+    }>;
   };
 };
 
@@ -105,10 +109,14 @@ export function expiresAtForSubscription(
       const end = sub.items?.data?.[0]?.current_period_end;
       return typeof end === "number" ? end * 1000 : null;
     }
-    case "past_due":
-      // Fallo de cobro mientras Stripe reintenta: no adelantar el vencimiento
-      // sobre el periodo impago para respetar los 3 días reales de gracia.
-      return undefined;
+    case "past_due": {
+      // Fallo de cobro mientras Stripe reintenta. Al renovar, Stripe adelanta
+      // el periodo y avisa con `active` antes de cobrar, así que el periodo
+      // impago ya pudo escribirse: el vencimiento vuelve al inicio de ese
+      // periodo (fin del último pagado) y la gracia de 3 días corre desde ahí.
+      const start = sub.items?.data?.[0]?.current_period_start;
+      return typeof start === "number" ? start * 1000 : undefined;
+    }
     case "unpaid":
       return typeof sub.ended_at === "number" ? sub.ended_at * 1000 : nowMs - PLAN_GRACE_MS - 1;
     case "canceled":
