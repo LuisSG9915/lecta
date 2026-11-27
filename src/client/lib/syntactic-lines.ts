@@ -19,6 +19,7 @@ export interface SyntacticLinesOptions {
   chromaticGuide?: boolean;
   syntacticLines?: boolean;
   bionicAnchors?: boolean;
+  ensureChunks?: boolean;
   lang?: string;
 }
 
@@ -176,9 +177,10 @@ export function clearSyntacticLines(root: ParentNode) {
     root.normalize();
 }
 
-function applyBionicAnchorsToTextNode(tNode: Text) {
+function applyBionicAnchorsToTextNode(tNode: Text, lang?: string) {
   const val = tNode.nodeValue;
   if (!val || val.length < 3) return;
+  const langCode = (lang || "es").slice(0, 2).toLowerCase();
   const WORD_RE = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/gu;
   let match: RegExpExecArray | null;
   let lastIdx = 0;
@@ -187,7 +189,7 @@ function applyBionicAnchorsToTextNode(tNode: Text) {
 
   while ((match = WORD_RE.exec(val)) !== null) {
     const word = match[0];
-    if (word.length >= 3 && !isStopword(word, "es")) {
+    if (word.length >= 3 && !isStopword(word, langCode)) {
       hasAnchor = true;
       if (match.index > lastIdx) {
         frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
@@ -217,7 +219,7 @@ function applyBionicAnchorsToTextNode(tNode: Text) {
   tNode.replaceWith(frag);
 }
 
-function applyBionicToElement(container: Element) {
+function applyBionicToElement(container: Element, lang?: string) {
   const textNodes: Text[] = [];
   const walk = (node: Node) => {
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -242,7 +244,7 @@ function applyBionicToElement(container: Element) {
     walk(child);
   }
   for (const t of textNodes) {
-    applyBionicAnchorsToTextNode(t);
+    applyBionicAnchorsToTextNode(t, lang);
   }
 }
 
@@ -258,8 +260,9 @@ export function applySyntacticLines(
   const enableSyntactic = options?.syntacticLines ?? true;
   const enableChromatic = options?.chromaticGuide ?? false;
   const enableBionic = options?.bionicAnchors ?? false;
+  const ensureChunks = options?.ensureChunks ?? false;
 
-  if (!enableSyntactic && !enableChromatic && !enableBionic) return;
+  if (!enableSyntactic && !enableChromatic && !enableBionic && !ensureChunks) return;
 
   let globalChunkCycle = 0;
 
@@ -376,11 +379,11 @@ export function applySyntacticLines(
         }
 
         if (enableBionic) {
-          applyBionicToElement(s);
+          applyBionicToElement(s, options?.lang);
         }
       });
-    } else if (enableChromatic) {
-      // syntacticLines: false pero chromaticGuide: true -> agrupar inline
+    } else if (enableChromatic || ensureChunks) {
+      // syntacticLines: false pero chromaticGuide o marcapasos activo -> agrupar inline
       if (breaks.length > 0) {
         const starters = new Set<Node>([el.firstChild as Node]);
         for (const pos of breaks) {
@@ -406,9 +409,11 @@ export function applySyntacticLines(
           if (starters.has(child) || !span) {
             span = document.createElement("span");
             span.className = `${SYNTACTIC_CHUNK_CLASS} ${SYNTACTIC_LINE_LEGACY_CLASS}`;
-            span.dataset.chunkCycle = String(globalChunkCycle % 4);
+            if (enableChromatic) {
+              span.dataset.chunkCycle = String(globalChunkCycle % 4);
+              globalChunkCycle++;
+            }
             span.dataset.inline = "true";
-            globalChunkCycle++;
             el.insertBefore(span, child);
           }
           span.appendChild(child);
@@ -416,9 +421,11 @@ export function applySyntacticLines(
       } else {
         const span = document.createElement("span");
         span.className = `${SYNTACTIC_CHUNK_CLASS} ${SYNTACTIC_LINE_LEGACY_CLASS}`;
-        span.dataset.chunkCycle = String(globalChunkCycle % 4);
+        if (enableChromatic) {
+          span.dataset.chunkCycle = String(globalChunkCycle % 4);
+          globalChunkCycle++;
+        }
         span.dataset.inline = "true";
-        globalChunkCycle++;
         while (el.firstChild) {
           span.appendChild(el.firstChild);
         }
@@ -426,11 +433,11 @@ export function applySyntacticLines(
       }
 
       if (enableBionic) {
-        applyBionicToElement(el);
+        applyBionicToElement(el, options?.lang);
       }
     } else if (enableBionic) {
       // Solo bionicAnchors sin syntacticLines ni chromaticGuide
-      applyBionicToElement(el);
+      applyBionicToElement(el, options?.lang);
     }
   });
 }

@@ -9,6 +9,8 @@ import type { ReadingEvent } from "./idb";
 
 // Tramo de lectura mínimo antes de medir fatiga.
 export const FATIGUE_AFTER_MS = 25 * 60_000;
+// Fase de acomodación: no intervenir durante los primeros minutos de sesión.
+export const SETTLING_IN_MINUTES = 5;
 // Ventana deslizante sobre la que se tasa la regresión.
 export const FATIGUE_WINDOW_MS = 5 * 60_000;
 // Enfriamiento entre avisos de fatiga.
@@ -363,7 +365,10 @@ export function evaluateReadingFatigue(
     input.bookId && profile.mutedBookIds.includes(input.bookId),
   );
   const isFatigued =
-    profile.autoSuggestEnabled && !isMutedForBook && fatigueIndex >= 0.68;
+    profile.autoSuggestEnabled &&
+    !isMutedForBook &&
+    input.sessionMinutesElapsed >= SETTLING_IN_MINUTES &&
+    fatigueIndex >= 0.68;
 
   let reason: FatigueEvaluationResult["reason"] = "none";
   if (isFatigued) {

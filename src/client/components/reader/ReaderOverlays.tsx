@@ -3,7 +3,7 @@ import type { SavedWord, KnownWord } from "../../lib/idb";
 import type { SearchSection } from "../../lib/book-search";
 import type { DeepReadingSummary, DeepReadingConfig } from "../../lib/deep-reading";
 import type { ConsolidationModality, EpisodicWordItem } from "../../lib/practice";
-import { isFeatureFlagEnabled, type StrategyPreset } from "../../lib/settings";
+import { isFeatureFlagEnabled, type ReaderSettings, type StrategyPreset } from "../../lib/settings";
 import type { TtsEngineMode, TtsSnapshot } from "../../lib/ttsTypes";
 import PlanNote from "../PlanNote";
 import type { PageRecapResult } from "../../lib/page-recap";
@@ -16,6 +16,7 @@ import QuoteCardModal from "../QuoteCardModal";
 import DeepReadingModal from "../DeepReadingModal";
 import DeepReadingSummaryModal from "../DeepReadingSummaryModal";
 import BookGlossaryModal from "../BookGlossaryModal";
+import OpticalRecipeModal from "../OpticalRecipeModal";
 import TtsConsentDialog from "../TtsConsentDialog";
 import TtsVoiceSelector, { type NeuralVoiceChoice } from "../TtsVoiceSelector";
 import ReaderMoreMenu from "../ReaderMoreMenu";
@@ -176,6 +177,16 @@ export interface ReaderOverlaysProps {
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
   fullscreenSupported?: boolean;
+
+  // OpticalRecipeModal
+  opticalRecipeOpen?: boolean;
+  opticalSampleText?: string;
+  readerSettings?: ReaderSettings;
+  onApplyOpticalRecipe?: (
+    patch: Partial<ReaderSettings>,
+    opts: { alsoGlobal: boolean },
+  ) => void;
+  onCloseOpticalRecipe?: () => void;
 }
 
 export function ReaderOverlays({
@@ -264,6 +275,12 @@ export function ReaderOverlays({
   onToggleFullscreen,
   isFullscreen = false,
   fullscreenSupported = false,
+
+  opticalRecipeOpen = false,
+  opticalSampleText = "",
+  readerSettings,
+  onApplyOpticalRecipe,
+  onCloseOpticalRecipe,
 }: ReaderOverlaysProps) {
   // Cuenta free (plan conocido sin Lecta+): la ficha muestra PlanNote en vez
   // de pedir la IA en contexto (docs/designs/2026-11-12-planes-y-landing.md).
@@ -597,6 +614,19 @@ export function ReaderOverlays({
           onToggleFullscreen={onToggleFullscreen}
           isFullscreen={isFullscreen}
           fullscreenSupported={fullscreenSupported}
+        />
+      ) : null}
+
+      {opticalRecipeOpen &&
+      readerSettings &&
+      onApplyOpticalRecipe &&
+      onCloseOpticalRecipe ? (
+        <OpticalRecipeModal
+          sampleText={opticalSampleText}
+          language={language}
+          initialSettings={readerSettings}
+          onApply={onApplyOpticalRecipe}
+          onClose={onCloseOpticalRecipe}
         />
       ) : null}
     </>

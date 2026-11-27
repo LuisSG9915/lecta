@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import {
   READING_PRESETS,
+  SOUNDSCAPE_CHOICES,
   type ReadingPreset,
+  type SoundscapeSetting,
   isFeatureFlagEnabled,
 } from "../lib/settings";
 import type { TtsPauseReason, TtsSnapshot } from "../lib/ttsTypes";
@@ -88,7 +90,7 @@ export interface SmartReaderDockProps {
   modeOptions?: { id: string; label: string; checked: boolean }[];
   onToggleModeOption?: (id: string) => void;
   /** Marcapasos activo: estado y controles dentro del popover. */
-  pacer?: { paused: boolean; wpm: number } | null;
+  pacer?: { paused: boolean; wpm: number; speeds?: readonly [number, number, number] } | null;
   onTogglePacerPause?: () => void;
   onSetPacerWpm?: (wpm: number) => void;
   onStopPacer?: () => void;
@@ -134,6 +136,11 @@ export interface SmartReaderDockProps {
   onDismissRecordToast?: () => void;
   isReadingActive?: boolean;
   onStartAudio5Min?: () => void;
+  soundscape?: SoundscapeSetting;
+  onSelectSoundscape?: (kind: SoundscapeSetting) => void;
+  onOpenDeepReading?: () => void;
+  onOpenOpticalRecipe?: () => void;
+  isForeignLanguage?: boolean;
 }
 
 export default function SmartReaderDock({
@@ -185,6 +192,11 @@ export default function SmartReaderDock({
   onDismissRecordToast: _onDismissRecordToast,
   isReadingActive = false,
   onStartAudio5Min,
+  soundscape,
+  onSelectSoundscape,
+  onOpenDeepReading,
+  onOpenOpticalRecipe,
+  isForeignLanguage = false,
 }: SmartReaderDockProps) {
   const [isModeSheetOpen, setIsModeSheetOpen] = useState(false);
   const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
@@ -255,12 +267,25 @@ export default function SmartReaderDock({
 
   const suggestionText =
     effectiveReason === "regressions"
-      ? "¿Enfocar párrafo actual?"
+      ? "Releíste varias veces · ¿Enfocar párrafo actual?"
       : effectiveAid === "syntactic-lines"
-        ? "¿Activar cadencia por frases?"
+        ? "Pasaje denso · ¿Activar cadencia por frases?"
         : effectiveAid === "focus-ruler"
-          ? "¿Activar regla de lectura?"
-          : "¿Enfocar párrafo actual?";
+          ? "Pasaje denso · ¿Activar regla de lectura?"
+          : effectiveReason === "sustained-load"
+            ? "Llevas un buen tramo · ¿Enfocar párrafo actual?"
+            : "Pasaje denso · ¿Enfocar párrafo actual?";
+
+  const coverageValue = typeof coveragePct === "number" ? Math.round(coveragePct) : null;
+  const isChallengingCoverage = coverageValue !== null && coverageValue < 90;
+  const showContextualHint =
+    activePreset === "clean" && (Boolean(isForeignLanguage) || isChallengingCoverage);
+  const contextualHintText =
+    isForeignLanguage && isChallengingCoverage
+      ? `Capítulo exigente (${coverageValue}%) en otro idioma · Prueba Cadencia o Escucha.`
+      : isChallengingCoverage
+        ? `Capítulo exigente (${coverageValue}%) · Cadencia dosifica frases densas.`
+        : "Lectura en otro idioma · Cadencia y Escucha facilitan seguir el ritmo.";
 
   const currentPresetMeta =
     READING_PRESETS.find((p) => p.id === activePreset) ?? {
@@ -494,16 +519,22 @@ export default function SmartReaderDock({
           </div>
         )}
 
-        {/* Popover de 1 toque para los 3 Modos Humanos */}
+        {/* Popover de 1 toque para los 4 Modos Científicos */}
         {isModeSheetOpen && !isAudioMode && (
           <div
             className="dock-mode-popover reader-mode-popover"
             role="dialog"
             aria-label="Elegir modo de lectura"
           >
+            {showContextualHint ? (
+              <p className="reader-mode-context-hint" role="note">
+                {contextualHintText}
+              </p>
+            ) : null}
             <div className="dock-mode-popover-grid reader-mode-popover-grid">
               {READING_PRESETS.map((preset) => {
                 const isSelected = activePreset === preset.id;
+                const showBadge = showContextualHint && preset.id === "guided";
                 return (
                   <button
                     key={preset.id}
@@ -516,6 +547,9 @@ export default function SmartReaderDock({
                       if (preset.id === "clean") setIsModeSheetOpen(false);
                     }}
                   >
+                    {showBadge ? (
+                      <span className="reader-mode-card-badge">Recomendado</span>
+                    ) : null}
                     <span className="reader-mode-card-icon" aria-hidden="true">
                       <Icon name={preset.icon as IconName} size={18} />
                     </span>
@@ -524,6 +558,25 @@ export default function SmartReaderDock({
                   </button>
                 );
               })}
+              {onStartAudio ? (
+                <button
+                  type="button"
+                  className="reader-mode-card reader-mode-card--audio"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsModeSheetOpen(false);
+                    onStartAudio();
+                  }}
+                >
+                  <span className="reader-mode-card-icon" aria-hidden="true">
+                    <Icon name="headphones" size={18} />
+                  </span>
+                  <strong className="reader-mode-card-title">Escucha</strong>
+                  <span className="reader-mode-card-desc">
+                    Voz neural sincronizada para descanso visual o L2
+                  </span>
+                </button>
+              ) : null}
             </div>
             {activePreset === "custom" ? (
               <p className="meta reader-mode-adjusted">Ajustado a tu gusto. Elige un modo para restablecerlo.</p>
@@ -542,23 +595,51 @@ export default function SmartReaderDock({
                 ))}
               </div>
             ) : null}
+            {onSelectSoundscape &&
+            (activePreset === "adhd" || (soundscape && soundscape !== "none")) ? (
+              <div className="reader-mode-soundscape" role="group" aria-label="Sonido de fondo">
+                <span className="reader-mode-soundscape-label">Sonido de fondo (opcional)</span>
+                <div className="segmented segmented--soundscape">
+                  {SOUNDSCAPE_CHOICES.map(({ id, label }) => {
+                    const activeSound = (soundscape ?? "none") === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-active={activeSound || undefined}
+                        aria-pressed={activeSound}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectSoundscape(id);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {pacer ? (
               <div className="reader-mode-pacer" role="group" aria-label="Marcapasos">
                 <div className="segmented">
-                  {([[150, "Pausado"], [210, "Medio"], [270, "Ágil"]] as const).map(([wpm, name]) => (
-                    <button
-                      key={wpm}
-                      type="button"
-                      data-active={pacer.wpm === wpm || undefined}
-                      aria-pressed={pacer.wpm === wpm}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSetPacerWpm?.(wpm);
-                      }}
-                    >
-                      {name}
-                    </button>
-                  ))}
+                  {(pacer.speeds ?? [150, 210, 270]).map((wpm, idx) => {
+                    const name = (["Pausado", "Medio", "Ágil"] as const)[idx] ?? "Medio";
+                    return (
+                      <button
+                        key={wpm}
+                        type="button"
+                        data-active={pacer.wpm === wpm || undefined}
+                        aria-pressed={pacer.wpm === wpm}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetPacerWpm?.(wpm);
+                        }}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"
@@ -582,6 +663,38 @@ export default function SmartReaderDock({
                 </button>
               </div>
             ) : null}
+            {onOpenDeepReading || onStartAudio5Min ? (
+              <div className="reader-mode-session-actions" role="group" aria-label="Sesión de concentración">
+                {onOpenDeepReading ? (
+                  <button
+                    type="button"
+                    className="reader-mode-session-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsModeSheetOpen(false);
+                      onOpenDeepReading();
+                    }}
+                  >
+                    <Icon name="retreat" size={15} />
+                    <span>Retiro (15–45 min)</span>
+                  </button>
+                ) : null}
+                {onStartAudio5Min ? (
+                  <button
+                    type="button"
+                    className="reader-mode-session-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsModeSheetOpen(false);
+                      onStartAudio5Min();
+                    }}
+                  >
+                    <Icon name="headphones" size={15} />
+                    <span>Escuchar 5 min</span>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {onSelectLayout ? (
               <div className="reader-mode-layout">
                 <div className="segmented" role="group" aria-label="Maquetación">
@@ -601,11 +714,23 @@ export default function SmartReaderDock({
                   ))}
                 </div>
                 <p className="meta">
-                  Si algo se corta, apaga páginas sin perder tu lugar.
+                  Por páginas ayuda a recordar dónde leíste cada idea.
                 </p>
               </div>
             ) : null}
             <div className="dock-mode-popover-footer reader-mode-popover-footer">
+              {onOpenOpticalRecipe ? (
+                <button
+                  type="button"
+                  className="reader-mode-recipe-link"
+                  onClick={() => {
+                    setIsModeSheetOpen(false);
+                    onOpenOpticalRecipe();
+                  }}
+                >
+                  Ajustar a tus ojos (30 s)
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="dock-mode-customize-btn reader-mode-customize-link"

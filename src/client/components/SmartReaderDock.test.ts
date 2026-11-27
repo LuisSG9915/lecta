@@ -77,7 +77,7 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(container.textContent).toContain("Pág. 14 · ~4m");
     const progressEl = container.querySelector(".dock-progress-meta") as HTMLElement;
     expect(progressEl?.title).toBe("Página 14 de 62 — ~4 min restantes");
-    expect(container.textContent).toContain("Limpia");
+    expect(container.textContent).toContain("Papel");
     expect(container.textContent).toContain("Escuchar");
     expect(container.textContent).toContain("Hilo");
 
@@ -130,32 +130,79 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(onStopPacer).toHaveBeenCalledTimes(1);
   });
 
-  it("abre el popover con los 3 Modos Humanos de 1 Clic y permite seleccionarlos", () => {
+  it("abre el popover con los 4 Modos Científicos (Papel, Enfoque, Cadencia, Escucha) y acciones de sesión", () => {
     const onSelectPreset = vi.fn();
+    const onStartAudio = vi.fn();
     const onOpenAdvancedSettings = vi.fn();
-    render({ onSelectPreset, onOpenAdvancedSettings });
+    const onOpenDeepReading = vi.fn();
+    const onStartAudio5Min = vi.fn();
+    const onSelectSoundscape = vi.fn();
+    render({
+      onSelectPreset,
+      onStartAudio,
+      onOpenAdvancedSettings,
+      onOpenDeepReading,
+      onStartAudio5Min,
+      onSelectSoundscape,
+      activePreset: "adhd",
+      soundscape: "none",
+    });
 
     // Clic en el disparador de modo
     const modeBtn = container.querySelector(".dock-mode-trigger") as HTMLButtonElement;
     act(() => modeBtn.click());
 
-    // El popover debe aparecer con las 3 tarjetas humanas
+    // El popover debe aparecer con las 4 tarjetas
     const popover = container.querySelector(".reader-mode-popover");
     expect(popover).not.toBeNull();
-    expect(popover?.textContent).toContain("Lectura Limpia");
+    expect(popover?.textContent).toContain("Papel");
     expect(popover?.textContent).toContain("Enfoque");
-    expect(popover?.textContent).toContain("Ritmo");
+    expect(popover?.textContent).toContain("Cadencia");
+    expect(popover?.textContent).toContain("Escucha");
+    expect(container.querySelectorAll(".reader-mode-card")).toHaveLength(4);
 
     // Sin onSelectLayout no hay segmentado
     expect(container.querySelector(".reader-mode-layout")).toBeNull();
 
-    // Seleccionar Enfoque
+    // Paisaje sonoro opt-in visible en Enfoque
+    const soundBtns = container.querySelectorAll<HTMLButtonElement>(".reader-mode-soundscape .segmented button");
+    expect(soundBtns).toHaveLength(4);
+    act(() => soundBtns[1].click()); // Biblioteca -> night_library
+    expect(onSelectSoundscape).toHaveBeenCalledWith("night_library");
+
+    // Seleccionar Enfoque (card 1)
     const adhdCard = container.querySelectorAll(".reader-mode-card")[1] as HTMLButtonElement;
     act(() => adhdCard.click());
     expect(onSelectPreset).toHaveBeenCalledWith("adhd");
 
-    // Enfoque deja el popover abierto (sus interruptores) y Limpia lo cierra
+    // Enfoque deja el popover abierto
     expect(container.querySelector(".reader-mode-popover")).not.toBeNull();
+
+    // Acciones de sesión: Retiro y Escuchar 5 min
+    const sessionBtns = container.querySelectorAll<HTMLButtonElement>(".reader-mode-session-btn");
+    expect(sessionBtns).toHaveLength(2);
+    expect(sessionBtns[0].textContent).toContain("Retiro (15–45 min)");
+    expect(sessionBtns[1].textContent).toContain("Escuchar 5 min");
+
+    act(() => sessionBtns[0].click());
+    expect(onOpenDeepReading).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".reader-mode-popover")).toBeNull();
+
+    // Reabrir y probar Escuchar 5 min
+    act(() => modeBtn.click());
+    act(() => container.querySelectorAll<HTMLButtonElement>(".reader-mode-session-btn")[1].click());
+    expect(onStartAudio5Min).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".reader-mode-popover")).toBeNull();
+
+    // Reabrir y probar tarjeta Escucha (card 3)
+    act(() => modeBtn.click());
+    const audioCard = container.querySelector(".reader-mode-card--audio") as HTMLButtonElement;
+    act(() => audioCard.click());
+    expect(onStartAudio).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".reader-mode-popover")).toBeNull();
+
+    // Reabrir y abrir avanzadas
+    act(() => modeBtn.click());
     const customizeBtn = container.querySelector(".reader-mode-customize-link") as HTMLButtonElement;
     expect(customizeBtn).not.toBeNull();
     act(() => customizeBtn.click());
@@ -643,6 +690,95 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(container.querySelector(".dock-audio-pause-reason")?.textContent).toBe(
       "En pausa · tocaste una palabra",
     );
+  });
+
+  describe("Fase 3: Sugerencia contextual L2/complejidad, señales transparentes y Receta óptica", () => {
+    it("muestra sugerencia contextual y badge Recomendado en Cadencia si está en Papel con L2 o cobertura < 90%", () => {
+      render({
+        activePreset: "clean",
+        isForeignLanguage: true,
+        coveragePct: 84,
+      });
+
+      const modeBtn = container.querySelector(".dock-mode-trigger") as HTMLButtonElement;
+      act(() => modeBtn.click());
+
+      const hint = container.querySelector(".reader-mode-context-hint");
+      expect(hint).not.toBeNull();
+      expect(hint?.textContent).toContain("Capítulo exigente (84%) en otro idioma");
+
+      const badge = container.querySelector(".reader-mode-card-badge");
+      expect(badge?.textContent).toBe("Recomendado");
+      expect(badge?.closest(".reader-mode-card")?.textContent).toContain("Cadencia");
+    });
+
+    it("oculta la sugerencia contextual fuera de Papel o cuando no hay señal L2/dificultad", () => {
+      render({
+        activePreset: "guided",
+        isForeignLanguage: true,
+        coveragePct: 84,
+      });
+      act(() => (container.querySelector(".dock-mode-trigger") as HTMLButtonElement).click());
+      expect(container.querySelector(".reader-mode-context-hint")).toBeNull();
+      expect(container.querySelector(".reader-mode-card-badge")).toBeNull();
+
+      render({
+        activePreset: "clean",
+        isForeignLanguage: false,
+        coveragePct: 96,
+      });
+      act(() => (container.querySelector(".dock-mode-trigger") as HTMLButtonElement).click());
+      expect(container.querySelector(".reader-mode-context-hint")).toBeNull();
+    });
+
+    it("prefija la señal observable en el micro-copy de la píldora de Neuro-Foco", () => {
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "regressions",
+          recommendedAid: "paragraph-focus",
+        },
+      });
+      expect(container.querySelector(".reader-focus-suggestion-pill")?.textContent).toContain(
+        "Releíste varias veces · ¿Enfocar párrafo actual?",
+      );
+
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "stall",
+          recommendedAid: "syntactic-lines",
+        },
+      });
+      expect(container.querySelector(".reader-focus-suggestion-pill")?.textContent).toContain(
+        "Pasaje denso · ¿Activar cadencia por frases?",
+      );
+
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "sustained-load",
+          recommendedAid: "paragraph-focus",
+        },
+      });
+      expect(container.querySelector(".reader-focus-suggestion-pill")?.textContent).toContain(
+        "Llevas un buen tramo · ¿Enfocar párrafo actual?",
+      );
+    });
+
+    it("abre Receta Óptica desde el pie del popover cuando onOpenOpticalRecipe está presente", () => {
+      const onOpenOpticalRecipe = vi.fn();
+      render({ onOpenOpticalRecipe });
+
+      act(() => (container.querySelector(".dock-mode-trigger") as HTMLButtonElement).click());
+      const recipeBtn = container.querySelector(".reader-mode-recipe-link") as HTMLButtonElement;
+      expect(recipeBtn).not.toBeNull();
+      expect(recipeBtn.textContent).toContain("Ajustar a tus ojos (30 s)");
+
+      act(() => recipeBtn.click());
+      expect(onOpenOpticalRecipe).toHaveBeenCalledTimes(1);
+      expect(container.querySelector(".reader-mode-popover")).toBeNull();
+    });
   });
 });
 

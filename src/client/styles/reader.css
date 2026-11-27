@@ -328,6 +328,8 @@
   font-family: var(--read-font);
   font-size: var(--read-size);
   line-height: var(--read-leading);
+  letter-spacing: var(--read-letter-spacing, 0em);
+  word-spacing: var(--read-word-spacing, 0em);
   font-optical-sizing: auto;
   font-size-adjust: from-font;
   color: var(--ink);
@@ -2273,27 +2275,37 @@ mark.resolved-word:hover,
 
 /* ---------- Concentración visual ---------- */
 
-/* Líneas sintácticas: cada unidad con sentido ocupa su propia línea
-   de longitud variable; el párrafo conserva su margen inferior. */
+/* Líneas sintácticas: con guía cromática fluye inline por renglón (BeeLine, d228bbe9);
+   sin guía cromática separa cada sintagma en su propia línea con cascada suave. */
 .book-content .syn-line {
   display: inline;
   word-spacing: 0.03em;
-  letter-spacing: -0.005em;
   /* Cada renglón del tramo recibe su propio degradado completo (BeeLine). */
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 
-/* Sangría en cascada: las cláusulas dependientes o conectores dan un paso
-   hacia la derecha para visualizar la jerarquía del árbol de la oración. */
 .book-content .syn-line[data-sub] {
   padding-inline-start: 0;
 }
 
-/* Respiración rítmica: una separación mayor tras punto o pausa fuerte
-   delimita el paquete de pensamiento completo. */
 .book-content .syn-line[data-new-sentence] {
   margin-block-start: 0;
+}
+
+.book-content[data-chromatic-guide="false"] .syn-line,
+.book-content:not([data-chromatic-guide="true"]) .syn-line {
+  display: block;
+}
+
+.book-content[data-chromatic-guide="false"] .syn-line[data-sub],
+.book-content:not([data-chromatic-guide="true"]) .syn-line[data-sub] {
+  padding-inline-start: 0.9rem;
+}
+
+.book-content[data-chromatic-guide="false"] .syn-line[data-new-sentence],
+.book-content:not([data-chromatic-guide="true"]) .syn-line[data-new-sentence] {
+  margin-block-start: 0.3em;
 }
 
 /* =====================================================================
@@ -2788,8 +2800,8 @@ b.lecta-anchor {
 }
 
 /* Foco de párrafo: atenúa los bloques fuera de la altura focal de lectura
-   para que el párrafo activo brille al 100% mientras el resto desciende a
-   un contraste suave. Se mueve naturalmente con el scroll sin tocar el puntero. */
+   manteniendo contraste WCAG AA (≥ 4.5:1) y marca el activo con un filete lateral
+   sin desplazamiento de diseño. Se mueve naturalmente con el scroll sin tocar el puntero. */
 .book-content[data-focus-mode="paragraph"] p,
 .book-content[data-focus-mode="paragraph"] blockquote,
 .book-content[data-focus-mode="paragraph"] li,
@@ -2797,7 +2809,11 @@ b.lecta-anchor {
 .book-content[data-paragraph-focus] blockquote,
 .book-content[data-paragraph-focus] li {
   opacity: 0.65;
-  transition: opacity var(--dur-2, 0.25s) var(--ease-out);
+  border-inline-start: 2px solid transparent;
+  padding-inline-start: 0.75rem;
+  transition:
+    opacity var(--dur-2, 0.25s) var(--ease-out),
+    border-color var(--dur-2, 0.25s) var(--ease-out);
 }
 
 :root[data-theme="noche"] .book-content[data-focus-mode="paragraph"] p,
@@ -2833,6 +2849,7 @@ b.lecta-anchor {
 .book-content[data-paragraph-focus] blockquote.is-focused,
 .book-content[data-paragraph-focus] li.is-focused {
   opacity: 1;
+  border-inline-start-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 
 /* En noche/oled la atenuación de arriba lleva `:root[data-theme]` y gana por
@@ -2845,6 +2862,7 @@ b.lecta-anchor {
 :root:root .book-content[data-paragraph-focus] blockquote.is-focused,
 :root:root .book-content[data-paragraph-focus] li.is-focused {
   opacity: 1;
+  border-inline-start-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 
 @media (hover: hover) {
@@ -5651,8 +5669,8 @@ b.lecta-anchor {
   position: relative;
   z-index: 50;
   pointer-events: auto;
-  width: min(360px, calc(100vw - 24px));
-  max-height: min(62vh, 420px);
+  width: min(384px, calc(100vw - 24px));
+  max-height: min(68vh, 480px);
   margin-bottom: 16px;
   padding: 12px;
   border-radius: var(--r-2);
@@ -5674,11 +5692,96 @@ b.lecta-anchor {
 .dock-mode-popover-grid,
 .reader-mode-popover-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
+@media (max-width: 320px) {
+  .dock-mode-popover-grid,
+  .reader-mode-popover-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reader-mode-soundscape {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+}
+
+.reader-mode-soundscape-label {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.reader-mode-soundscape .segmented {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.reader-mode-soundscape .segmented button {
+  padding: 4px 6px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-mode-layout .segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.reader-mode-layout .segmented button {
+  width: 100%;
+  text-align: center;
+}
+
+.reader-mode-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+}
+
+.reader-mode-session-btn {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.reader-mode-session-btn:hover {
+  border-color: var(--rule-strong);
+  background: var(--paper-sunken);
+}
+
 .reader-mode-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -5732,11 +5835,65 @@ b.lecta-anchor {
 .reader-mode-popover-footer {
   position: sticky;
   bottom: -12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin: 4px -12px -12px -12px;
   padding: 10px 12px;
   background: var(--paper-raised);
   border-top: 1px solid var(--rule);
   text-align: center;
+}
+
+.reader-mode-context-hint {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--paper-sunken));
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.reader-mode-card-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 6px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--paper));
+  color: var(--accent-primary);
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.reader-mode-recipe-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 28%, var(--rule));
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.reader-mode-recipe-link:hover {
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--paper));
+  border-color: var(--accent-primary);
 }
 
 .dock-mode-customize-btn,
@@ -7407,4 +7564,237 @@ b.lecta-anchor {
 }
 .resume-session-who > [aria-live] {
   flex-basis: 100%;
+}
+
+/* Fase 3: Receta óptica y banner en ajustes */
+.settings-recipe-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--rule);
+  background: var(--paper-sunken);
+}
+
+.settings-recipe-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-ui);
+}
+
+.settings-recipe-copy strong {
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.settings-recipe-copy span {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.settings-recipe-btn {
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+.optical-recipe-dialog {
+  max-width: 680px;
+  width: min(94vw, 680px);
+}
+
+.optical-recipe-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.optical-recipe-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.optical-recipe-step-count {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.optical-recipe-progress {
+  height: 4px;
+  width: 100%;
+  margin: 10px 0 14px;
+  border-radius: var(--r-pill);
+  background: var(--paper-sunken);
+  overflow: hidden;
+}
+
+.optical-recipe-progress-bar {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--accent-primary);
+  transition: width 180ms ease;
+}
+
+.optical-recipe-question {
+  margin: 0 0 4px;
+  font-family: var(--font-ui);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.optical-recipe-note {
+  margin: 0 0 14px;
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.optical-recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 560px) {
+  .optical-recipe-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.optical-recipe-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  text-align: left;
+  padding: 14px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.optical-recipe-card:hover {
+  border-color: var(--rule-strong);
+  background: var(--paper-raised);
+}
+
+.optical-recipe-card.is-selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 7%, var(--paper-raised));
+}
+
+.optical-recipe-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.optical-recipe-card-title {
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.optical-recipe-card-tag {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.optical-recipe-sample {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.optical-recipe-card-hint {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.optical-recipe-footer {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 14px;
+  min-height: 40px;
+}
+
+.optical-recipe-summary-preview {
+  padding: 14px;
+  margin-bottom: 12px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.optical-recipe-summary-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--r-2);
+  background: var(--paper-sunken);
+}
+
+.optical-recipe-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.optical-recipe-summary-row dt {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.optical-recipe-summary-row dd {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.optical-recipe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.optical-recipe-retry {
+  margin-left: auto;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.optical-recipe-retry:hover {
+  color: var(--ink);
 }

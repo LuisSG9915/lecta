@@ -10,7 +10,7 @@ import SmartReaderDock, { type FocusSuggestion } from "../SmartReaderDock";
 import type { CompanionState } from "../../lib/companion-state";
 import { triggerHaptic } from "../../lib/deep-reading";
 import { dockProgressText } from "../../lib/progress";
-import type { FocusAidType } from "../../lib/focus-telemetry";
+import { loadFocusTelemetryProfile, type FocusAidType } from "../../lib/focus-telemetry";
 import type { SectionPrediction } from "../../lib/knowledge";
 import {
   applyReadingPreset,
@@ -82,11 +82,30 @@ export interface ReaderDockHostProps {
   onDismissRecordToast?: () => void;
   isReadingActive?: boolean;
   onStartAudio5Min?: () => void;
+  language?: string;
+  onOpenDeepReading?: () => void;
+  onOpenOpticalRecipe?: () => void;
+  isForeignLanguage?: boolean;
+}
+
+export function computePacerSpeeds(lang = "es"): readonly [number, number, number] {
+  const langKey = (lang || "es").slice(0, 2).toLowerCase();
+  const baseline = loadFocusTelemetryProfile().paceByLang[langKey];
+  if (baseline && baseline.samples >= 3 && baseline.meanSecPer100Words > 0) {
+    const mid = Math.max(120, Math.min(320, Math.round(6000 / baseline.meanSecPer100Words)));
+    const slow = Math.max(90, Math.round(mid * 0.85));
+    const fast = Math.min(360, Math.round(mid * 1.15));
+    return [slow, mid, fast];
+  }
+  return [150, 210, 270];
 }
 
 /** Velocidades guardadas por la barra anterior (180, 240…) caen al botón más cercano. */
-function snapPacerWpm(wpm: number): number {
-  return [150, 210, 270].reduce((a, b) => (Math.abs(b - wpm) < Math.abs(a - wpm) ? b : a));
+function snapPacerWpm(
+  wpm: number,
+  speeds: readonly [number, number, number] = [150, 210, 270],
+): number {
+  return speeds.reduce((a, b) => (Math.abs(b - wpm) < Math.abs(a - wpm) ? b : a));
 }
 
 export function ReaderDockHost(props: ReaderDockHostProps) {
@@ -150,7 +169,13 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
   onDismissRecordToast,
   isReadingActive,
   onStartAudio5Min,
+  language,
+  onOpenDeepReading,
+  onOpenOpticalRecipe,
+  isForeignLanguage,
   } = props;
+
+  const pacerSpeeds = computePacerSpeeds(language);
 
   return (
     <SmartReaderDock
@@ -181,7 +206,11 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
       }))}
       pacer={
         settings.visualPacer && !strategyPaused
-          ? { paused: pacerPaused, wpm: snapPacerWpm(settings.pacerWpm || 210) }
+          ? {
+              paused: pacerPaused,
+              wpm: snapPacerWpm(settings.pacerWpm || pacerSpeeds[1], pacerSpeeds),
+              speeds: pacerSpeeds,
+            }
           : null
       }
       onTogglePacerPause={onTogglePacerPause}
@@ -224,6 +253,14 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
       onDismissRecordToast={onDismissRecordToast}
       isReadingActive={isReadingActive}
       onStartAudio5Min={onStartAudio5Min}
+      onOpenDeepReading={onOpenDeepReading}
+      onOpenOpticalRecipe={onOpenOpticalRecipe}
+      isForeignLanguage={isForeignLanguage}
+      soundscape={settings.soundscape ?? (settings.ambientPurr ? "purr" : "none")}
+      onSelectSoundscape={(kind) => {
+        triggerHaptic("selection");
+        updateSettings({ soundscape: kind, ambientPurr: kind === "purr" });
+      }}
       onDismissFocusSuggestion={handleDismissFocusSuggestion}
       onMuteFocusForBook={handleMuteFocusForBook}
       onDisableFocusGlobally={handleDisableFocusGlobally}

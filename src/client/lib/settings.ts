@@ -73,6 +73,8 @@ export const MARGIN_LABELS: Record<ReaderMargins, string> = {
   wide: "Amplio",
 };
 
+export type TextSpacingPreset = "normal" | "relaxed" | "wide";
+
 export interface ReaderFontOption {
   id: ReaderFont;
   label: string;
@@ -192,23 +194,23 @@ export const READING_PRESETS: ReaderModePresetConfig[] = [
   {
     id: "clean",
     icon: "retreat",
-    label: "Lectura Limpia",
-    shortLabel: "Limpia",
-    description: "Solo el texto, como un libro impreso",
+    label: "Papel",
+    shortLabel: "Papel",
+    description: "Lectura limpia y silenciosa para comprensión profunda",
   },
   {
     id: "adhd",
     icon: "sparkles",
     label: "Enfoque",
     shortLabel: "Enfoque",
-    description: "Atenúa lo demás y deja nítido el párrafo que lees",
+    description: "Resalta el párrafo actual y abre el texto contra fatiga",
   },
   {
     id: "guided",
     icon: "strategy",
-    label: "Ritmo",
-    shortLabel: "Ritmo",
-    description: "Frases en pausas naturales y guía de color para no perder el renglón",
+    label: "Cadencia",
+    shortLabel: "Cadencia",
+    description: "Pausas naturales por frase para texto denso o L2",
   },
 ];
 
@@ -369,11 +371,10 @@ export interface ReaderSettings {
   fontSize?: number;
   lineHeight?: ReaderLineHeight | number;
   margins?: ReaderMargins | number;
+  textSpacing?: TextSpacingPreset;
   bionicReading?: boolean;
-  syllableBreaks?: boolean;
   bilingueEnabled?: boolean;
   chapterPreview?: boolean | "auto" | "off" | "minimal";
-  companionEnabled?: boolean;
   interfaceMode?: InterfaceMode;
   featureFlags?: FeatureFlags;
 }
@@ -411,10 +412,8 @@ export const READER_DEFAULTS: ReaderSettings = {
   lineHeight: "comfortable",
   margins: "medium",
   bionicReading: false,
-  syllableBreaks: false,
   bilingueEnabled: false,
   chapterPreview: true,
-  companionEnabled: true,
   chapterPrimingMode: "auto",
   maxPrimingWords: 4,
   mutedPrimingBookIds: [],
@@ -432,6 +431,19 @@ export const READER_DEFAULTS: ReaderSettings = {
 };
 
 export const DEFAULT_SETTINGS: ReaderSettings = READER_DEFAULTS;
+
+export const TEXT_SPACING_LABELS: Record<TextSpacingPreset, string> = {
+  normal: "Normal",
+  relaxed: "Holgado",
+  wide: "Amplio",
+};
+
+export const SOUNDSCAPE_CHOICES: readonly { id: SoundscapeSetting; label: string }[] = [
+  { id: "none", label: "Silencio" },
+  { id: "night_library", label: "Biblioteca" },
+  { id: "rain", label: "Lluvia" },
+  { id: "purr", label: "Ronroneo" },
+];
 
 export type ChapterPrimingMode = "auto" | "on-demand" | "off";
 
@@ -525,6 +537,9 @@ export function applyReadingPreset(
         visualPacer: false,
         highlightLexical: false,
         hideSecondaryIndicators: true,
+        textSpacing: "normal",
+        soundscape: "none",
+        ambientPurr: false,
       };
 
     case "adhd":
@@ -533,6 +548,7 @@ export function applyReadingPreset(
         readingPreset: "adhd",
         strategyPreset: "adhd",
         paragraphFocus: true,
+        textSpacing: "relaxed",
         bionicAnchors: false,
         focusRuler: false,
         syntacticLines: false,
@@ -550,12 +566,12 @@ export function applyReadingPreset(
         readingPreset: "guided",
         strategyPreset: "guided",
         syntacticLines: true,
-        chromaticGuide: true,
-        colorGuide: true,
+        chromaticGuide: false,
+        colorGuide: false,
         paragraphFocus: false,
         focusRuler: false,
         bionicAnchors: false,
-        focusMode: "chromatic",
+        focusMode: "syntactic",
         visualPacer: false,
         highlightLexical: false,
         hideSecondaryIndicators: false,
@@ -577,15 +593,14 @@ export function detectActiveReadingPreset(settings: ReaderSettings): ReadingPres
   ) {
     return "clean";
   }
-  if (settings.paragraphFocus && !settings.syntacticLines && !settings.chromaticGuide) {
+  if (
+    (settings.paragraphFocus || settings.focusRuler) &&
+    !settings.syntacticLines &&
+    !settings.chromaticGuide
+  ) {
     return "adhd";
   }
-  if (
-    settings.syntacticLines &&
-    settings.chromaticGuide &&
-    !settings.paragraphFocus &&
-    !settings.focusRuler
-  ) {
+  if (settings.syntacticLines && !settings.paragraphFocus && !settings.focusRuler) {
     return "guided";
   }
   // Sin recurrir a `strategyPreset`: si los interruptores ya no encajan con un
@@ -594,7 +609,7 @@ export function detectActiveReadingPreset(settings: ReaderSettings): ReadingPres
 }
 
 /**
- * Qué modo mostrar en el popover. Si el lector eligió Enfoque o Ritmo y luego
+ * Qué modo mostrar en el popover. Si el lector eligió Enfoque o Cadencia y luego
  * apagó una de sus piezas, la detección por interruptores cambia de modo; el
  * popover sigue mostrando los interruptores del modo elegido (para poder
  * volver a encenderlos) y marca «ajustado» en vez de saltar a otro.
@@ -612,22 +627,30 @@ export function readingModeView(settings: ReaderSettings): {
 }
 
 export interface ReadingPresetOption {
-  key: "paragraphFocus" | "bionicAnchors" | "chromaticGuide" | "visualPacer";
+  key:
+    | "paragraphFocus"
+    | "focusRuler"
+    | "bionicAnchors"
+    | "syntacticLines"
+    | "chromaticGuide"
+    | "visualPacer";
   label: string;
 }
 
-/** Interruptores que cada modo expone en el popover de la luna. */
+/** Interruptores que cada modo expone en el popover de lectura. */
 export function readingPresetOptions(preset: ReadingPreset): ReadingPresetOption[] {
   if (preset === "adhd") {
     return [
-      { key: "paragraphFocus", label: "Atenuar lo demás" },
+      { key: "paragraphFocus", label: "Resaltar párrafo actual" },
+      { key: "focusRuler", label: "Regla guía de lectura" },
       { key: "bionicAnchors", label: "Resaltar inicio de palabra (experimental)" },
     ];
   }
   if (preset === "guided") {
     return [
-      { key: "chromaticGuide", label: "Guía de color" },
-      { key: "visualPacer", label: "Marcapasos" },
+      { key: "syntacticLines", label: "Pausas por frase" },
+      { key: "chromaticGuide", label: "Guía de color (barrido)" },
+      { key: "visualPacer", label: "Marcapasos a tu ritmo" },
     ];
   }
   return [];
@@ -747,12 +770,22 @@ export function isStrategyPresetActive(
   return false;
 }
 
+export function deriveFocusMode(
+  s: Pick<ReaderSettings, "focusRuler" | "paragraphFocus" | "chromaticGuide" | "syntacticLines">,
+): FocusMode {
+  if (s.paragraphFocus) return "paragraph";
+  if (s.focusRuler) return "ruler";
+  if (s.chromaticGuide) return "chromatic";
+  if (s.syntacticLines) return "syntactic";
+  return "off";
+}
+
 export function parseReaderSettings(raw: string | null): ReaderSettings {
   if (!raw) return READER_DEFAULTS;
   try {
     const v = JSON.parse(raw) as Partial<ReaderSettings>;
     if (!v || typeof v !== "object" || Array.isArray(v)) return READER_DEFAULTS;
-    const focusMode: FocusMode =
+    const rawFocusMode: FocusMode =
       v.focusMode === "syntactic" ||
       v.focusMode === "paragraph" ||
       v.focusMode === "chromatic" ||
@@ -763,22 +796,31 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
     const focusRuler =
       typeof v.focusRuler === "boolean"
         ? v.focusRuler
-        : focusMode === "ruler";
+        : rawFocusMode === "ruler";
 
     const paragraphFocus =
       typeof v.paragraphFocus === "boolean"
         ? v.paragraphFocus
-        : focusMode === "paragraph";
+        : rawFocusMode === "paragraph";
 
     const syntacticLines =
       typeof v.syntacticLines === "boolean"
         ? v.syntacticLines
-        : focusMode === "syntactic" || focusMode === "chromatic";
+        : rawFocusMode === "syntactic" || rawFocusMode === "chromatic";
 
     const chromaticGuide =
       typeof v.chromaticGuide === "boolean"
         ? v.chromaticGuide
-        : focusMode === "chromatic";
+        : typeof v.colorGuide === "boolean"
+          ? v.colorGuide
+          : rawFocusMode === "chromatic";
+
+    const focusMode = deriveFocusMode({
+      focusRuler,
+      paragraphFocus,
+      chromaticGuide,
+      syntacticLines,
+    });
 
     const chromaticPalette: ChromaticPalette =
       v.chromaticPalette === "ocean_amber" ||
@@ -790,7 +832,9 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
     const bionicAnchors =
       typeof v.bionicAnchors === "boolean"
         ? v.bionicAnchors
-        : false;
+        : typeof v.bionicReading === "boolean"
+          ? v.bionicReading
+          : false;
 
     const strategyContrast: StrategyContrast =
       v.strategyContrast === "soft" ||
@@ -966,6 +1010,11 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
           }
         : {}),
       ...(v.readingPreset !== undefined ? { readingPreset: v.readingPreset } : {}),
+      ...(v.textSpacing === "normal" ||
+      v.textSpacing === "relaxed" ||
+      v.textSpacing === "wide"
+        ? { textSpacing: v.textSpacing }
+        : {}),
       ...(v.colorGuide !== undefined ? { colorGuide: v.colorGuide } : {}),
       ...(v.interfaceMode !== undefined
         ? { interfaceMode: v.interfaceMode === "advanced" ? "advanced" : "simple" }
@@ -1127,12 +1176,17 @@ export function hasExplicitPreparationMode(bookHash?: string): boolean {
 
 // Variables CSS que aplica el contenedor del lector.
 export function readerCssVars(s: ReaderSettings): Record<string, string> {
+  const spacing = s.textSpacing ?? "normal";
   return {
     "--read-font":
       READER_FONTS.find((f) => f.id === s.font)?.family ?? "var(--font-book)",
     "--read-size": `${s.size}px`,
     "--read-leading": String(s.leading),
     "--read-measure": `${s.measure}ch`,
+    "--read-letter-spacing":
+      spacing === "wide" ? "0.055em" : spacing === "relaxed" ? "0.025em" : "0em",
+    "--read-word-spacing":
+      spacing === "wide" ? "0.14em" : spacing === "relaxed" ? "0.07em" : "0em",
   };
 }
 

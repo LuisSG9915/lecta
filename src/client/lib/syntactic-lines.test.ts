@@ -304,4 +304,43 @@ describe("Cadencia Sintáctica Multilingüe (Fase 2)", () => {
     expect(subSpans.length).toBeGreaterThan(0);
     expect(subSpans[0].textContent).toContain("because");
   });
+
+  it("en inglés con bionicAnchors respeta stopwords inglesas y marca palabras léxicas", () => {
+    const root = document.createElement("div");
+    const p = document.createElement("p");
+    p.textContent = "The cat was resting on that wooden chair with the blanket.";
+    root.append(p);
+
+    applySyntacticLines(root, { lang: "en", bionicAnchors: true, syntacticLines: false });
+    const anchoredWords = Array.from(root.querySelectorAll(".lecta-bionic-word")).map((w) =>
+      w.textContent?.toLowerCase(),
+    );
+    expect(anchoredWords).toContain("cat");
+    expect(anchoredWords).toContain("resting");
+    expect(anchoredWords).toContain("wooden");
+    expect(anchoredWords).toContain("chair");
+    expect(anchoredWords).toContain("blanket");
+    expect(anchoredWords).not.toContain("the");
+    expect(anchoredWords).not.toContain("and");
+    expect(anchoredWords).not.toContain("with");
+    expect(anchoredWords).not.toContain("that");
+  });
+
+  it("ensureChunks crea chunks inline sin data-chunk-cycle ni syn-line para el marcapasos", () => {
+    const root = document.createElement("div");
+    const p = document.createElement("p");
+    p.textContent = LONG;
+    root.append(p);
+
+    applySyntacticLines(root, {
+      syntacticLines: false,
+      chromaticGuide: false,
+      ensureChunks: true,
+    });
+
+    expect(root.querySelectorAll(`.${SYNTACTIC_LINE_CLASS}`)).toHaveLength(0);
+    const chunks = root.querySelectorAll(".lecta-syntactic-chunk[data-inline='true']");
+    expect(chunks.length).toBeGreaterThan(0);
+    expect(chunks[0].hasAttribute("data-chunk-cycle")).toBe(false);
+  });
 });

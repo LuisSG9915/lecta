@@ -129,4 +129,18 @@ describe("useReaderSettings", () => {
     const next = apply(opts, { focusRuler: true, strategyPreset: "guided" });
     expect(next.strategyPreset).toBe("guided");
   });
+
+  it("tocar bionicAnchors o visualPacer marca el preset como ajustado", () => {
+    const optsBionic = settingsOptions();
+    render(optsBionic);
+    const nextBionic = apply(optsBionic, { bionicAnchors: true });
+    expect(nextBionic.readingPreset).toBe("custom");
+    expect(nextBionic.strategyPreset).toBe("custom");
+
+    const optsPacer = settingsOptions();
+    render(optsPacer);
+    const nextPacer = apply(optsPacer, { visualPacer: true });
+    expect(nextPacer.readingPreset).toBe("custom");
+    expect(nextPacer.strategyPreset).toBe("custom");
+  });
 });

@@ -1,8 +1,10 @@
-// Chequeo periódico de pasajes densos (preset inmersivo). Extraído de
+// Chequeo periódico de pasajes densos (modo limpio, tras fase de acomodación). Extraído de
 // Reader.tsx (B7).
 import { useEffect } from "react";
 import { loadBaselineWpm, detectDensePassageStall } from "../lib/focus-telemetry";
 import type { DenseStallDetector } from "../lib/focus-telemetry";
+
+export const DENSE_STALL_SETTLING_IN_MS = 5 * 60_000;
 
 type Ref<T> = { current: T };
 
@@ -11,7 +13,8 @@ type Deps = {
   isDeepReading: boolean;
   sectionWords: number;
   pageCount: number;
-  strategyPreset: string;
+  isCleanMode: boolean;
+  sessionStartRef: Ref<number>;
   denseStallDetectorRef: Ref<DenseStallDetector>;
   lastActivityAtRef: Ref<number>;
   setStallBubble: (msg: string | null) => void;
@@ -24,7 +27,8 @@ export function useReaderDenseStall(deps: Deps): void {
     isDeepReading,
     sectionWords,
     pageCount,
-    strategyPreset,
+    isCleanMode,
+    sessionStartRef,
     denseStallDetectorRef,
     lastActivityAtRef,
     setStallBubble,
@@ -32,11 +36,16 @@ export function useReaderDenseStall(deps: Deps): void {
   } = deps;
 
   useEffect(() => {
-    if (state !== "ready" || isDeepReading) return;
-    if (strategyPreset !== "immersive") return;
+    if (state !== "ready" || isDeepReading || !isCleanMode) return;
     const checkDenseStall = () => {
       if (state !== "ready" || isDeepReading || document.hidden) return;
       const now = Date.now();
+      if (
+        sessionStartRef.current > 0 &&
+        now - sessionStartRef.current < DENSE_STALL_SETTLING_IN_MS
+      ) {
+        return;
+      }
       const baselineWpm = loadBaselineWpm();
       const pageWords = Math.max(30, Math.round(sectionWords / (pageCount || 1)));
       const isStalled = detectDensePassageStall(
@@ -65,7 +74,8 @@ export function useReaderDenseStall(deps: Deps): void {
     isDeepReading,
     sectionWords,
     pageCount,
-    strategyPreset,
+    isCleanMode,
+    sessionStartRef,
     denseStallDetectorRef,
     lastActivityAtRef,
     setStallBubble,

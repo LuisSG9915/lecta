@@ -16,6 +16,28 @@ type Deps = {
   readingPaused: boolean;
 };
 
+export function findFirstVisibleChunkIndex(
+  chunks: HTMLElement[],
+  viewportHeight: number,
+): number {
+  if (chunks.length === 0) return 0;
+  const targetY = viewportHeight * 0.3;
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < chunks.length; i += 1) {
+    const rect = chunks[i].getBoundingClientRect();
+    if (rect.height <= 0 && rect.width <= 0) continue;
+    if (rect.bottom > 48 && rect.top < viewportHeight) {
+      const dist = Math.abs(rect.top - targetY);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+  }
+  return bestIdx >= 0 ? bestIdx : 0;
+}
+
 export function useVisualPacer(deps: Deps): void {
   const {
     containerRef,
@@ -46,6 +68,23 @@ export function useVisualPacer(deps: Deps): void {
     }
 
     if (!container) return;
+
+    const initialChunks = Array.from(
+      container.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"),
+    );
+    if (initialChunks.length > 0) {
+      const cur = pacerIndexRef.current;
+      const curEl = cur >= 0 && cur < initialChunks.length ? initialChunks[cur] : null;
+      const curRect = curEl?.getBoundingClientRect();
+      const outOfView = Boolean(
+        curRect &&
+          curRect.height > 0 &&
+          (curRect.bottom < 0 || curRect.top > window.innerHeight),
+      );
+      if (cur <= 0 || cur >= initialChunks.length || outOfView) {
+        pacerIndexRef.current = findFirstVisibleChunkIndex(initialChunks, window.innerHeight);
+      }
+    }
 
     let timer: number | null = null;
     let destroyed = false;

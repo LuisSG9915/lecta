@@ -12,6 +12,7 @@ type TtsRef = Ref<{ onDomMutated: () => void } | null>;
 
 type Deps = {
   state: string;
+  language: string;
   strategyPaused: boolean;
   focusMode: string;
   syntacticLines: boolean;
@@ -30,6 +31,7 @@ type Deps = {
 export function useReaderSyntacticLines(deps: Deps): void {
   const {
     state,
+    language,
     strategyPaused,
     focusMode,
     syntacticLines,
@@ -59,6 +61,8 @@ export function useReaderSyntacticLines(deps: Deps): void {
           syntacticLines,
           chromaticGuide: isChroma,
           bionicAnchors,
+          ensureChunks: Boolean(visualPacer),
+          lang: language,
         });
       } else {
         clearSyntacticLines(container);
@@ -85,6 +89,7 @@ export function useReaderSyntacticLines(deps: Deps): void {
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    language,
     focusMode,
     syntacticLines,
     chromaticGuide,

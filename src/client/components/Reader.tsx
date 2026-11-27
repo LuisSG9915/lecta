@@ -83,6 +83,7 @@ import {
   readerProfileFor,
   readerCssVars,
   applyStrategyPreset,
+  detectActiveReadingPreset,
   muteBookForPriming,
   disablePrimingGlobally,
   type ReaderSettings,
@@ -153,6 +154,7 @@ import {
   isConsolidationActive,
 } from "../lib/practice";
 import { midChapterRecallKey, pickMidChapterRecall } from "../lib/mid-chapter-recall";
+import { extractSamplePassage } from "../lib/optical-recipe";
 import { removeSavedWord, upsertSavedWord } from "../lib/episodic-cloze";
 import { BilingueParagraph } from "./BilingueParagraph";
 import type { FocusSuggestion } from "./SmartReaderDock";
@@ -174,6 +176,7 @@ import { useReaderTts } from "../hooks/useReaderTts";
 import { useTtsLandingMarker } from "../hooks/useTtsLandingMarker";
 import { useTtsCaptureWord } from "../hooks/useTtsCaptureWord";
 import { useAmbientSoundscape } from "../hooks/useAmbientSoundscape";
+import { useFocusAidEvaluation } from "../hooks/useFocusAidEvaluation";
 import { useVisualPacer } from "../hooks/useVisualPacer";
 import { useReaderContext } from "../hooks/useReaderContext";
 import { useReaderPositionSync } from "../hooks/useReaderPositionSync";
@@ -388,9 +391,9 @@ export const recordDominated = (words: SavedWord[], lang: string, scope?: DbScop
   })().catch(() => undefined);
 
 export const PRESET_LABELS: Record<ReadingStrategyPreset, string> = {
-  clean: "Limpia",
+  clean: "Papel",
   adhd: "Enfoque",
-  guided: "Ritmo",
+  guided: "Cadencia",
   focus: "Enfoque",
   lexical: "Léxico",
   immersive: "Inmersivo",
@@ -754,6 +757,8 @@ export default function Reader({
   } | null>(null);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
+  const [opticalRecipeOpen, setOpticalRecipeOpen] = useState(false);
+  const [opticalSampleText, setOpticalSampleText] = useState("");
   const pacerIndexRef = useRef<number>(0);
 
   // Hook del chrome del lector (R1b): barras, scroll, zen, stall, pacer.
@@ -1251,7 +1256,8 @@ export default function Reader({
     isDeepReading,
     sectionWords,
     pageCount,
-    strategyPreset: settings.strategyPreset,
+    isCleanMode: detectActiveReadingPreset(settings) === "clean",
+    sessionStartRef,
     denseStallDetectorRef,
     lastActivityAtRef,
     setStallBubble,
@@ -2299,6 +2305,7 @@ export default function Reader({
   // useReaderSyntacticLines (B7).
   useReaderSyntacticLines({
     state,
+    language,
     strategyPaused,
     focusMode: settings.focusMode,
     syntacticLines: settings.syntacticLines,
@@ -2720,25 +2727,21 @@ export default function Reader({
   // Marcador de Aterrizaje Auditivo (Fase 3: Anti-pérdida de posición)
   useTtsLandingMarker(containerRef, bookHash, ttsSnap.status);
 
-  const handleAcceptFocusAid = (aid: FocusAidType) => {
-    const prof = loadFocusTelemetryProfile();
-    const updated = recordFocusAidOutcome(prof, aid, true);
-    saveFocusTelemetryProfile(updated);
-    setFatigueSuggestion(null);
+  const { scheduleFocusAidEvaluation } = useFocusAidEvaluation({
+    settings,
+    settingsRef,
+  });
 
-    const updatedSettings: ReaderSettings = { ...settings };
+  const handleAcceptFocusAid = (aid: FocusAidType) => {
+    setFatigueSuggestion(null);
     if (aid === "paragraph-focus") {
-      updatedSettings.paragraphFocus = true;
-      updatedSettings.focusMode = "paragraph";
+      updateSettings({ paragraphFocus: true });
     } else if (aid === "syntactic-lines") {
-      updatedSettings.syntacticLines = true;
-      updatedSettings.focusMode = "syntactic";
+      updateSettings({ syntacticLines: true });
     } else if (aid === "focus-ruler") {
-      updatedSettings.focusRuler = true;
-      updatedSettings.focusMode = "ruler";
+      updateSettings({ focusRuler: true });
     }
-    setSettings(updatedSettings);
-    saveReaderSettings(updatedSettings, bookHash);
+    scheduleFocusAidEvaluation(aid);
     triggerHaptic("success");
   };
 
@@ -2764,6 +2767,32 @@ export default function Reader({
     saveFocusTelemetryProfile(updated);
     setFatigueSuggestion(null);
   };
+
+  const handleOpenOpticalRecipe = () => {
+    setOpticalSampleText(extractSamplePassage(sectionTextRef.current, language));
+    setOpticalRecipeOpen(true);
+  };
+
+  const handleApplyOpticalRecipe = (
+    patch: Partial<ReaderSettings>,
+    opts: { alsoGlobal: boolean },
+  ) => {
+    if (opts.alsoGlobal) {
+      saveReaderSettings({ ...loadReaderSettings(), ...patch });
+    }
+    updateSettings(patch);
+    setToastMessage(
+      opts.alsoGlobal
+        ? "Receta visual aplicada a tus libros"
+        : "Receta visual aplicada a este libro",
+    );
+  };
+
+  const isForeignLanguage = Boolean(
+    language &&
+      language.slice(0, 2).toLowerCase() !==
+        loadNativeLanguage().slice(0, 2).toLowerCase(),
+  );
 
   const handleCreateQuoteCard = () => {
     closeSheet();
@@ -3409,6 +3438,10 @@ export default function Reader({
           onDismissRecordToast={() => setRecordToast(null)}
           isReadingActive={!readingPaused && !barsShown}
           onStartAudio5Min={handleStartAudio5Min}
+          language={language}
+          onOpenDeepReading={() => setDeepModal(true)}
+          onOpenOpticalRecipe={handleOpenOpticalRecipe}
+          isForeignLanguage={isForeignLanguage}
         />
       ) : null}
 
@@ -3501,6 +3534,7 @@ export default function Reader({
           isFullscreenSupported={isFullscreenSupported}
           onOpenNotebook={onOpenNotebook}
           setGlossaryOpen={setGlossaryOpen}
+          onOpenOpticalRecipe={handleOpenOpticalRecipe}
         />
       ) : null}
 
@@ -3584,6 +3618,11 @@ export default function Reader({
           closePrepLayer();
         }}
         onDiscardPrep={discardPrep}
+        opticalRecipeOpen={opticalRecipeOpen}
+        opticalSampleText={opticalSampleText}
+        readerSettings={settings}
+        onApplyOpticalRecipe={handleApplyOpticalRecipe}
+        onCloseOpticalRecipe={() => setOpticalRecipeOpen(false)}
         initialStrategy={settings.strategyPreset}
         onSelectStrategy={(preset) => selectStrategyPreset(preset)}
         onMarkKnown={(lemma, beta) => {

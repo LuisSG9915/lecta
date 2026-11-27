@@ -104,11 +104,11 @@ describe("paragraph-focus", () => {
   });
 
   describe("Ventana Atencional Adaptativa (Fase 2)", () => {
-    it("provee constantes de opacidad suave (0.32 claro / 0.28 oscuro)", () => {
-      expect(FOCUS_DIM_OPACITY_LIGHT).toBe(0.32);
-      expect(FOCUS_DIM_OPACITY_DARK).toBe(0.28);
-      expect(getFocusDimOpacity(false)).toBe(0.32);
-      expect(getFocusDimOpacity(true)).toBe(0.28);
+    it("provee constantes de opacidad suave (0.65 claro / 0.6 oscuro)", () => {
+      expect(FOCUS_DIM_OPACITY_LIGHT).toBe(0.65);
+      expect(FOCUS_DIM_OPACITY_DARK).toBe(0.6);
+      expect(getFocusDimOpacity(false)).toBe(0.65);
+      expect(getFocusDimOpacity(true)).toBe(0.6);
     });
 
     it("aplica opacidad suave a bloques atenuados y 100% al activo", () => {
@@ -120,14 +120,14 @@ describe("paragraph-focus", () => {
 
       focusBlock(div, p2, { isDark: false, applyInlineOpacity: true });
       expect(p2.style.opacity).toBe("1");
-      expect(p1.style.opacity).toBe("0.32");
-      expect(p3.style.opacity).toBe("0.32");
+      expect(p1.style.opacity).toBe("0.65");
+      expect(p3.style.opacity).toBe("0.65");
 
-      // En tema oscuro: 0.28
+      // En tema oscuro: 0.6
       focusBlock(div, p1, { isDark: true, applyInlineOpacity: true });
       expect(p1.style.opacity).toBe("1");
-      expect(p2.style.opacity).toBe("0.28");
-      expect(p3.style.opacity).toBe("0.28");
+      expect(p2.style.opacity).toBe("0.6");
+      expect(p3.style.opacity).toBe("0.6");
     });
 
     it("avanza y retrocede de párrafo con focusNextParagraph y focusPrevParagraph", () => {

@@ -26,6 +26,7 @@ import {
   saveFocusTelemetryProfile,
   setFocusAutoSuggestEnabled,
   unmuteBookFocusSuggestions,
+  SETTLING_IN_MINUTES,
   type PageTurnTelemetryInput,
 } from "./focus-telemetry";
 import type { ReadingEvent } from "./idb";
@@ -407,5 +408,34 @@ describe("Telemetría Adaptativa y Bandido Contextual de Neuro-Foco", () => {
     expect(["focus-ruler", "paragraph-focus", "syntactic-lines"]).toContain(
       res2.recommendedAid,
     );
+  });
+
+  it("guarda silencio en fase de acomodación (< 5 min) aunque haya atasco o retrocesos", () => {
+    const profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    const stallEarly: PageTurnTelemetryInput = {
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 90_000,
+      direction: "backward",
+      sessionMinutesElapsed: SETTLING_IN_MINUTES - 2, // 3 min
+      recentBackwardCountInWindow: 3,
+    };
+    const resEarly = evaluateReadingFatigue(profile, stallEarly, false);
+    expect(resEarly.fatigueIndex).toBeGreaterThanOrEqual(0.68);
+    expect(resEarly.isFatigued).toBe(false);
+    expect(resEarly.reason).toBe("none");
+
+    // Mientras tanto, una lectura fluida temprana sí sigue calibrando paceByLang
+    const fluidEarly: PageTurnTelemetryInput = {
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 22_000,
+      direction: "forward",
+      sessionMinutesElapsed: 2,
+      recentBackwardCountInWindow: 0,
+    };
+    const resFluid = evaluateReadingFatigue(profile, fluidEarly, false);
+    expect(resFluid.isFatigued).toBe(false);
+    expect(resFluid.updatedProfile.paceByLang["es"]?.samples).toBe(1);
   });
 });

@@ -212,6 +212,8 @@ export function useReaderSectionLoader(options: UseReaderSectionLoaderOptions) {
             syntacticLines: settingsRef.current?.syntacticLines,
             chromaticGuide: isChromaInit,
             bionicAnchors: settingsRef.current?.bionicAnchors,
+            ensureChunks: Boolean(settingsRef.current?.visualPacer),
+            lang,
           });
         }
         // Las imágenes del EPUB viajan como blob: URLs: las rutas

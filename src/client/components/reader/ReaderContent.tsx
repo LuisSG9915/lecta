@@ -256,6 +256,11 @@ export function ReaderContent(props: ReaderContentProps) {
       role="document"
       className={`book-content reader__stage ${settings.chromaticGuide && !strategyPaused ? "reader__stage--chromatic" : ""}`}
       data-focus-mode={strategyPaused ? "off" : settings.focusMode}
+      data-chromatic-guide={
+        (settings.chromaticGuide || settings.focusMode === "chromatic") && !strategyPaused
+          ? "true"
+          : "false"
+      }
       data-paragraph-focus={
         (!strategyPaused && (settings.paragraphFocus || settings.focusMode === "paragraph")) || undefined
       }

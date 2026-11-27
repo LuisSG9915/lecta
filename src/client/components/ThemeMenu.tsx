@@ -2,6 +2,8 @@ import {
   FONT_LABELS,
   LINE_HEIGHT_LABELS,
   MARGIN_LABELS,
+  SOUNDSCAPE_CHOICES,
+  TEXT_SPACING_LABELS,
   THEME_LABELS,
   THEME_CHOICES,
   THEME_SWATCHES,
@@ -9,8 +11,8 @@ import {
   type ReaderLineHeight,
   type ReaderMargins,
   type ReaderSettings,
-  type ReaderTheme,
   type ReadingPreset,
+  type TextSpacingPreset,
   type ThemeChoice,
 } from "../lib/settings";
 import { Toggle } from "./Toggle";
@@ -32,9 +34,19 @@ export interface ThemeMenuProps {
 }
 
 const FONTS: ReaderFont[] = ["literata", "source-serif", "alegreya-sans", "atkinson", "opendyslexic"];
-const THEMES: ReaderTheme[] = ["paper", "sepia", "night"];
 const LINE_HEIGHTS: ReaderLineHeight[] = ["compact", "comfortable", "spacious"];
 const MARGINS: ReaderMargins[] = ["narrow", "medium", "wide"];
+const TEXT_SPACINGS: TextSpacingPreset[] = ["normal", "relaxed", "wide"];
+
+function toThemeChoice(raw?: string): ThemeChoice {
+  if (raw === "paper") return "blanco";
+  if (raw === "sepia") return "papel";
+  if (raw === "night") return "noche";
+  if (raw === "auto" || raw === "blanco" || raw === "papel" || raw === "noche" || raw === "oled") {
+    return raw;
+  }
+  return "auto";
+}
 
 export function ThemeMenu({
   settings,
@@ -122,12 +134,9 @@ export function ThemeMenu({
     }
   };
 
-  const currentTheme: ReaderTheme =
-    settings.theme === "noche" || settings.theme === "oled" || value === "noche" || value === "oled"
-      ? "night"
-      : settings.theme === "papel" || value === "papel"
-        ? "sepia"
-        : "paper";
+  const currentThemeChoice: ThemeChoice = value
+    ? toThemeChoice(value)
+    : toThemeChoice(settings.theme);
 
   const currentFontSize = settings.fontSize ?? settings.size ?? 18;
 
@@ -166,21 +175,18 @@ export function ThemeMenu({
       <div className="theme-row">
         <span className="theme-label">Color de página</span>
         <div className="theme-swatches" role="radiogroup" aria-label="Color de página">
-          {THEMES.map((t) => {
-            const choiceKey: ThemeChoice =
-              t === "paper" ? "blanco" : t === "sepia" ? "papel" : "noche";
-            const swatch = THEME_SWATCHES[choiceKey];
-            const isSelected = currentTheme === t;
+          {THEME_CHOICES.map((choice) => {
+            const swatch = THEME_SWATCHES[choice];
+            const isSelected = currentThemeChoice === choice;
             return (
               <button
-                key={t}
+                key={choice}
                 type="button"
-                className={`swatch swatch-${t} ${isSelected ? "is-active" : ""}`}
+                className={`swatch swatch-${choice} ${isSelected ? "is-active" : ""}`}
                 role="radio"
                 aria-checked={isSelected}
                 data-active={isSelected || undefined}
-                onClick={() => handlePatch({ theme: t })}
-                aria-pressed={isSelected}
+                onClick={() => handlePatch({ theme: choice })}
               >
                 <span
                   className="swatch-dot"
@@ -192,7 +198,7 @@ export function ThemeMenu({
                 >
                   {swatch.fg ? <span style={{ color: swatch.fg }}>A</span> : null}
                 </span>
-                <span className="swatch-name">{THEME_LABELS[t]}</span>
+                <span className="swatch-name">{THEME_LABELS[choice]}</span>
               </button>
             );
           })}
@@ -311,6 +317,59 @@ export function ThemeMenu({
         </div>
       </div>
 
+      <div className="theme-row">
+        <span className="theme-label">Espaciado de texto</span>
+        <div className="segmented" role="group" aria-label="Espaciado de texto">
+          {TEXT_SPACINGS.map((sp) => {
+            const activeSpacing = settings.textSpacing ?? "normal";
+            return (
+              <button
+                key={sp}
+                type="button"
+                className={activeSpacing === sp ? "is-active" : ""}
+                data-active={activeSpacing === sp || undefined}
+                onClick={() => handlePatch({ textSpacing: sp })}
+                aria-pressed={activeSpacing === sp}
+              >
+                {TEXT_SPACING_LABELS[sp]}
+              </button>
+            );
+          })}
+        </div>
+        <span className="theme-toggle-hint">
+          Separa ligeramente letras y palabras para reducir fatiga visual
+        </span>
+      </div>
+
+      <div className="theme-row">
+        <span className="theme-label">Sonido de fondo (opcional)</span>
+        <div
+          className="segmented segmented--soundscape"
+          role="group"
+          aria-label="Sonido de fondo"
+        >
+          {SOUNDSCAPE_CHOICES.map(({ id, label }) => {
+            const currentSound = settings.soundscape ?? (settings.ambientPurr ? "purr" : "none");
+            const active = currentSound === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={active ? "is-active" : ""}
+                data-active={active || undefined}
+                onClick={() => handlePatch({ soundscape: id, ambientPurr: id === "purr" })}
+                aria-pressed={active}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <span className="theme-toggle-hint">
+          Ruido continuo sin voz; útil si te cuesta mantener el foco
+        </span>
+      </div>
+
       <div className="theme-row theme-row-toggle">
         <div className="theme-toggle-text">
           <span className="theme-label">Regla guía de lectura</span>
@@ -349,27 +408,13 @@ export function ThemeMenu({
         <div className="theme-toggle-text">
           <span className="theme-label">Resaltar inicio de palabra</span>
           <span className="theme-toggle-hint">
-            Destaca el inicio de cada palabra para leer con más agilidad
+            Destaca el inicio de cada palabra (alivio visual experimental)
           </span>
         </div>
         <Toggle
           checked={Boolean(settings.bionicAnchors)}
           onChange={(next) => handlePatch({ bionicReading: next, bionicAnchors: next })}
           ariaLabel="Resaltar inicio de palabra"
-        />
-      </div>
-
-      <div className="theme-row theme-row-toggle">
-        <div className="theme-toggle-text">
-          <span className="theme-label">Dividir palabras largas</span>
-          <span className="theme-toggle-hint">
-            Separa con guiones sutiles las palabras complejas para facilitar la pronunciación
-          </span>
-        </div>
-        <Toggle
-          checked={Boolean(settings.syllableBreaks)}
-          onChange={(next) => handlePatch({ syllableBreaks: next })}
-          ariaLabel="Dividir palabras largas"
         />
       </div>
 
@@ -421,20 +466,6 @@ export function ThemeMenu({
           checked={settings.chapterPreview !== false && settings.chapterPreview !== "off"}
           onChange={(next) => handlePatch({ chapterPreview: next })}
           ariaLabel="Sugerir palabras del capítulo"
-        />
-      </div>
-
-      <div className="theme-row theme-row-toggle">
-        <div className="theme-toggle-text">
-          <span className="theme-label">Modo sin mascota</span>
-          <span className="theme-toggle-hint">
-            Oculta las animaciones del búho para una lectura completamente sobria
-          </span>
-        </div>
-        <Toggle
-          checked={!settings.companionEnabled}
-          onChange={(next) => handlePatch({ companionEnabled: !next })}
-          ariaLabel="Modo sin mascota"
         />
       </div>
     </div>

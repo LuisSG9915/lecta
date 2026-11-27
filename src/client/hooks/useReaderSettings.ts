@@ -5,7 +5,7 @@
 // estable: se apoya en el updater funcional de setSettings, así que no captura
 // ajustes viejos y no rearma a los componentes que la reciben por prop.
 import { useCallback, useEffect, useRef } from "react";
-import { saveReaderSettings, type ReaderSettings } from "../lib/settings";
+import { deriveFocusMode, saveReaderSettings, type ReaderSettings } from "../lib/settings";
 
 export interface UseReaderSettingsOptions {
   bookHash: string;
@@ -15,7 +15,7 @@ export interface UseReaderSettingsOptions {
   beforeReflow?: () => void;
 }
 
-const REFLOW_KEYS = ["size", "fontSize", "font", "measure", "leading", "layout", "pageColumns"] as const;
+const REFLOW_KEYS = ["size", "fontSize", "font", "measure", "leading", "layout", "pageColumns", "textSpacing"] as const;
 const REFLOW_CAPTURE_GAP_MS = 150;
 
 export function useReaderSettings(options: UseReaderSettingsOptions) {
@@ -47,7 +47,9 @@ export function useReaderSettings(options: UseReaderSettingsOptions) {
           patch.paragraphFocus !== undefined ||
           patch.syntacticLines !== undefined ||
           patch.chromaticGuide !== undefined ||
-          (patch as Record<string, unknown>).colorGuide !== undefined) &&
+          patch.bionicAnchors !== undefined ||
+          patch.visualPacer !== undefined ||
+          patch.colorGuide !== undefined) &&
         (patch.strategyPreset === undefined || patch.readingPreset === undefined)
       ) {
         presetPatch = {
@@ -56,37 +58,28 @@ export function useReaderSettings(options: UseReaderSettingsOptions) {
         };
       }
       const next = { ...current, ...patch, ...presetPatch };
+      if (patch.chromaticGuide === undefined && patch.colorGuide !== undefined) {
+        next.chromaticGuide = Boolean(patch.colorGuide);
+      } else if (patch.chromaticGuide !== undefined) {
+        next.colorGuide = next.chromaticGuide;
+      }
+      if (patch.bionicAnchors === undefined && patch.bionicReading !== undefined) {
+        next.bionicAnchors = Boolean(patch.bionicReading);
+      } else if (patch.bionicAnchors !== undefined) {
+        next.bionicReading = next.bionicAnchors;
+      }
       if (patch.focusRuler === true) {
         next.focusRuler = true;
         next.paragraphFocus = false;
-        next.focusMode = "ruler";
       } else if (patch.paragraphFocus === true) {
         next.paragraphFocus = true;
         next.focusRuler = false;
-        next.focusMode = "paragraph";
-      } else if (patch.focusMode !== undefined) {
-        next.focusMode = patch.focusMode;
       } else if (patch.focusRuler === false && patch.paragraphFocus === false) {
         next.focusRuler = false;
         next.paragraphFocus = false;
-        if (next.chromaticGuide) {
-          next.focusMode = "chromatic";
-        } else if (next.syntacticLines) {
-          next.focusMode = "syntactic";
-        } else {
-          next.focusMode = "off";
-        }
-      } else if (next.paragraphFocus) {
-        next.focusMode = "paragraph";
-      } else if (next.focusRuler) {
-        next.focusMode = "ruler";
-      } else if (next.chromaticGuide) {
-        next.focusMode = "chromatic";
-      } else if (next.syntacticLines) {
-        next.focusMode = "syntactic";
-      } else {
-        next.focusMode = "off";
       }
+      next.focusMode =
+        patch.focusMode !== undefined ? patch.focusMode : deriveFocusMode(next);
       saveReaderSettings(next, bookHash);
       setBookOverride(true);
       return next;

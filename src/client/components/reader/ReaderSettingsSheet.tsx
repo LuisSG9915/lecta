@@ -42,6 +42,7 @@ export interface ReaderSettingsSheetProps {
   isFullscreenSupported: () => boolean;
   onOpenNotebook: () => void;
   setGlossaryOpen: (open: boolean) => void;
+  onOpenOpticalRecipe?: () => void;
 }
 
 export default function ReaderSettingsSheet({
@@ -70,6 +71,7 @@ export default function ReaderSettingsSheet({
   isFullscreenSupported,
   onOpenNotebook,
   setGlossaryOpen,
+  onOpenOpticalRecipe,
 }: ReaderSettingsSheetProps) {
   return (
   <Sheet label="Opciones de lectura" onClose={closeSheet}>
@@ -112,6 +114,26 @@ export default function ReaderSettingsSheet({
     {/* Pestaña: Apariencia y ayudas (SSOT) */}
     {settingsTab === "appearance" || settingsTab === "strategy" ? (
       <div role="tabpanel" aria-label="Apariencia y ayudas" className="sheet-panel">
+        {onOpenOpticalRecipe ? (
+          <div className="settings-recipe-banner">
+            <div className="settings-recipe-copy">
+              <strong>Ajustar a tus ojos (30 s)</strong>
+              <span>
+                4 comparaciones rápidas con este libro para hallar tu letra y espaciado óptimos.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn--quiet settings-recipe-btn"
+              onClick={() => {
+                closeSheet();
+                onOpenOpticalRecipe();
+              }}
+            >
+              Probar
+            </button>
+          </div>
+        ) : null}
         <ThemeMenu
           value={theme}
           onChange={onThemeChange}
@@ -141,8 +163,8 @@ export default function ReaderSettingsSheet({
         <div className="setting-section">
           <span className="setting-section-label">Maquetación</span>
           <div className="setting-row">
-            <span className="setting-label">Modo de lectura</span>
-            <div className="segmented" role="group" aria-label="Modo de lectura">
+            <span className="setting-label">Paginación</span>
+            <div className="segmented" role="group" aria-label="Paginación">
               <button
                 type="button"
                 data-active={settings.layout === "scroll" || undefined}

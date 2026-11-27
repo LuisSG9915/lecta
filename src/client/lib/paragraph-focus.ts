@@ -6,10 +6,10 @@
 
 export const FOCUSED_BLOCK_CLASS = "is-focused";
 
-/** Opacidad suave para párrafos fuera del foco actual en tema claro */
-export const FOCUS_DIM_OPACITY_LIGHT = 0.32;
-/** Opacidad suave para párrafos fuera del foco actual en tema oscuro */
-export const FOCUS_DIM_OPACITY_DARK = 0.28;
+/** Opacidad suave para párrafos fuera del foco actual en tema claro (WCAG AA) */
+export const FOCUS_DIM_OPACITY_LIGHT = 0.65;
+/** Opacidad suave para párrafos fuera del foco actual en tema oscuro (WCAG AA) */
+export const FOCUS_DIM_OPACITY_DARK = 0.6;
 
 export function getFocusDimOpacity(isDark = false): number {
   return isDark ? FOCUS_DIM_OPACITY_DARK : FOCUS_DIM_OPACITY_LIGHT;

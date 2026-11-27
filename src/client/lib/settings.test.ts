@@ -333,6 +333,22 @@ describe("readerCssVars", () => {
     expect(vars["--read-size"]).toBe("20px");
     expect(vars["--read-leading"]).toBe("1.7");
     expect(vars["--read-measure"]).toBe("55ch");
+    expect(vars["--read-letter-spacing"]).toBe("0em");
+    expect(vars["--read-word-spacing"]).toBe("0em");
+
+    const relaxedVars = readerCssVars({ ...READER_DEFAULTS, textSpacing: "relaxed" });
+    expect(relaxedVars["--read-letter-spacing"]).toBe("0.025em");
+    expect(relaxedVars["--read-word-spacing"]).toBe("0.07em");
+
+    const wideVars = readerCssVars({ ...READER_DEFAULTS, textSpacing: "wide" });
+    expect(wideVars["--read-letter-spacing"]).toBe("0.055em");
+    expect(wideVars["--read-word-spacing"]).toBe("0.14em");
+  });
+
+  it("parseReaderSettings valida textSpacing y descarta valores desconocidos", () => {
+    expect(parseReaderSettings(JSON.stringify({ textSpacing: "relaxed" })).textSpacing).toBe("relaxed");
+    expect(parseReaderSettings(JSON.stringify({ textSpacing: "wide" })).textSpacing).toBe("wide");
+    expect(parseReaderSettings(JSON.stringify({ textSpacing: "extremo" })).textSpacing).toBeUndefined();
   });
 });
 
@@ -495,7 +511,7 @@ describe("applyTheme", () => {
 });
 
 describe("applyReadingPreset", () => {
-  it("'clean' apaga todas las ayudas visuales", () => {
+  it("'clean' (Papel) apaga todas las ayudas visuales, sonido y espaciado", () => {
     const customized = {
       ...READER_DEFAULTS,
       focusRuler: true,
@@ -506,6 +522,9 @@ describe("applyReadingPreset", () => {
       bionicAnchors: true,
       visualPacer: true,
       highlightLexical: true,
+      textSpacing: "wide" as const,
+      soundscape: "rain" as const,
+      ambientPurr: true,
     };
     const res = applyReadingPreset(customized, "clean");
     expect(res.focusRuler).toBe(false);
@@ -516,10 +535,13 @@ describe("applyReadingPreset", () => {
     expect(res.bionicAnchors).toBe(false);
     expect(res.visualPacer).toBe(false);
     expect(res.highlightLexical).toBe(false);
+    expect(res.textSpacing).toBe("normal");
+    expect(res.soundscape).toBe("none");
+    expect(res.ambientPurr).toBe(false);
     expect(res.readingPreset).toBe("clean");
   });
 
-  it("'adhd' activa paragraphFocus y desactiva syntacticLines / colorGuide", () => {
+  it("'adhd' (Enfoque) activa paragraphFocus y espaciado holgado sin syntacticLines ni colorGuide", () => {
     const initial = {
       ...READER_DEFAULTS,
       syntacticLines: true,
@@ -529,25 +551,27 @@ describe("applyReadingPreset", () => {
     };
     const res = applyReadingPreset(initial, "adhd");
     expect(res.paragraphFocus).toBe(true);
+    expect(res.textSpacing).toBe("relaxed");
     expect(res.syntacticLines).toBe(false);
     expect(res.colorGuide).toBe(false);
     expect(res.chromaticGuide).toBe(false);
     expect(res.readingPreset).toBe("adhd");
   });
 
-  it("'guided' activa syntacticLines y colorGuide y desactiva paragraphFocus", () => {
+  it("'guided' (Cadencia) activa syntacticLines con guía cromática opt-in apagada por defecto", () => {
     const initial = {
       ...READER_DEFAULTS,
       paragraphFocus: true,
       syntacticLines: false,
-      colorGuide: false,
-      chromaticGuide: false,
+      colorGuide: true,
+      chromaticGuide: true,
     };
     const res = applyReadingPreset(initial, "guided");
     expect(res.syntacticLines).toBe(true);
-    expect(res.colorGuide).toBe(true);
-    expect(res.chromaticGuide).toBe(true);
+    expect(res.colorGuide).toBe(false);
+    expect(res.chromaticGuide).toBe(false);
     expect(res.paragraphFocus).toBe(false);
+    expect(res.focusMode).toBe("syntactic");
     expect(res.readingPreset).toBe("guided");
   });
 });
@@ -651,9 +675,11 @@ describe("modos de lectura: detección y opciones", () => {
     expect(readingPresetOptions("clean")).toEqual([]);
     expect(readingPresetOptions("adhd").map((o) => o.key)).toEqual([
       "paragraphFocus",
+      "focusRuler",
       "bionicAnchors",
     ]);
     expect(readingPresetOptions("guided").map((o) => o.key)).toEqual([
+      "syntacticLines",
       "chromaticGuide",
       "visualPacer",
     ]);
@@ -668,15 +694,21 @@ describe("readingModeView: el popover no pierde los interruptores", () => {
     expect(readingPresetOptions(view.optionsFor).map((o) => o.key)).toContain("paragraphFocus");
   });
 
-  it("Ritmo sin guía de color sigue mostrando las opciones de Ritmo", () => {
-    const res = { ...applyReadingPreset(READER_DEFAULTS, "guided"), chromaticGuide: false };
+  it("Cadencia sin líneas sintácticas sigue mostrando las opciones de Cadencia", () => {
+    const res = { ...applyReadingPreset(READER_DEFAULTS, "guided"), syntacticLines: false };
     const view = readingModeView(res);
     expect(view.active).toBe("custom");
     expect(readingPresetOptions(view.optionsFor).map((o) => o.key)).toContain("chromaticGuide");
   });
 
-  it("un modo intacto se muestra tal cual y Limpia no tiene opciones", () => {
+  it("Cadencia con guía de color opt-in encendida sigue siendo Cadencia", () => {
+    const res = { ...applyReadingPreset(READER_DEFAULTS, "guided"), chromaticGuide: true };
+    expect(readingModeView(res).active).toBe("guided");
+  });
+
+  it("un modo intacto se muestra tal cual y Papel no tiene opciones", () => {
     expect(readingModeView(applyReadingPreset(READER_DEFAULTS, "adhd")).active).toBe("adhd");
+    expect(readingModeView(applyReadingPreset(READER_DEFAULTS, "guided")).active).toBe("guided");
     const clean = readingModeView(applyReadingPreset(READER_DEFAULTS, "clean"));
     expect(clean.active).toBe("clean");
     expect(readingPresetOptions(clean.optionsFor)).toEqual([]);

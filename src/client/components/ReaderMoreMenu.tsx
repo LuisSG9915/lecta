@@ -260,7 +260,7 @@ export default function ReaderMoreMenu({
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
-          <span className="meta" style={{ fontWeight: 600, fontSize: "0.8rem" }}>Modo de lectura</span>
+          <span className="meta" style={{ fontWeight: 600, fontSize: "0.8rem" }}>Interfaz</span>
           <span className="meta" style={{ fontSize: "0.72rem" }}>
             {interfaceMode === "advanced" ? "Avanzado" : "Simple"}
           </span>
