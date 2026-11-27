@@ -37,11 +37,13 @@ export function useReaderDenseStall(deps: Deps): void {
 
   useEffect(() => {
     if (state !== "ready" || isDeepReading || !isCleanMode) return;
+    let shownHere = false;
     const checkDenseStall = () => {
       if (state !== "ready" || isDeepReading || document.hidden) return;
       const now = Date.now();
+      // Sin inicio de sesión todavía no hay fase de acomodación que medir: esperar.
       if (
-        sessionStartRef.current > 0 &&
+        sessionStartRef.current <= 0 ||
         now - sessionStartRef.current < DENSE_STALL_SETTLING_IN_MS
       ) {
         return;
@@ -57,8 +59,10 @@ export function useReaderDenseStall(deps: Deps): void {
       );
       if (isStalled) {
         setStallBubble("¿Pasaje denso? Tócame para iluminar el párrafo paso a paso.");
+        shownHere = true;
         if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
         stallBubbleTimerRef.current = setTimeout(() => {
+          shownHere = false;
           setStallBubble(null);
         }, 6000);
       }
@@ -68,6 +72,8 @@ export function useReaderDenseStall(deps: Deps): void {
     return () => {
       clearInterval(interval);
       if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
+      // Cancelado el temporizador que la ocultaba, la burbuja quedaría fija.
+      if (shownHere) setStallBubble(null);
     };
   }, [
     state,

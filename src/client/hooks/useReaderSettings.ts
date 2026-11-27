@@ -5,7 +5,7 @@
 // estable: se apoya en el updater funcional de setSettings, así que no captura
 // ajustes viejos y no rearma a los componentes que la reciben por prop.
 import { useCallback, useEffect, useRef } from "react";
-import { deriveFocusMode, saveReaderSettings, type ReaderSettings } from "../lib/settings";
+import { resolveSettingsPatch, saveReaderSettings, type ReaderSettings } from "../lib/settings";
 
 export interface UseReaderSettingsOptions {
   bookHash: string;
@@ -41,45 +41,7 @@ export function useReaderSettings(options: UseReaderSettingsOptions) {
       lastReflowCaptureRef.current = now;
     }
     setSettings((current) => {
-      let presetPatch: Partial<ReaderSettings> = {};
-      if (
-        (patch.focusRuler !== undefined ||
-          patch.paragraphFocus !== undefined ||
-          patch.syntacticLines !== undefined ||
-          patch.chromaticGuide !== undefined ||
-          patch.bionicAnchors !== undefined ||
-          patch.visualPacer !== undefined ||
-          patch.colorGuide !== undefined) &&
-        (patch.strategyPreset === undefined || patch.readingPreset === undefined)
-      ) {
-        presetPatch = {
-          strategyPreset: patch.strategyPreset ?? "custom",
-          readingPreset: "custom",
-        };
-      }
-      const next = { ...current, ...patch, ...presetPatch };
-      if (patch.chromaticGuide === undefined && patch.colorGuide !== undefined) {
-        next.chromaticGuide = Boolean(patch.colorGuide);
-      } else if (patch.chromaticGuide !== undefined) {
-        next.colorGuide = next.chromaticGuide;
-      }
-      if (patch.bionicAnchors === undefined && patch.bionicReading !== undefined) {
-        next.bionicAnchors = Boolean(patch.bionicReading);
-      } else if (patch.bionicAnchors !== undefined) {
-        next.bionicReading = next.bionicAnchors;
-      }
-      if (patch.focusRuler === true) {
-        next.focusRuler = true;
-        next.paragraphFocus = false;
-      } else if (patch.paragraphFocus === true) {
-        next.paragraphFocus = true;
-        next.focusRuler = false;
-      } else if (patch.focusRuler === false && patch.paragraphFocus === false) {
-        next.focusRuler = false;
-        next.paragraphFocus = false;
-      }
-      next.focusMode =
-        patch.focusMode !== undefined ? patch.focusMode : deriveFocusMode(next);
+      const next = resolveSettingsPatch(current, patch);
       saveReaderSettings(next, bookHash);
       setBookOverride(true);
       return next;

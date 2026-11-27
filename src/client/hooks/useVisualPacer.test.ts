@@ -6,12 +6,12 @@ import { findFirstVisibleChunkIndex, useVisualPacer } from "./useVisualPacer";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function mockRect(el: HTMLElement, top: number, bottom: number, height = bottom - top) {
+function mockRect(el: HTMLElement, top: number, bottom: number, height = bottom - top, left = 0) {
   vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
     top,
     bottom,
-    left: 0,
-    right: 400,
+    left,
+    right: left + 400,
     width: 400,
     height,
     x: 0,
@@ -76,6 +76,7 @@ describe("useVisualPacer", () => {
     visualPacer: boolean;
     pacerPaused: boolean;
     pacerWpm?: number;
+    paged?: boolean;
   }) {
     useVisualPacer({
       containerRef: { current: bookContainer },
@@ -86,6 +87,7 @@ describe("useVisualPacer", () => {
       pacerPaused: props.pacerPaused,
       state: "ready",
       readingPaused: false,
+      paged: props.paged,
     });
     return null;
   }
@@ -115,5 +117,73 @@ describe("useVisualPacer", () => {
       root.render(h(Probe, { pacerIndexRef, visualPacer: true, pacerPaused: true, pacerWpm: 300 }));
     });
     expect(bookContainer.querySelectorAll(".lecta-pacer-active")).toHaveLength(0);
+  });
+
+  it("al acabar el capítulo se queda en el último chunk y no vuelve al principio", () => {
+    const pacerIndexRef = { current: 0 };
+    const chunks = Array.from(bookContainer.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"));
+    act(() => {
+      root.render(h(Probe, { pacerIndexRef, visualPacer: true, pacerPaused: false, pacerWpm: 300 }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1050); // chunk 1 → chunk 2
+    });
+    act(() => {
+      vi.advanceTimersByTime(5000); // vence el chunk 2: fin del capítulo
+    });
+    expect(chunks[0].classList.contains("lecta-pacer-active")).toBe(false);
+    expect(chunks[2].classList.contains("lecta-pacer-active")).toBe(true);
+    expect(pacerIndexRef.current).toBe(3);
+  });
+
+  it("si los chunks aún no existen, reintenta y arranca cuando aparecen", () => {
+    const saved = bookContainer.innerHTML;
+    const original = Array.from(bookContainer.childNodes);
+    bookContainer.replaceChildren();
+    const pacerIndexRef = { current: 0 };
+    act(() => {
+      root.render(h(Probe, { pacerIndexRef, visualPacer: true, pacerPaused: false, pacerWpm: 300 }));
+    });
+    expect(bookContainer.querySelectorAll(".lecta-pacer-active")).toHaveLength(0);
+    // useReaderSyntacticLines los crea un cuadro después.
+    bookContainer.replaceChildren(...original);
+    expect(bookContainer.innerHTML).toBe(saved);
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+    const chunks = Array.from(bookContainer.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"));
+    expect(chunks[1].classList.contains("lecta-pacer-active")).toBe(true);
+  });
+
+  it("en páginas recorre solo la página visible, espera el paso de página y no desplaza", () => {
+    const chunks = Array.from(bookContainer.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"));
+    mockRect(chunks[0], 100, 140, 40);
+    mockRect(chunks[1], 150, 190, 40);
+    mockRect(chunks[2], 100, 140, 40, 2000); // columna de la página siguiente
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+    const pacerIndexRef = { current: 0 };
+    act(() => {
+      root.render(h(Probe, { pacerIndexRef, visualPacer: true, pacerPaused: false, pacerWpm: 300, paged: true }));
+    });
+    expect(chunks[0].classList.contains("lecta-pacer-active")).toBe(true);
+    act(() => {
+      vi.advanceTimersByTime(5000); // c0 → c1
+    });
+    expect(chunks[1].classList.contains("lecta-pacer-active")).toBe(true);
+    act(() => {
+      vi.advanceTimersByTime(5000); // c2 está en la otra página: espera
+    });
+    expect(chunks[1].classList.contains("lecta-pacer-active")).toBe(true);
+    expect(chunks[2].classList.contains("lecta-pacer-active")).toBe(false);
+    // El lector pasa de página.
+    mockRect(chunks[0], 100, 140, 40, -2000);
+    mockRect(chunks[1], 150, 190, 40, -2000);
+    mockRect(chunks[2], 100, 140, 40, 0);
+    act(() => {
+      vi.advanceTimersByTime(450);
+    });
+    expect(chunks[2].classList.contains("lecta-pacer-active")).toBe(true);
+    expect(scrollSpy).not.toHaveBeenCalled();
   });
 });

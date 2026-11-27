@@ -10,6 +10,7 @@ type PendingPage = {
   anchor?: string;
   at?: "end";
   ratio?: number;
+  flash?: boolean;
 } | null;
 
 export interface ReaderAnchoringRefs {

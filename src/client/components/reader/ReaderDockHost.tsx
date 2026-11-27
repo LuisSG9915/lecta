@@ -82,10 +82,11 @@ export interface ReaderDockHostProps {
   onDismissRecordToast?: () => void;
   isReadingActive?: boolean;
   onStartAudio5Min?: () => void;
-  language?: string;
   onOpenDeepReading?: () => void;
   onOpenOpticalRecipe?: () => void;
   isForeignLanguage?: boolean;
+  /** Botones del marcapasos; Reader los calcula una vez y corre a la velocidad marcada. */
+  pacerSpeeds: readonly [number, number, number];
 }
 
 export function computePacerSpeeds(lang = "es"): readonly [number, number, number] {
@@ -101,7 +102,7 @@ export function computePacerSpeeds(lang = "es"): readonly [number, number, numbe
 }
 
 /** Velocidades guardadas por la barra anterior (180, 240…) caen al botón más cercano. */
-function snapPacerWpm(
+export function snapPacerWpm(
   wpm: number,
   speeds: readonly [number, number, number] = [150, 210, 270],
 ): number {
@@ -169,13 +170,11 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
   onDismissRecordToast,
   isReadingActive,
   onStartAudio5Min,
-  language,
   onOpenDeepReading,
   onOpenOpticalRecipe,
   isForeignLanguage,
+  pacerSpeeds,
   } = props;
-
-  const pacerSpeeds = computePacerSpeeds(language);
 
   return (
     <SmartReaderDock

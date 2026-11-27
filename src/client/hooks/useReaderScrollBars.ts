@@ -56,6 +56,7 @@ export function useReaderScrollBars(deps: Deps): void {
     };
 
     const onScroll = () => {
+      if (settingsRef.current?.layout === "pages") return;
       if (!isTtsProgrammaticScroll()) noteActivity();
       saveSoon();
       if (rafPending.current) return;

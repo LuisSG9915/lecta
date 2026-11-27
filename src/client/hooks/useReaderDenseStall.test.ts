@@ -130,4 +130,27 @@ describe("useReaderDenseStall", () => {
 
     expect(setStallBubble).not.toHaveBeenCalled();
   });
+
+  it("si el efecto se relanza con la burbuja a la vista, la oculta (no queda fija)", () => {
+    const now = Date.now();
+    const setStallBubble = vi.fn();
+    const props = {
+      sessionStartRef: { current: now - DENSE_STALL_SETTLING_IN_MS - 10_000 },
+      denseStallDetectorRef: { current: newDenseStallDetector(now - 90_000) },
+      lastActivityAtRef: { current: now },
+      setStallBubble,
+    };
+    act(() => {
+      root.render(h(Probe, { ...props, isCleanMode: true }));
+    });
+    act(() => {
+      props.lastActivityAtRef.current = Date.now();
+      vi.advanceTimersByTime(4_000);
+    });
+    expect(setStallBubble).toHaveBeenLastCalledWith(expect.stringContaining("¿Pasaje denso?"));
+    act(() => {
+      root.render(h(Probe, { ...props, isCleanMode: false }));
+    });
+    expect(setStallBubble).toHaveBeenLastCalledWith(null);
+  });
 });

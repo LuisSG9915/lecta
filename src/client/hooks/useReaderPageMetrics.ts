@@ -15,6 +15,7 @@ type PendingPage = {
   anchor?: string;
   at?: "end";
   ratio?: number;
+  flash?: boolean;
 } | null;
 
 type Deps = {
@@ -63,11 +64,15 @@ export function useReaderPageMetrics(deps: Deps): void {
       let intent = false;
       if (pending) {
         intent = true;
-        if (pending.snippet) next = pageForText(container, pending.snippet, metrics, "snippet") ?? 0;
+        const flash = pending.flash ?? true;
+        if (pending.snippet) next = pageForText(container, pending.snippet, metrics, "snippet", flash) ?? 0;
         else if (pending.fragment) next = pageForFragment(container, pending.fragment, metrics) ?? 0;
-        else if (pending.anchor) next = pageForText(container, pending.anchor, metrics, "anchor") ?? 0;
-        else if (pending.at === "end") next = total - 1;
-        else if (pending.ratio) next = Math.round(pending.ratio * (total - 1));
+        else if (pending.anchor) {
+          next =
+            pageForText(container, pending.anchor, metrics, "anchor", flash) ??
+            (pending.ratio != null ? Math.round(pending.ratio * (total - 1)) : 0);
+        } else if (pending.at === "end") next = total - 1;
+        else if (pending.ratio != null) next = Math.round(pending.ratio * (total - 1));
         else next = 0;
       } else if (pageAnchorRef.current) {
         next = pageForText(container, pageAnchorRef.current, metrics, "anchor", false) ?? pageRef.current;

@@ -145,18 +145,10 @@ export default function ReaderSettingsSheet({
             updateSettings(updated);
           }}
           onToggleFocusRuler={(checked) => {
-            updateSettings({
-              focusRuler: checked,
-              readingPreset: "custom",
-              strategyPreset: "custom",
-            });
+            updateSettings({ focusRuler: checked });
           }}
           onToggleParagraphFocus={(checked) => {
-            updateSettings({
-              paragraphFocus: checked,
-              readingPreset: "custom",
-              strategyPreset: "custom",
-            });
+            updateSettings({ paragraphFocus: checked });
           }}
         />
 

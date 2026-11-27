@@ -76,12 +76,12 @@ describe("useReaderSettings", () => {
     expect(opts.setBookOverride).toHaveBeenCalledWith(true);
   });
 
-  it("tocar una ayuda de enfoque marca el preset como ajustado", () => {
+  it("encender la regla desde Papel adopta el modo Enfoque", () => {
     const opts = settingsOptions();
     render(opts);
     const next = apply(opts, { focusRuler: true });
-    expect(next.strategyPreset).toBe("custom");
-    expect(next.readingPreset).toBe("custom");
+    expect(next.strategyPreset).toBe("adhd");
+    expect(next.readingPreset).toBe("adhd");
     expect(next.focusRuler).toBe(true);
     expect(next.paragraphFocus).toBe(false);
     expect(next.focusMode).toBe("ruler");

@@ -62,9 +62,10 @@ export default function OpticalRecipeModal({
   onClose,
 }: OpticalRecipeModalProps) {
   const [step, setStep] = useState(0);
-  const [choices, setChoices] = useState<OpticalRecipeChoices>(() =>
+  const [baseline] = useState<OpticalRecipeChoices>(() =>
     defaultOpticalChoicesFromSettings(initialSettings),
   );
+  const [choices, setChoices] = useState<OpticalRecipeChoices>(baseline);
 
   const totalSteps = OPTICAL_RECIPE_STEPS.length;
   const isSummary = step >= totalSteps;
@@ -81,7 +82,7 @@ export default function OpticalRecipeModal({
   };
 
   const applyWithScope = (alsoGlobal: boolean) => {
-    onApply(buildOpticalRecipePatch(choices), { alsoGlobal });
+    onApply(buildOpticalRecipePatch(choices, baseline), { alsoGlobal });
     onClose();
   };
 

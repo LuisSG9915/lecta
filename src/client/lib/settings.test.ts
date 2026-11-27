@@ -18,7 +18,9 @@ import {
   hasExplicitNativeLanguage,
   readerProfileFor,
   READER_DEFAULTS,
+  applyPatchToAllReaderSettings,
   applyReadingPreset,
+  resolveSettingsPatch,
   applyStrategyPreset,
   isStrategyPresetActive,
   loadChapterPrimingSettings,
@@ -511,7 +513,16 @@ describe("applyTheme", () => {
 });
 
 describe("applyReadingPreset", () => {
-  it("'clean' (Papel) apaga todas las ayudas visuales, sonido y espaciado", () => {
+  it("ningún modo cambia el espaciado ni el sonido que eligió el lector", () => {
+    const mine = { ...READER_DEFAULTS, textSpacing: "wide" as const, soundscape: "rain" as const };
+    for (const preset of ["clean", "adhd", "guided"] as const) {
+      const res = applyReadingPreset(mine, preset);
+      expect(res.textSpacing).toBe("wide");
+      expect(res.soundscape).toBe("rain");
+    }
+  });
+
+  it("'clean' (Papel) apaga todas las ayudas visuales y conserva sonido y espaciado", () => {
     const customized = {
       ...READER_DEFAULTS,
       focusRuler: true,
@@ -535,13 +546,13 @@ describe("applyReadingPreset", () => {
     expect(res.bionicAnchors).toBe(false);
     expect(res.visualPacer).toBe(false);
     expect(res.highlightLexical).toBe(false);
-    expect(res.textSpacing).toBe("normal");
-    expect(res.soundscape).toBe("none");
-    expect(res.ambientPurr).toBe(false);
+    expect(res.textSpacing).toBe("wide");
+    expect(res.soundscape).toBe("rain");
+    expect(res.ambientPurr).toBe(true);
     expect(res.readingPreset).toBe("clean");
   });
 
-  it("'adhd' (Enfoque) activa paragraphFocus y espaciado holgado sin syntacticLines ni colorGuide", () => {
+  it("'adhd' (Enfoque) activa paragraphFocus sin syntacticLines ni colorGuide", () => {
     const initial = {
       ...READER_DEFAULTS,
       syntacticLines: true,
@@ -551,7 +562,6 @@ describe("applyReadingPreset", () => {
     };
     const res = applyReadingPreset(initial, "adhd");
     expect(res.paragraphFocus).toBe(true);
-    expect(res.textSpacing).toBe("relaxed");
     expect(res.syntacticLines).toBe(false);
     expect(res.colorGuide).toBe(false);
     expect(res.chromaticGuide).toBe(false);
@@ -714,3 +724,43 @@ describe("readingModeView: el popover no pierde los interruptores", () => {
     expect(readingPresetOptions(clean.optionsFor)).toEqual([]);
   });
 });
+
+describe("resolveSettingsPatch: el modo elegido sobrevive a tocar una pieza", () => {
+  it("Enfoque sin «Resaltar párrafo» sigue en Enfoque (ajustado) con sus interruptores", () => {
+    const enfoque = applyReadingPreset(READER_DEFAULTS, "adhd");
+    const next = resolveSettingsPatch(enfoque, { paragraphFocus: false });
+    expect(next.readingPreset).toBe("adhd");
+    expect(readingModeView(next)).toEqual({ active: "custom", optionsFor: "adhd" });
+  });
+
+  it("Enfoque más biónica sigue siendo Enfoque y apagar después el párrafo no vacía el popover", () => {
+    const enfoque = applyReadingPreset(READER_DEFAULTS, "adhd");
+    const conBionica = resolveSettingsPatch(enfoque, { bionicAnchors: true });
+    expect(conBionica.readingPreset).toBe("adhd");
+    const sinParrafo = resolveSettingsPatch(conBionica, { paragraphFocus: false });
+    expect(readingModeView(sinParrafo).optionsFor).toBe("adhd");
+  });
+
+  it("Cadencia más marcapasos sigue en Cadencia", () => {
+    const cadencia = applyReadingPreset(READER_DEFAULTS, "guided");
+    const next = resolveSettingsPatch(cadencia, { visualPacer: true });
+    expect(next.readingPreset).toBe("guided");
+    expect(next.strategyPreset).toBe("guided");
+  });
+});
+
+describe("applyPatchToAllReaderSettings", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("llega a la global y a los libros con ajustes propios, sin borrar sus otros campos", () => {
+    saveReaderSettings({ ...READER_DEFAULTS, size: 22 }, "h1");
+    saveReaderSettings({ ...READER_DEFAULTS, size: 17 }, "h2");
+    localStorage.setItem("lecta:reader:h3", "{corrupto");
+    applyPatchToAllReaderSettings({ measure: 55, font: "atkinson" });
+    expect(loadReaderSettings()).toMatchObject({ measure: 55, font: "atkinson" });
+    expect(loadReaderSettings("h1")).toMatchObject({ measure: 55, font: "atkinson", size: 22 });
+    expect(loadReaderSettings("h2")).toMatchObject({ measure: 55, font: "atkinson", size: 17 });
+    expect(loadReaderSettings("h3")).toMatchObject({ measure: 55, font: "atkinson" });
+  });
+});
+

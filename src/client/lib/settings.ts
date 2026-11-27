@@ -203,7 +203,7 @@ export const READING_PRESETS: ReaderModePresetConfig[] = [
     icon: "sparkles",
     label: "Enfoque",
     shortLabel: "Enfoque",
-    description: "Resalta el párrafo actual y abre el texto contra fatiga",
+    description: "Resalta el párrafo actual para no perder el hilo",
   },
   {
     id: "guided",
@@ -537,9 +537,6 @@ export function applyReadingPreset(
         visualPacer: false,
         highlightLexical: false,
         hideSecondaryIndicators: true,
-        textSpacing: "normal",
-        soundscape: "none",
-        ambientPurr: false,
       };
 
     case "adhd":
@@ -548,7 +545,6 @@ export function applyReadingPreset(
         readingPreset: "adhd",
         strategyPreset: "adhd",
         paragraphFocus: true,
-        textSpacing: "relaxed",
         bionicAnchors: false,
         focusRuler: false,
         syntacticLines: false,
@@ -624,6 +620,65 @@ export function readingModeView(settings: ReaderSettings): {
     return { active: "custom", optionsFor: declared };
   }
   return { active: detected, optionsFor: detected };
+}
+
+/**
+ * Aplica un parche de ajustes del lector con sus reglas: alias heredados
+ * (colorGuide, bionicReading), regla y foco de párrafo excluyentes, focusMode
+ * derivado y el modo de lectura que corresponde.
+ */
+export function resolveSettingsPatch(
+  current: ReaderSettings,
+  patch: Partial<ReaderSettings>,
+): ReaderSettings {
+  const next: ReaderSettings = { ...current, ...patch };
+  if (patch.chromaticGuide === undefined && patch.colorGuide !== undefined) {
+    next.chromaticGuide = Boolean(patch.colorGuide);
+  } else if (patch.chromaticGuide !== undefined) {
+    next.colorGuide = next.chromaticGuide;
+  }
+  if (patch.bionicAnchors === undefined && patch.bionicReading !== undefined) {
+    next.bionicAnchors = Boolean(patch.bionicReading);
+  } else if (patch.bionicAnchors !== undefined) {
+    next.bionicReading = next.bionicAnchors;
+  }
+  if (patch.focusRuler === true) {
+    next.focusRuler = true;
+    next.paragraphFocus = false;
+  } else if (patch.paragraphFocus === true) {
+    next.paragraphFocus = true;
+    next.focusRuler = false;
+  } else if (patch.focusRuler === false && patch.paragraphFocus === false) {
+    next.focusRuler = false;
+    next.paragraphFocus = false;
+  }
+  next.focusMode =
+    patch.focusMode !== undefined ? patch.focusMode : deriveFocusMode(next);
+  const touchesAid =
+    patch.focusRuler !== undefined ||
+    patch.paragraphFocus !== undefined ||
+    patch.syntacticLines !== undefined ||
+    patch.chromaticGuide !== undefined ||
+    patch.bionicAnchors !== undefined ||
+    patch.visualPacer !== undefined ||
+    patch.colorGuide !== undefined;
+  if (touchesAid && (patch.readingPreset === undefined || patch.strategyPreset === undefined)) {
+    // Tocar una pieza no borra el modo elegido: si los interruptores encajan
+    // con un modo, ese es el modo; si no, Enfoque/Cadencia se conservan como
+    // declarados («ajustado» en readingModeView, con sus interruptores).
+    const detected = detectActiveReadingPreset(next);
+    const declared = current.readingPreset;
+    const readingPreset: ReadingPreset =
+      patch.readingPreset ??
+      (detected === "adhd" || detected === "guided"
+        ? detected
+        : declared === "adhd" || declared === "guided"
+          ? declared
+          : detected);
+    next.readingPreset = readingPreset;
+    next.strategyPreset = patch.strategyPreset ?? readingPreset;
+  }
+  return next;
 }
 
 export interface ReadingPresetOption {
@@ -1228,6 +1283,28 @@ export function saveReaderSettings(settings: ReaderSettings, bookHash?: string) 
 }
 
 export const saveSettings = saveReaderSettings;
+
+/**
+ * «Aplicar a todos mis libros»: el parche llega a la global y a cada libro
+ * con ajustes propios (si no, esos libros nunca lo verían).
+ */
+export function applyPatchToAllReaderSettings(patch: Partial<ReaderSettings>) {
+  const store = storage();
+  if (!store) return;
+  try {
+    const keys = [READER_KEY];
+    for (let i = 0; i < store.length; i += 1) {
+      const key = store.key(i);
+      if (key?.startsWith(`${READER_KEY}:`)) keys.push(key);
+    }
+    for (const key of keys) {
+      const next = resolveSettingsPatch(parseReaderSettings(store.getItem(key)), patch);
+      store.setItem(key, JSON.stringify(next));
+    }
+  } catch {
+    // mismo criterio que saveTheme
+  }
+}
 
 export function hasBookReaderSettings(bookHash: string): boolean {
   return storage()?.getItem(readerKeyFor(bookHash)) != null;

@@ -2800,8 +2800,8 @@ b.lecta-anchor {
 }
 
 /* Foco de párrafo: atenúa los bloques fuera de la altura focal de lectura
-   manteniendo contraste WCAG AA (≥ 4.5:1) y marca el activo con un filete lateral
-   sin desplazamiento de diseño. Se mueve naturalmente con el scroll sin tocar el puntero. */
+   manteniendo contraste WCAG AA (≥ 4.5:1). Solo cambia la opacidad: un borde o
+   relleno lateral acortaba las líneas y refluía el texto (y movía la página). */
 .book-content[data-focus-mode="paragraph"] p,
 .book-content[data-focus-mode="paragraph"] blockquote,
 .book-content[data-focus-mode="paragraph"] li,
@@ -2809,11 +2809,7 @@ b.lecta-anchor {
 .book-content[data-paragraph-focus] blockquote,
 .book-content[data-paragraph-focus] li {
   opacity: 0.65;
-  border-inline-start: 2px solid transparent;
-  padding-inline-start: 0.75rem;
-  transition:
-    opacity var(--dur-2, 0.25s) var(--ease-out),
-    border-color var(--dur-2, 0.25s) var(--ease-out);
+  transition: opacity var(--dur-2, 0.25s) var(--ease-out);
 }
 
 :root[data-theme="noche"] .book-content[data-focus-mode="paragraph"] p,
@@ -2849,7 +2845,6 @@ b.lecta-anchor {
 .book-content[data-paragraph-focus] blockquote.is-focused,
 .book-content[data-paragraph-focus] li.is-focused {
   opacity: 1;
-  border-inline-start-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 
 /* En noche/oled la atenuación de arriba lleva `:root[data-theme]` y gana por
@@ -2862,7 +2857,16 @@ b.lecta-anchor {
 :root:root .book-content[data-paragraph-focus] blockquote.is-focused,
 :root:root .book-content[data-paragraph-focus] li.is-focused {
   opacity: 1;
-  border-inline-start-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+/* Bloques anidados (p dentro de blockquote o li): la opacidad se multiplica,
+   así que solo se atenúa el exterior, y el bloque que contiene al enfocado
+   queda entero a opacidad 1. */
+:root:root .book-content[data-focus-mode="paragraph"] :is(blockquote, li) :is(p, blockquote, li),
+:root:root .book-content[data-paragraph-focus] :is(blockquote, li) :is(p, blockquote, li),
+:root:root .book-content[data-focus-mode="paragraph"] :is(blockquote, li):has(.is-focused),
+:root:root .book-content[data-paragraph-focus] :is(blockquote, li):has(.is-focused) {
+  opacity: 1;
 }
 
 @media (hover: hover) {
@@ -7113,7 +7117,8 @@ b.lecta-anchor {
   right: 0;
   pointer-events: none;
   z-index: 25;
-  transition: top 0.08s linear;
+  will-change: transform;
+  transition: transform 0.08s linear;
 }
 
 .focus-ruler.is-dragging {
@@ -7135,18 +7140,27 @@ b.lecta-anchor {
   right: max(10px, env(safe-area-inset-right, 10px));
   top: 50%;
   transform: translateY(-50%);
-  width: 34px;
-  height: 38px;
+  width: 40px;
+  height: 44px;
   border-radius: var(--r-pill);
   border: 1px solid var(--rule-strong);
-  background: var(--surface-elevated);
-  color: var(--text-primary);
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.focus-ruler__handle::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
 }
 
 .focus-ruler.is-pinned .focus-ruler__handle {

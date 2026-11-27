@@ -145,16 +145,8 @@ describe("OpticalRecipeModal", () => {
     ) as HTMLButtonElement;
     act(() => bookOnlyBtn.click());
 
-    expect(onApply).toHaveBeenCalledWith(
-      {
-        textSpacing: "relaxed",
-        measure: 65,
-        margins: "medium",
-        font: "literata",
-        layout: "scroll",
-      },
-      { alsoGlobal: false },
-    );
+    // Solo cambió el espaciado: lo demás coincide con lo que ya tenía.
+    expect(onApply).toHaveBeenCalledWith({ textSpacing: "relaxed" }, { alsoGlobal: false });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

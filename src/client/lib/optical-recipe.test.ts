@@ -124,3 +124,18 @@ describe("optical-recipe", () => {
     ]);
   });
 });
+
+describe("receta óptica: no cambia lo que el lector no eligió", () => {
+  it("sin textSpacing parte de Normal", () => {
+    expect(
+      defaultOpticalChoicesFromSettings({ textSpacing: undefined, measure: 65, font: "literata", layout: "scroll" }).spacing,
+    ).toBe("normal");
+  });
+
+  it("elegir lo que ya tenía conserva Amplio, la medida 75 y la serifa", () => {
+    const current = { textSpacing: "wide" as const, measure: 75 as const, font: "serif" as const, layout: "scroll" as const };
+    const baseline = defaultOpticalChoicesFromSettings(current);
+    expect(buildOpticalRecipePatch(baseline, baseline)).toEqual({});
+    expect(buildOpticalRecipePatch({ ...baseline, layout: "pages" }, baseline)).toEqual({ layout: "pages" });
+  });
+});

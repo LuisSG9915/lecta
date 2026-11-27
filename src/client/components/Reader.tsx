@@ -84,6 +84,9 @@ import {
   readerCssVars,
   applyStrategyPreset,
   detectActiveReadingPreset,
+  applyReadingPreset,
+  applyPatchToAllReaderSettings,
+  resolveSettingsPatch,
   muteBookForPriming,
   disablePrimingGlobally,
   type ReaderSettings,
@@ -161,7 +164,7 @@ import type { FocusSuggestion } from "./SmartReaderDock";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 import { ReaderOverlays } from "./reader/ReaderOverlays";
 import { ReaderContent } from "./reader/ReaderContent";
-import { ReaderDockHost } from "./reader/ReaderDockHost";
+import { computePacerSpeeds, ReaderDockHost, snapPacerWpm } from "./reader/ReaderDockHost";
 import { ReaderFloatingBars } from "./reader/ReaderFloatingBars";
 import { ReaderFloatingLane } from "./reader/ReaderFloatingLane";
 import { ReaderFocusLayers } from "./reader/ReaderFocusLayers";
@@ -1164,15 +1167,16 @@ export default function Reader({
   const onStallBubbleClick = useCallback(() => {
     setStallBubble(null);
     if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
-    const updated: ReaderSettings = {
-      ...settings,
-      paragraphFocus: true,
-      focusMode: "paragraph",
-    };
-    setSettings(updated);
-    saveReaderSettings(updated, bookHash);
+    // Pasa al modo Enfoque completo, igual que elegirlo en el popover
+    // (updateSettings se declara más abajo; misma regla de parche).
+    setSettings((current) => {
+      const next = resolveSettingsPatch(current, applyReadingPreset(current, "adhd"));
+      saveReaderSettings(next, bookHash);
+      return next;
+    });
+    setBookOverride(true);
     triggerHaptic("success");
-  }, [settings, bookHash, setStallBubble, stallBubbleTimerRef]);
+  }, [bookHash, setStallBubble, stallBubbleTimerRef]);
 
   // Hook del compañero (R1a): encapsula la máquina local, la presencia,
   // el ajuste de render al ocultar, los timers de toque/guardado y las
@@ -2278,7 +2282,7 @@ export default function Reader({
   useEffect(() => {
     if (settings.layout !== "pages" || state !== "ready") return;
     remeasure();
-  }, [settings.layout, settings.pageColumns, settings.size, settings.font, settings.measure, state, sectionIndex, remeasure]);
+  }, [settings.layout, settings.pageColumns, settings.size, settings.font, settings.measure, settings.textSpacing, state, sectionIndex, remeasure]);
 
   // Al cambiar el modo (scroll↔páginas) o lo que refluye el texto
   // (fuente, tamaño, medida, interlineado), el ancla devuelve al mismo
@@ -2294,10 +2298,12 @@ export default function Reader({
     settingsSize: settings.size,
     settingsMeasure: settings.measure,
     settingsLeading: settings.leading,
+    settingsTextSpacing: settings.textSpacing,
     layoutRef,
     containerRef,
     latestPositionRef,
     pageAnchorRef,
+    pendingPageRef,
     remeasure,
   });
 
@@ -2778,7 +2784,7 @@ export default function Reader({
     opts: { alsoGlobal: boolean },
   ) => {
     if (opts.alsoGlobal) {
-      saveReaderSettings({ ...loadReaderSettings(), ...patch });
+      applyPatchToAllReaderSettings(patch);
     }
     updateSettings(patch);
     setToastMessage(
@@ -2886,11 +2892,16 @@ export default function Reader({
   });
 
   // Marcapasos Visual ("Ritmo Guiado" para TDAH)
+  // El dock marca el botón más cercano a la velocidad guardada: el marcapasos
+  // corre a esa misma velocidad, no a la guardada sin ajustar.
+  const pacerSpeeds = useMemo(() => computePacerSpeeds(language), [language]);
+  const pacerWpm = snapPacerWpm(settings.pacerWpm || pacerSpeeds[1], pacerSpeeds);
   useVisualPacer({
     containerRef,
     pacerIndexRef,
     visualPacer: settings.visualPacer,
-    pacerWpm: settings.pacerWpm,
+    pacerWpm,
+    paged: settings.layout === "pages",
     strategyPaused,
     pacerPaused,
     state,
@@ -3438,7 +3449,7 @@ export default function Reader({
           onDismissRecordToast={() => setRecordToast(null)}
           isReadingActive={!readingPaused && !barsShown}
           onStartAudio5Min={handleStartAudio5Min}
-          language={language}
+          pacerSpeeds={pacerSpeeds}
           onOpenDeepReading={() => setDeepModal(true)}
           onOpenOpticalRecipe={handleOpenOpticalRecipe}
           isForeignLanguage={isForeignLanguage}

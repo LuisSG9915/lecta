@@ -193,23 +193,38 @@ export function defaultOpticalChoicesFromSettings(
   settings: Pick<ReaderSettings, "textSpacing" | "measure" | "font" | "layout">,
 ): OpticalRecipeChoices {
   return {
-    spacing: settings.textSpacing === "normal" ? "normal" : "relaxed",
+    // Sin valor = Normal (el valor por defecto); Holgado y Amplio caen en «Holgado».
+    spacing: settings.textSpacing === "relaxed" || settings.textSpacing === "wide" ? "relaxed" : "normal",
     measure: settings.measure <= 58 ? "compact" : "standard",
     font: settings.font === "atkinson" ? "atkinson" : "literata",
     layout: settings.layout === "pages" ? "pages" : "scroll",
   };
 }
 
+/**
+ * Ajustes que escribe la receta. Con `baseline` (lo que el lector ya tenía)
+ * solo se escribe lo que cambió: elegir la opción que coincide con lo actual
+ * conserva el valor exacto (Amplio, una medida de 72, Source Serif…).
+ */
 export function buildOpticalRecipePatch(
   choices: OpticalRecipeChoices,
+  baseline?: OpticalRecipeChoices,
 ): Partial<ReaderSettings> {
-  return {
-    textSpacing: choices.spacing as TextSpacingPreset,
-    measure: choices.measure === "compact" ? 55 : 65,
-    margins: choices.measure === "compact" ? "wide" : "medium",
-    font: choices.font as ReaderSettings["font"],
-    layout: choices.layout,
-  };
+  const patch: Partial<ReaderSettings> = {};
+  if (!baseline || choices.spacing !== baseline.spacing) {
+    patch.textSpacing = choices.spacing as TextSpacingPreset;
+  }
+  if (!baseline || choices.measure !== baseline.measure) {
+    patch.measure = choices.measure === "compact" ? 55 : 65;
+    patch.margins = choices.measure === "compact" ? "wide" : "medium";
+  }
+  if (!baseline || choices.font !== baseline.font) {
+    patch.font = choices.font as ReaderSettings["font"];
+  }
+  if (!baseline || choices.layout !== baseline.layout) {
+    patch.layout = choices.layout;
+  }
+  return patch;
 }
 
 export function summarizeOpticalRecipe(
