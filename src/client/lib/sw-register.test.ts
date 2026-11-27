@@ -425,3 +425,126 @@ describe("precaché del install en public/sw.js", () => {
     expect(requested.filter((p) => p === "/" || p === "/index.html")).toEqual([]);
   });
 });
+
+describe("recursos /assets/ en public/sw.js sin red", () => {
+  // Sin red, un asset que falta en el precaché no es un desajuste de
+  // versión: borrar todo el caché lecta-v2-* y mandar ASSET_MISMATCH_RELOAD
+  // rompía el resto de la app offline. Solo purga una respuesta real e
+  // inválida del servidor (p. ej. HTML del fallback SPA para un .js).
+  async function loadSw(fetchImpl: (req: Request) => Promise<Response>) {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const vm = await import("node:vm");
+    const swCode = await fs.readFile(path.resolve(process.cwd(), "public/sw.js"), "utf-8");
+
+    type FetchEvent = { request: Request; respondWith: (p: Promise<Response>) => void };
+    const listeners: Record<string, ((event: FetchEvent) => void)[]> = {};
+    const cachedJs = new Response("console.log('ok')", {
+      headers: { "content-type": "text/javascript" },
+    });
+    const stores = new Map<string, Map<string, Response>>([
+      ["lecta-v2-vX", new Map([["https://app.test/assets/app-OK.js", cachedJs]])],
+    ]);
+    const urlOf = (req: string | Request) =>
+      typeof req === "string" ? new URL(req, "https://app.test").href : req.url;
+    const deleted: string[] = [];
+    const postMessage = vi.fn();
+
+    const cachesMock = {
+      open: async (name: string) => {
+        if (!stores.has(name)) stores.set(name, new Map());
+        const m = stores.get(name)!;
+        return {
+          put: async (req: string | Request, res: Response) => void m.set(urlOf(req), res),
+          match: async (req: string | Request) => m.get(urlOf(req)),
+          delete: async (req: string | Request) => m.delete(urlOf(req)),
+        };
+      },
+      match: async (req: string | Request) => {
+        for (const m of stores.values()) {
+          const hit = m.get(urlOf(req));
+          if (hit) return hit;
+        }
+        return undefined;
+      },
+      keys: async () => [...stores.keys()],
+      delete: async (name: string) => {
+        deleted.push(name);
+        return stores.delete(name);
+      },
+    };
+
+    const sandbox = {
+      self: {
+        location: { origin: "https://app.test" },
+        addEventListener: (type: string, fn: (event: FetchEvent) => void) => {
+          (listeners[type] ||= []).push(fn);
+        },
+        skipWaiting: vi.fn(),
+        clients: {
+          claim: vi.fn(async () => {}),
+          matchAll: vi.fn(async () => [{ postMessage }]),
+        },
+        registration: {},
+        navigator: {},
+      },
+      caches: cachesMock,
+      fetch: vi.fn(fetchImpl),
+      Request,
+      Response,
+      URL,
+      Promise,
+      console,
+      Date,
+      setTimeout,
+      clearTimeout,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(swCode, sandbox);
+
+    async function request(pathname: string) {
+      let pending: Promise<Response> | undefined;
+      for (const fn of listeners["fetch"] ?? []) {
+        fn({
+          request: new Request(`https://app.test${pathname}`),
+          respondWith: (p) => {
+            pending = p;
+          },
+        });
+      }
+      const res = await pending!;
+      // deja correr las promesas sueltas (purga y postMessage).
+      await new Promise((r) => setTimeout(r, 10));
+      return res;
+    }
+    return { request, stores, deleted, postMessage, fetchMock: sandbox.fetch };
+  }
+
+  it("sin red, un asset ausente del precaché no purga el caché ni pide recargar", async () => {
+    const sw = await loadSw(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    const res = await sw.request("/assets/app-MISSING.js");
+
+    expect(res.status).toBe(503);
+    expect(sw.fetchMock).toHaveBeenCalledTimes(2);
+    expect(sw.deleted).toEqual([]);
+    expect(sw.postMessage).not.toHaveBeenCalled();
+    expect(sw.stores.get("lecta-v2-vX")?.has("https://app.test/assets/app-OK.js")).toBe(true);
+    // El resto de la app sigue saliendo del caché.
+    expect((await sw.request("/assets/app-OK.js")).status).toBe(200);
+  });
+
+  it("si el servidor responde HTML para un .js, purga el caché y avisa ASSET_MISMATCH_RELOAD", async () => {
+    const sw = await loadSw(
+      async () => new Response("<html></html>", { headers: { "content-type": "text/html" } }),
+    );
+
+    const res = await sw.request("/assets/app-STALE.js");
+
+    expect(res.status).toBe(404);
+    expect(sw.deleted).toEqual(["lecta-v2-vX"]);
+    expect(sw.postMessage).toHaveBeenCalledWith({ type: "ASSET_MISMATCH_RELOAD" });
+  });
+});

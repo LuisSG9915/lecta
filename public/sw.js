@@ -450,6 +450,13 @@ self.addEventListener("fetch", function (event) {
         return new Response("", { status: 404, statusText: "Asset Mismatch" });
       }
 
+      // Fallo de red (sin conexión, TypeError de fetch): no es un desajuste
+      // de versión. Purgar aquí borraba el caché entero y recargaba la app
+      // offline por un solo asset ausente del precaché.
+      function networkFailure() {
+        return new Response("", { status: 503, statusText: "Offline" });
+      }
+
       return fetch(req)
         .then(function (res) {
           if (isValidAssetResponse(url, res)) {
@@ -481,9 +488,7 @@ self.addEventListener("fetch", function (event) {
               }
               return handleAssetMismatch();
             })
-            .catch(function () {
-              return handleAssetMismatch();
-            });
+            .catch(networkFailure);
         })
         .catch(function () {
           // Reintento ante corte transitorio de red
@@ -494,9 +499,7 @@ self.addEventListener("fetch", function (event) {
               }
               return handleAssetMismatch();
             })
-            .catch(function () {
-              return handleAssetMismatch();
-            });
+            .catch(networkFailure);
         });
     })
   );
