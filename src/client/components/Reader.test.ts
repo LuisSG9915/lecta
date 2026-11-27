@@ -1988,8 +1988,9 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     expect(saveDirectly).toHaveBeenCalledWith(mockQuote);
     expect(host.textContent).toContain("Pasaje guardado en tu Cuaderno.");
     const savedBtn = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("✓ Guardado en tu Cuaderno"),
+      b.textContent?.includes("Guardado en tu Cuaderno"),
     )!;
+    expect(savedBtn.querySelector(".icon--check")).toBeTruthy();
     expect(savedBtn).toBeTruthy();
     expect(savedBtn.disabled).toBe(true);
 

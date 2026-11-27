@@ -21,6 +21,15 @@ vi.mock("../lib/auth", () => ({
   },
 }));
 
+let mockUserPlan: { plan: "free" | "lecta_plus"; starterCoat: null; expiresAt: null } | null = null;
+vi.mock("../lib/account-plan", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/account-plan")>();
+  return {
+    ...actual,
+    useUserPlan: vi.fn(() => mockUserPlan),
+  };
+});
+
 vi.mock("../lib/idb", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/idb")>();
   return {
@@ -81,6 +90,7 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
+  mockUserPlan = null;
   vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
 });
 
@@ -94,7 +104,7 @@ const render = (node: Parameters<Root["render"]>[0]) => act(() => root.render(no
 const flush = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
 describe("Account componente Tú y Login", () => {
-  it("renderiza la vista «Tú» compacta con 3 bloques y sección avanzada plegada", async () => {
+  it("renderiza la vista «Tú» en 2 capas con 3 cajones plegados por defecto", async () => {
     const onOpenJourney = vi.fn();
     render(
       h(Account, {
@@ -109,33 +119,39 @@ describe("Account componente Tú y Login", () => {
     expect(host.querySelector(".account-page")).toBeTruthy();
     expect(host.querySelector(".account-page-title")?.textContent).toBe("Tú");
 
-    // Bloque 1: Recorrido y tarjeta de cuenta
-    expect(host.querySelector(".account-journey-btn")).toBeTruthy();
-    const accountCard = host.querySelector(".account-card");
+    // Capa 1 (primer plano): Camino, cuenta sin sesión y Tu Kindle
+    const primaryLayer = host.querySelector('[data-layer="primary"]');
+    expect(primaryLayer).toBeTruthy();
+    expect(primaryLayer?.querySelector(".account-journey-btn")).toBeTruthy();
+    const accountCard = primaryLayer?.querySelector('section[aria-label="Tu cuenta"]');
     expect(accountCard).toBeTruthy();
     expect(accountCard?.textContent).toContain("Sincronización en la nube");
     expect(accountCard?.querySelector("button")?.textContent).toBe("Iniciar sesión o crear cuenta");
+    expect(primaryLayer?.querySelector('section[aria-label="Tu Kindle y otros lectores de tinta"]')).toBeTruthy();
 
     // No hay campos de contraseña abiertos en la vista principal
     expect(host.querySelector('input[type="password"]')).toBeNull();
 
-    // Bloque 2+: todas las secciones viven en tarjetas uniformes
-    const cards = host.querySelectorAll(".account-card");
-    expect(cards.length).toBeGreaterThanOrEqual(4);
+    // Capa 2 (cajón plegable): 3 pliegues cerrados por defecto
+    const foldsLayer = host.querySelector('[data-layer="folds"]');
+    expect(foldsLayer).toBeTruthy();
+    const folds = Array.from(foldsLayer?.querySelectorAll("details.account-fold") ?? []);
+    expect(folds.length).toBe(3);
+    folds.forEach((f) => expect(f.hasAttribute("open")).toBe(false));
+    expect(folds.map((f) => f.querySelector("summary")?.textContent?.trim())).toEqual([
+      "Lectura y apariencia",
+      "Correos y avisos",
+      "Cuenta, respaldos y datos",
+    ]);
+
+    // Contenido sigue presente dentro de sus tarjetas
     expect(host.textContent).toContain("Lectura y vocabulario");
     expect(host.textContent).toContain("Lengua materna");
     expect(host.textContent).toContain("Tu nivel y calibración");
     expect(host.textContent).toContain("Meta semanal de lectura");
     expect(host.textContent).toContain("Inteligencia artificial y diccionario");
-
-    // Bloque 3: Compañero y logros
     expect(host.textContent).toContain("Compañero y logros");
     expect(host.textContent).toContain("El gato del cuaderno");
-
-    // Bloque 4: Avanzado y privacidad (plegable)
-    const details = host.querySelector("details.account-advanced-details");
-    expect(details).toBeTruthy();
-    expect(details?.querySelector("summary")?.textContent).toContain("Avanzado y privacidad");
   });
 
   it("pulsar «Iniciar sesión o crear cuenta» abre el diálogo modal con pestañas", async () => {
@@ -252,7 +268,7 @@ describe("Account componente Tú y Login", () => {
     );
     await flush();
 
-    const accountCard = host.querySelector(".account-card");
+    const accountCard = host.querySelector('section[aria-label="Tu cuenta"]');
     expect(accountCard).toBeTruthy();
     expect(accountCard?.querySelector(".account-card-email")?.textContent).toBe("lector@lecta.app");
     expect(accountCard?.textContent).toContain("Cerrar sesión");
@@ -479,6 +495,124 @@ describe("Account componente Tú y Login", () => {
     await act(async () => diagBtn!.click());
     await flush();
     expect(host.querySelector('[aria-label="Acerca de y Diagnóstico"]')).toBeTruthy();
+  });
+
+  it("con sesión iniciada eleva Carné y Kindle sobre los cajones y abre Cuenta automáticamente ante error o resetToken", async () => {
+    mockUserPlan = { plan: "free", starterCoat: null, expiresAt: null };
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u_123",
+          email: "lector@lecta.app",
+          name: "Lector",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          emailVerified: true,
+        },
+        session: {
+          id: "s_123",
+          userId: "u_123",
+          token: "tok",
+          expiresAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      },
+      isPending: false,
+    } as never);
+    vi.mocked(authClient.changePassword).mockResolvedValueOnce({
+      error: { message: "Invalid password" },
+    } as never);
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes("/api/auth/list-accounts")) {
+        return new Response(JSON.stringify([{ providerId: "credential" }]), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        h(Account, {
+          presentation: "page",
+          onClose: vi.fn(),
+          onOpenCalibration: vi.fn(),
+          onOpenJourney: vi.fn(),
+        }),
+      );
+      await flush();
+      await flush();
+
+      const primary = host.querySelector('[data-layer="primary"]');
+      const drawer = host.querySelector('[data-layer="folds"]');
+      const journeyRow = primary?.querySelector(".account-journey-row");
+      const readerCard = primary?.querySelector(".reader-card");
+      const kindleCard = primary?.querySelector(
+        'section[aria-label="Tu Kindle y otros lectores de tinta"]',
+      );
+
+      expect(primary).toBeTruthy();
+      expect(drawer).toBeTruthy();
+      expect(journeyRow).toBeTruthy();
+      expect(readerCard).toBeTruthy();
+      expect(kindleCard).toBeTruthy();
+      expect(
+        journeyRow!.compareDocumentPosition(readerCard!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        readerCard!.compareDocumentPosition(kindleCard!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        primary!.compareDocumentPosition(drawer!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      const accountFold = host.querySelector<HTMLDetailsElement>('details.account-fold[data-fold="account"]');
+      expect(accountFold?.hasAttribute("open")).toBe(false);
+
+      // Abrir cambio de contraseña y provocar error -> el pliegue permanece abierto con alerta visible
+      const changeBtn = Array.from(accountFold?.querySelectorAll("button") ?? []).find((b) =>
+        b.textContent?.includes("Cambiar contraseña"),
+      );
+      expect(changeBtn).toBeTruthy();
+      await act(async () => changeBtn!.click());
+      await flush();
+      expect(accountFold?.hasAttribute("open")).toBe(true);
+
+      const curInput = accountFold?.querySelector<HTMLInputElement>("#current-password");
+      const newInput = accountFold?.querySelector<HTMLInputElement>("#new-password");
+      expect(curInput).toBeTruthy();
+      expect(newInput).toBeTruthy();
+      await act(async () => {
+        curInput!.value = "wrongpass";
+        curInput!.dispatchEvent(new Event("input", { bubbles: true }));
+        newInput!.value = "newpass123";
+        newInput!.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      const form = accountFold?.querySelector("form");
+      await act(async () => {
+        form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+      await flush();
+      expect(accountFold?.hasAttribute("open")).toBe(true);
+      expect(host.querySelector('[role="alert"]')?.textContent).toBeTruthy();
+
+      // Con resetToken el pliegue también se abre automáticamente aunque el estado previo no estaba forzado
+      render(
+        h(Account, {
+          presentation: "page",
+          onClose: vi.fn(),
+          onOpenCalibration: vi.fn(),
+          resetToken: "tok_reset",
+        }),
+      );
+      await flush();
+      expect(
+        host.querySelector('details.account-fold[data-fold="account"]')?.hasAttribute("open"),
+      ).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

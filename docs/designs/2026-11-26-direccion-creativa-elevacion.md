@@ -60,7 +60,7 @@ Toda ejecución de una fase `E<n>` debe cumplir **sin excepción**:
 - **Archivos exactos:**
   - `src/client/App.tsx`
   - `src/client/components/Shelf.tsx`
-  - `src/client/lib/reading-sync.ts`, `src/client/lib/epub.ts`, `src/client/lib/lexicon.ts`, `src/client/lib/knowledge.ts`, `src/client/lib/word-form.ts`, `src/client/lib/stopwords.ts` (solo si hace falta extraer tipos a `import type` o dividir entradas pesadas).
+  - `src/client/lib/reading-sync.ts`, `src/client/lib/epub.ts`, `src/client/lib/lexicon.ts`, `src/client/lib/knowledge.ts`, `src/shared/word-form.ts`, `src/shared/stopwords.ts` (solo si hace falta extraer tipos a `import type` o dividir entradas pesadas).
   - Prueba nueva o ampliación en `scripts/check-bundle-budget.mjs` / `src/client/App.test.ts` (asegurar que ningún import estático reintroduzca estos chunks en el preload).
 - **Cambios paso a paso:**
   1. Inspeccionar en `dist/client` qué imports estáticos en `App.tsx` y `Shelf.tsx` arrastran `reading-sync` (`6.54 kB`), `lexicon` (`3.60 kB`), `epub` (`3.49 kB`), `knowledge` (`2.27 kB`), `word-form` (`2.17 kB`) y `stopwords` (`1.91 kB`).

@@ -229,6 +229,7 @@ export default function Account({
   const [newPassword, setNewPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [showChange, setShowChange] = useState(false);
+  const [accountFoldOpen, setAccountFoldOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(Boolean(resetToken));
 
   const [prevResetToken, setPrevResetToken] = useState(resetToken);
@@ -784,10 +785,10 @@ export default function Account({
         </p>
         <p className="meta">
           {!online
-            ? "Sin conexión: el cuaderno se sincroniza al volver."
+            ? "Sin conexión: tu Herbario se sincroniza al volver."
             : lastSync
-              ? `Cuaderno sincronizado ${timeAgo(lastSync)}.`
-              : "Este dispositivo aún no sincroniza tu cuaderno."}
+              ? `Herbario sincronizado ${timeAgo(lastSync)}.`
+              : "Este dispositivo aún no sincroniza tu Herbario."}
         </p>
         <div className="actions">
           <button type="button" className="btn" disabled={busy} onClick={signOut}>
@@ -863,691 +864,726 @@ export default function Account({
     );
   }
 
+  const isAccountFoldOpen =
+    accountFoldOpen || showChange || Boolean(error) || Boolean(resetToken);
+
   return (
     <section className="account-page account" aria-label="Tú">
-      <header className="account-page-header">
-        <h1 className="account-page-title">Tú</h1>
-      </header>
+      <div className="account-stage" data-layer="primary">
+        <header className="account-page-header">
+          <h1 className="account-page-title">Tú</h1>
+        </header>
 
-      {onOpenJourney ? (
-        <section className="account-journey-row">
-          <button
-            type="button"
-            className="account-journey-btn"
-            onClick={onOpenJourney}
-          >
-            <div className="account-journey-btn-icon">
-              <Icon name="journey" size={24} />
-            </div>
-            <div className="account-journey-btn-info">
-              <strong className="account-journey-btn-title">Tu recorrido</strong>
-              <span className="account-journey-btn-sub">{journeySummary}</span>
-            </div>
-            <span className="account-journey-btn-arrow" aria-hidden="true">›</span>
-          </button>
-        </section>
-      ) : null}
-
-      {isPending ? <p className="meta">Cargando…</p> : null}
-
-      {message && !showAuthModal ? (
-        <p role="status" className="status">
-          {message}
-        </p>
-      ) : null}
-      {error && !showAuthModal ? (
-        <p role="alert" className="status">
-          {error}
-        </p>
-      ) : null}
-
-      {/* Carné de Lector: plan de la cuenta (Lecta+). */}
-      {!isPending && session?.user ? <ReaderCard plan={userPlan} notice={carneNotice} /> : null}
-
-      {/* Tarjeta 1: Sincronización y Modo Kindle */}
-      {!isPending && session?.user ? (
-        <section className="account-card" aria-label="Tu cuenta">
-          <div className="account-card-header">
-            <strong className="account-card-email">{session.user.email}</strong>
-            <span className="meta">
-              {!online
-                ? "Sin conexión: el cuaderno se sincroniza al volver."
-                : lastSync
-                  ? `Cuaderno sincronizado ${timeAgo(lastSync)}.`
-                  : "Sincronización activa en este dispositivo."}
-            </span>
-          </div>
-          <div className="actions">
-            <button type="button" className="btn" disabled={busy} onClick={signOut}>
-              Cerrar sesión
-            </button>
-            {hasCredential ? (
-              <button
-                type="button"
-                className="btn--quiet"
-                disabled={busy}
-                onClick={() => setShowChange(!showChange)}
-              >
-                {showChange ? "Cancelar cambio" : "Cambiar contraseña"}
-              </button>
-            ) : hasCredential === false ? (
-              <button
-                type="button"
-                className="btn--quiet"
-                disabled={busy}
-                onClick={sendSetPasswordLink}
-              >
-                Definir contraseña por correo
-              </button>
-            ) : null}
+        {onOpenJourney ? (
+          <section className="account-journey-row">
             <button
               type="button"
-              className="btn--quiet btn--danger"
-              disabled={busy}
-              onClick={requestDelete}
+              className="account-journey-btn"
+              onClick={onOpenJourney}
             >
-              {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
-            </button>
-          </div>
-          {showChange ? (
-            <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
-              <label htmlFor="current-password">Contraseña actual</label>
-              <input
-                id="current-password"
-                type="password"
-                required
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-              <label htmlFor="new-password">Nueva contraseña</label>
-              <input
-                id="new-password"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-              <div className="actions">
-                <button type="submit" className="btn btn--primary" disabled={busy}>
-                  Guardar
-                </button>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => setShowChange(false)}
-                >
-                  Cancelar
-                </button>
+              <div className="account-journey-btn-icon">
+                <Icon name="journey" size={24} />
               </div>
-            </form>
-          ) : null}
-          <ResetAccountSection userId={session.user.id} />
-        </section>
-      ) : !isPending ? (
-        <section className="account-card" aria-label="Tu cuenta">
-          <div className="account-card-header">
-            <strong className="account-card-title">Sincronización en la nube</strong>
-            <p className="account-card-desc">
-              Guarda tus libros, tu avance y tu cuaderno para leer en cualquier dispositivo.
-            </p>
-          </div>
-          <div className="actions">
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => {
-                setError("");
-                setMessage("");
-                setShowAuthModal(true);
-              }}
-            >
-              Iniciar sesión o crear cuenta
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Tarjeta 2: Tu Nivel y Calibración — un renglón por idioma
-          con su estado real (sin calibrar, calibrado o nivel
-          estándar) y una sola acción. */}
-      <section className="account-card account-card--level" aria-label="Tu nivel y calibración">
-        <div className="account-card-header">
-          <strong className="account-card-title">Tu nivel y calibración</strong>
-          <p className="account-card-desc">
-            15 segundos bastan para que Lecta ajuste las ayudas de cada capítulo a tu nivel.
-          </p>
-        </div>
-        {(["es", "en"] as const).map((lang) => {
-          const view = vocabStatusView(
-            lang,
-            lang === "es" ? vocabInfoEs : vocabInfoEn,
-          );
-          return (
-            <div className="setting-vocab-row" key={lang}>
-              <div className="setting-vocab-info">
-                <strong>{languageName(lang)}</strong>
-                <span className="meta">{view.text}</span>
+              <div className="account-journey-btn-info">
+                <strong className="account-journey-btn-title">Camino</strong>
+                <span className="account-journey-btn-sub">{journeySummary}</span>
               </div>
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() => adjustVocabulary(lang)}
-              >
-                {view.action}
-              </button>
-            </div>
-          );
-        })}
-      </section>
-
-      {/* Tarjeta 3: IA y diccionario — la memoria del diccionario y el
-          interruptor de IA vivían duplicados en «Avanzado y privacidad»;
-          aquí queda una sola versión. */}
-      <section className="account-card" aria-label="Inteligencia artificial y diccionario">
-        <div className="account-card-header">
-          <strong className="account-card-title">Inteligencia artificial y diccionario</strong>
-        </div>
-        <div className="setting-row setting-row--toggle">
-          <div className="setting-info">
-            <span className="setting-label">Usar IA para definir y corregir</span>
-            <p className="setting-hint">
-              {useAi
-                ? "Activo: explicaciones contextuales de pasajes y ayuda adaptativa. Solo viaja la palabra y su oración (máx. 500 caracteres): nunca el libro, tu cuenta ni tu actividad."
-                : "Desactivado: solo definiciones del catálogo local y Wikcionario."}
-            </p>
-          </div>
-          <Toggle
-            label="Usar IA para definir y corregir"
-            checked={useAi}
-            onChange={toggleUseAi}
-          />
-        </div>
-        <div className="setting-row setting-row--toggle">
-          <div className="setting-info">
-            <span className="setting-label">Memoria del diccionario</span>
-            <p className="setting-hint">
-              {cachedDictWords && cachedDictWords > 0
-                ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
-                : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
-            </p>
-          </div>
-          {cachedDictWords && cachedDictWords > 0 ? (
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => void handleClearDict()}
-            >
-              Liberar memoria ({cachedDictWords} palabras)
+              <span className="account-journey-btn-arrow" aria-hidden="true">›</span>
             </button>
-          ) : (
-            <span className="meta">Sin palabras cacheadas</span>
-          )}
-        </div>
-      </section>
-
-      <section className="account-card" aria-label="Correos de Lecta">
-        <div className="account-card-header">
-          <strong className="account-card-title">Correos de Lecta</strong>
-          <p className="account-card-desc">
-            El resumen de los lunes y el aviso cuando llevas una semana sin leer.
-          </p>
-        </div>
-        <div className="setting-row setting-row--toggle">
-          <div className="setting-info">
-            <span className="setting-label">Correo de regreso</span>
-            <p className="setting-hint">
-              {reengageOn
-                ? "Activo: si dejas de leer una semana, te recordamos tu libro y tus palabras (máximo uno al mes)."
-                : "Desactivado: no te escribiremos cuando dejes de leer."}
-            </p>
-          </div>
-          <Toggle
-            label="Recibir el correo de regreso"
-            checked={reengageOn}
-            onChange={toggleReengage}
-          />
-        </div>
-        <div className="setting-row setting-row--toggle">
-          <div className="setting-info">
-            <span className="setting-label">Recibir resumen semanal</span>
-            <p className="setting-hint">
-              {digestOptIn
-                ? "Activo: te enviaremos el resumen cada lunes."
-                : "Desactivado: no recibirás correos semanales."}
-            </p>
-          </div>
-          <Toggle
-            label="Recibir resumen semanal"
-            checked={digestOptIn}
-            onChange={toggleDigestOptIn}
-          />
-        </div>
-        <div className="setting-row">
-          <div className="setting-info">
-            <span className="setting-label">Enviar ahora</span>
-            <p className="setting-hint">
-              Manda el resumen de esta semana a tu correo de inmediato.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn--quiet"
-            onClick={() => void sendDigestNow()}
-            disabled={digestSending}
-          >
-            {digestSending ? "Enviando…" : "Enviar resumen"}
-          </button>
-        </div>
-      </section>
-
-      <section className="account-card" aria-label="Lectura y vocabulario">
-        <div className="account-card-header">
-          <strong className="account-card-title">Lectura y vocabulario</strong>
-        </div>
-
-        {theme && onThemeChange ? (
-          <div className="setting-block">
-            <span className="setting-label">Apariencia</span>
-            <p className="setting-hint">
-              Elige el fondo y el contraste que mejor se adapte a tu entorno de lectura.
-            </p>
-            <div style={{ marginTop: "var(--s-2)" }}>
-              <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
-            </div>
-          </div>
+          </section>
         ) : null}
 
-        <div className="setting-row setting-row--select">
-          <div className="setting-info">
-            <span className="setting-label">Lengua materna</span>
-            <p className="setting-hint">
-              Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
-            </p>
-          </div>
-          <select
-            aria-label="Lengua materna"
-            value={nativeLanguage}
-            onChange={(event) => changeNativeLanguage(event.target.value)}
-          >
-            <option value="es">Español</option>
-            <option value="en">Inglés</option>
-            <option value="fr">Francés</option>
-            <option value="de">Alemán</option>
-            <option value="pt">Portugués</option>
-            <option value="it">Italiano</option>
-          </select>
-        </div>
+        {isPending ? <p className="meta">Cargando…</p> : null}
 
-        <div className="setting-row setting-row--select">
-          <div className="setting-info">
-            <span className="setting-label">Meta semanal de lectura</span>
-            <p className="setting-hint">
-              De lunes a domingo; un día cuenta cuando lees al menos un minuto. La meta se guarda en este dispositivo.
-            </p>
-          </div>
-          <select
-            aria-label="Días de lectura por semana"
-            value={goalDays ?? ""}
-            onChange={(event) => changeGoal(event.target.value)}
-          >
-            <option value="">Sin meta</option>
-            {[1, 2, 3, 4, 5, 6, 7].map((days) => (
-              <option key={days} value={days}>
-                {days === 1 ? "1 día" : `${days} días`}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
-
-      <section className="account-card" aria-label="Compañero y logros">
-        <div className="account-card-header">
-          <strong className="account-card-title">Compañero y logros</strong>
-          <p className="account-card-desc">
-            Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros y cofres por leer y repasar.{" "}
-            {session?.user
-              ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
-              : "Todo queda en este dispositivo."}{" "}
-            Apágalo y Lecta se ve igual que siempre.
+        {message && !showAuthModal ? (
+          <p role="status" className="status">
+            {message}
           </p>
-        </div>
-        <div className="setting-row setting-row--toggle">
-          <div className="setting-info">
-            <span className="setting-label">El gato del cuaderno</span>
-          </div>
-          <Toggle
-            label="El gato del cuaderno"
-            checked={gameOn}
-            onChange={toggleGame}
-          />
-        </div>
-        {gameOn ? (
-          <>
-            <div className="setting-row setting-row--stack">
-              <div className="setting-info">
-                <span className="setting-label">El gato mientras lees</span>
-              </div>
-              <div
-                className="segmented segmented--wrap"
-                role="group"
-                aria-label="Presencia del gato al leer"
-              >
-                {(
-                  [
-                    ["off", "No mostrar"],
-                    ["visits", "Visitas discretas"],
-                    ["always", "Siempre cerca"],
-                    ["playful", "Más juguetón"],
-                  ] as const
-                ).map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    data-active={presence === val || undefined}
-                    aria-pressed={presence === val}
-                    onClick={() => void changePresence(val)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="setting-row setting-row--stack">
-              <div className="setting-info">
-                <span className="setting-label">Animaciones del gato</span>
-                <p className="setting-hint">
-                  Solo mueve al gato, sus festejos y sus cofres — el resto de Lecta sigue la regla de tu sistema.
-                </p>
-              </div>
-              <div
-                className="segmented segmented--wrap"
-                role="group"
-                aria-label="Animaciones del gato"
-              >
-                {(
-                  [
-                    ["system", "Según el sistema"],
-                    ["reduced", "Reducidas"],
-                    ["full", "Completas"],
-                  ] as const
-                ).map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    data-active={
-                      (devicePrefs?.motion ?? "system") === val || undefined
-                    }
-                    aria-pressed={(devicePrefs?.motion ?? "system") === val}
-                    onClick={() => void changeMotion(val)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="setting-row setting-row--toggle">
-              <div className="setting-info">
-                <span className="setting-label">Sonido del gato</span>
-                <p className="setting-hint">
-                  Suena solo al abrir su hoja o mientras lo acaricias, y solo en este dispositivo.
-                </p>
-              </div>
-              <Toggle
-                label="Sonido del gato"
-                checked={devicePrefs?.soundEnabled ?? false}
-                onChange={toggleSound}
-              />
-            </div>
-          </>
         ) : null}
-      </section>
+        {error && !showAuthModal ? (
+          <p role="alert" className="status">
+            {error}
+          </p>
+        ) : null}
 
-      {/* Tu Kindle: una sola tarjeta con la ruta corta del e-reader
-          (/k), el código de vinculación y la apariencia — antes la
-          guía estaba duplicada con rutas distintas (/k y /kindle). */}
-      {isFeatureFlagEnabled("kindleSync") ? (
-        <section className="account-card" aria-label="Tu Kindle y otros lectores de tinta">
-          <div className="account-card-header">
-            <strong className="account-card-title">Tu Kindle y otros lectores de tinta</strong>
-            <p className="account-card-desc">
-              En tu e-reader abre{" "}
-              <strong>{typeof window !== "undefined" ? window.location.host : "lecta.app"}/k</strong>{" "}
-              en su navegador e inicia sesión para leer y sincronizar tu avance.
-            </p>
-          </div>
-          {session?.user && userPlan && !hasLectaPlus(userPlan.plan) ? (
-            <PlanNote
-              feature="kindle"
-              title="Leer en tu Kindle es de Lecta+."
-              detail="Tu posición y tus palabras siguen guardadas en tu cuenta."
-            />
-          ) : session?.user ? (
-            <>
-              <p className="setting-hint">
-                Para vincular este dispositivo con la pantalla de tu e-reader, escribe el código de 4 letras que aparece allí.
+        {/* Carné de Lector: plan de la cuenta (Lecta+). */}
+        {!isPending && session?.user ? <ReaderCard plan={userPlan} notice={carneNotice} /> : null}
+
+        {/* Acceso rápido a cuenta cuando no hay sesión iniciada */}
+        {!isPending && !session?.user ? (
+          <section className="account-card" aria-label="Tu cuenta">
+            <div className="account-card-header">
+              <strong className="account-card-title">Sincronización en la nube</strong>
+              <p className="account-card-desc">
+                Guarda tus libros, tu avance y tu cuaderno para leer en cualquier dispositivo.
               </p>
-              {!showKindlePairForm ? (
-                <div className="actions">
-                  <button
-                    type="button"
-                    className="btn btn--secondary"
-                    onClick={() => setShowKindlePairForm(true)}
-                  >
-                    Conectar mi Kindle
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleLinkKindle} style={{ maxWidth: "340px" }}>
-                  <label htmlFor="kindle-code-input" className="setting-hint" style={{ display: "block", marginBottom: "0.3rem" }}>
-                    Código de 4 letras que aparece en tu Kindle:
-                  </label>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <input
-                      id="kindle-code-input"
-                      type="text"
-                      maxLength={4}
-                      value={kindleCode}
-                      onChange={(e) => setKindleCode(e.target.value.toUpperCase())}
-                      placeholder="Ej. K7M4"
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: "1.2rem",
-                        letterSpacing: "0.2rem",
-                        textAlign: "center",
-                        textTransform: "uppercase",
-                        width: "120px",
-                      }}
-                      autoFocus
-                    />
+            </div>
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => {
+                  setError("");
+                  setMessage("");
+                  setShowAuthModal(true);
+                }}
+              >
+                Iniciar sesión o crear cuenta
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {/* Tu Kindle: tarjeta protagonista con la ruta corta del e-reader
+            (/k), el código de vinculación y la apariencia. */}
+        {isFeatureFlagEnabled("kindleSync") ? (
+          <section className="account-card" aria-label="Tu Kindle y otros lectores de tinta">
+            <div className="account-card-header">
+              <strong className="account-card-title">Tu Kindle y otros lectores de tinta</strong>
+              <p className="account-card-desc">
+                En tu e-reader abre{" "}
+                <strong>{typeof window !== "undefined" ? window.location.host : "lecta.app"}/k</strong>{" "}
+                en su navegador e inicia sesión para leer y sincronizar tu avance.
+              </p>
+            </div>
+            {session?.user && userPlan && !hasLectaPlus(userPlan.plan) ? (
+              <PlanNote
+                feature="kindle"
+                title="Leer en tu Kindle es de Lecta+."
+                detail="Tu posición y tus palabras siguen guardadas en tu cuenta."
+              />
+            ) : session?.user ? (
+              <>
+                <p className="setting-hint">
+                  Para vincular este dispositivo con la pantalla de tu e-reader, escribe el código de 4 letras que aparece allí.
+                </p>
+                {!showKindlePairForm ? (
+                  <div className="actions">
                     <button
-                      type="submit"
-                      className="btn btn--primary"
-                      disabled={kindlePairLoading || kindleCode.trim().length !== 4}
+                      type="button"
+                      className="btn btn--secondary"
+                      onClick={() => setShowKindlePairForm(true)}
                     >
-                      {kindlePairLoading ? "Vinculando..." : "Vincular Kindle"}
+                      Conectar mi Kindle
                     </button>
                   </div>
-                  {kindlePairMessage ? (
-                    <p className="meta" style={{ color: "var(--success)", marginTop: "0.5rem", fontWeight: 500 }}>
-                      {kindlePairMessage}
-                    </p>
-                  ) : null}
-                  {kindlePairError ? (
-                    <p className="meta" style={{ color: "var(--danger)", marginTop: "0.5rem" }}>
-                      {kindlePairError}
-                    </p>
-                  ) : null}
-                </form>
-              )}
-            </>
-          ) : (
-            <p className="setting-hint">
-              Inicia sesión en tu cuenta para vincular tu e-reader y sincronizar el avance.
-            </p>
-          )}
-          <KindleAppearancePanel />
-        </section>
-      ) : null}
+                ) : (
+                  <form onSubmit={handleLinkKindle} style={{ maxWidth: "340px" }}>
+                    <label htmlFor="kindle-code-input" className="setting-hint" style={{ display: "block", marginBottom: "0.3rem" }}>
+                      Código de 4 letras que aparece en tu Kindle:
+                    </label>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <input
+                        id="kindle-code-input"
+                        type="text"
+                        maxLength={4}
+                        value={kindleCode}
+                        onChange={(e) => setKindleCode(e.target.value.toUpperCase())}
+                        placeholder="Ej. K7M4"
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: "1.2rem",
+                          letterSpacing: "0.2rem",
+                          textAlign: "center",
+                          textTransform: "uppercase",
+                          width: "120px",
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn--primary"
+                        disabled={kindlePairLoading || kindleCode.trim().length !== 4}
+                      >
+                        {kindlePairLoading ? "Vinculando..." : "Vincular Kindle"}
+                      </button>
+                    </div>
+                    {kindlePairMessage ? (
+                      <p className="meta" style={{ color: "var(--success)", marginTop: "0.5rem", fontWeight: 500 }}>
+                        {kindlePairMessage}
+                      </p>
+                    ) : null}
+                    {kindlePairError ? (
+                      <p className="meta" style={{ color: "var(--danger)", marginTop: "0.5rem" }}>
+                        {kindlePairError}
+                      </p>
+                    ) : null}
+                  </form>
+                )}
+              </>
+            ) : (
+              <p className="setting-hint">
+                Inicia sesión en tu cuenta para vincular tu e-reader y sincronizar el avance.
+              </p>
+            )}
+            <KindleAppearancePanel />
+          </section>
+        ) : null}
+      </div>
 
-      <details className="account-advanced-details">
-        <summary className="account-advanced-summary">
-          Avanzado y privacidad
-        </summary>
-        <div className="account-advanced-content">
-          <div className="setting-block">
-            <h3 className="eyebrow">Privacidad y datos</h3>
-            <div className="setting-row setting-row--toggle">
-              <div className="setting-info">
-                <span className="setting-label">Guardar el recorrido de lectura</span>
-                <p className="setting-hint">
-                  Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
-                  para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
-                  copia de tus datos y se borra solo con el tiempo.
-                </p>
+      {/* Capa 2: cajón plegable con preferencias y administración */}
+      <div className="account-drawer" data-layer="folds">
+        <details className="account-fold" data-fold="reading">
+          <summary className="account-fold-summary">
+            <span>Lectura y apariencia</span>
+            <span className="account-fold-chevron" aria-hidden="true">
+              <Icon name="chevron-right" size={16} />
+            </span>
+          </summary>
+          <div className="account-fold-body">
+            <section className="account-card" aria-label="Lectura y vocabulario">
+              <div className="account-card-header">
+                <strong className="account-card-title">Lectura y vocabulario</strong>
               </div>
-              <Toggle
-                label="Guardar el recorrido de lectura"
-                checked={historyOn}
-                onChange={toggleHistory}
-              />
-            </div>
-            <div className="setting-row setting-row--toggle">
-              <div className="setting-info">
-                <span className="setting-label">Copia de tus datos</span>
-                <p className="setting-hint">
-                  El respaldo guarda tus palabras, notas, posiciones e historial. Los archivos EPUB no viajan en el archivo de respaldo: si tienes cuenta se descargan desde tu nube, y si lees sin cuenta basta con volver a abrir tu archivo EPUB para recuperar tu progreso automáticamente.
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: "var(--s-2)", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() =>
-                    void downloadBackup().catch(() =>
-                      setError("No se pudo preparar el respaldo. Intenta de nuevo."),
-                    )
-                  }
+
+              {theme && onThemeChange ? (
+                <div className="setting-block">
+                  <span className="setting-label">Apariencia</span>
+                  <p className="setting-hint">
+                    Elige el fondo y el contraste que mejor se adapte a tu entorno de lectura.
+                  </p>
+                  <div style={{ marginTop: "var(--s-2)" }}>
+                    <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="setting-row setting-row--select">
+                <div className="setting-info">
+                  <span className="setting-label">Lengua materna</span>
+                  <p className="setting-hint">
+                    Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
+                  </p>
+                </div>
+                <select
+                  aria-label="Lengua materna"
+                  value={nativeLanguage}
+                  onChange={(event) => changeNativeLanguage(event.target.value)}
                 >
-                  Descargar mis datos (JSON)
-                </button>
-                <RestoreBackupDialog
-                  onRestored={async () => {
-                    setMessage("Respaldo restaurado correctamente.");
-                    if (onRestored) await onRestored();
-                  }}
-                  trigger={(openPicker) => (
+                  <option value="es">Español</option>
+                  <option value="en">Inglés</option>
+                  <option value="fr">Francés</option>
+                  <option value="de">Alemán</option>
+                  <option value="pt">Portugués</option>
+                  <option value="it">Italiano</option>
+                </select>
+              </div>
+
+              <div className="setting-row setting-row--select">
+                <div className="setting-info">
+                  <span className="setting-label">Meta semanal de lectura</span>
+                  <p className="setting-hint">
+                    De lunes a domingo; un día cuenta cuando lees al menos un minuto. La meta se guarda en este dispositivo.
+                  </p>
+                </div>
+                <select
+                  aria-label="Días de lectura por semana"
+                  value={goalDays ?? ""}
+                  onChange={(event) => changeGoal(event.target.value)}
+                >
+                  <option value="">Sin meta</option>
+                  {[1, 2, 3, 4, 5, 6, 7].map((days) => (
+                    <option key={days} value={days}>
+                      {days === 1 ? "1 día" : `${days} días`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">Guardar el recorrido de lectura</span>
+                  <p className="setting-hint">
+                    Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
+                    para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
+                    copia de tus datos y se borra solo con el tiempo.
+                  </p>
+                </div>
+                <Toggle
+                  label="Guardar el recorrido de lectura"
+                  checked={historyOn}
+                  onChange={toggleHistory}
+                />
+              </div>
+            </section>
+
+            {/* Tu Nivel y Calibración */}
+            <section className="account-card account-card--level" aria-label="Tu nivel y calibración">
+              <div className="account-card-header">
+                <strong className="account-card-title">Tu nivel y calibración</strong>
+                <p className="account-card-desc">
+                  15 segundos bastan para que Lecta ajuste las ayudas de cada capítulo a tu nivel.
+                </p>
+              </div>
+              {(["es", "en"] as const).map((lang) => {
+                const view = vocabStatusView(
+                  lang,
+                  lang === "es" ? vocabInfoEs : vocabInfoEn,
+                );
+                return (
+                  <div className="setting-vocab-row" key={lang}>
+                    <div className="setting-vocab-info">
+                      <strong>{languageName(lang)}</strong>
+                      <span className="meta">{view.text}</span>
+                    </div>
                     <button
                       type="button"
                       className="btn--quiet"
-                      onClick={openPicker}
+                      onClick={() => adjustVocabulary(lang)}
                     >
-                      Restaurar respaldo (JSON)
+                      {view.action}
                     </button>
-                  )}
+                  </div>
+                );
+              })}
+            </section>
+
+            {/* IA y diccionario */}
+            <section className="account-card" aria-label="Inteligencia artificial y diccionario">
+              <div className="account-card-header">
+                <strong className="account-card-title">Inteligencia artificial y diccionario</strong>
+              </div>
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">Usar IA para definir y corregir</span>
+                  <p className="setting-hint">
+                    {useAi
+                      ? "Activo: explicaciones contextuales de pasajes y ayuda adaptativa. Solo viaja la palabra y su oración (máx. 500 caracteres): nunca el libro, tu cuenta ni tu actividad."
+                      : "Desactivado: solo definiciones del catálogo local y Wikcionario."}
+                  </p>
+                </div>
+                <Toggle
+                  label="Usar IA para definir y corregir"
+                  checked={useAi}
+                  onChange={toggleUseAi}
                 />
               </div>
-            </div>
-          </div>
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">Memoria del diccionario</span>
+                  <p className="setting-hint">
+                    {cachedDictWords && cachedDictWords > 0
+                      ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
+                      : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
+                  </p>
+                </div>
+                {cachedDictWords && cachedDictWords > 0 ? (
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    onClick={() => void handleClearDict()}
+                  >
+                    Liberar memoria ({cachedDictWords} palabras)
+                  </button>
+                ) : (
+                  <span className="meta">Sin palabras cacheadas</span>
+                )}
+              </div>
+            </section>
 
-          <div className="setting-block">
-            <h3 className="eyebrow">Acerca de y Diagnóstico</h3>
-            <p className="meta">
-              Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
-              wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones y pronunciación IPA del Wikcionario
-              en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Contiene información de
-              «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
-              <a
-                href="https://github.com/LuisSG9915/lecta-lexicon-data"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Tablas derivadas y licencias
-              </a>
-              .
-              {SCREEN_ZONE_ENABLED
-                ? " Las listas de series y películas vienen de Trakt. Lecta usa Trakt, pero no está avalada ni certificada por Trakt."
-                : null}
-            </p>
-            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap", alignItems: "center" }}>
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() => setShowDiagnostics(true)}
-              >
-                Centro de diagnóstico
-              </button>
-              {isOwner ? (
+            {/* Compañero y logros */}
+            <section className="account-card" aria-label="Compañero y logros">
+              <div className="account-card-header">
+                <strong className="account-card-title">Compañero y logros</strong>
+                <p className="account-card-desc">
+                  Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros y cofres por leer y repasar.{" "}
+                  {session?.user
+                    ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
+                    : "Todo queda en este dispositivo."}{" "}
+                  Apágalo y Lecta se ve igual que siempre.
+                </p>
+              </div>
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">El gato del cuaderno</span>
+                </div>
+                <Toggle
+                  label="El gato del cuaderno"
+                  checked={gameOn}
+                  onChange={toggleGame}
+                />
+              </div>
+              {gameOn ? (
+                <>
+                  <div className="setting-row setting-row--stack">
+                    <div className="setting-info">
+                      <span className="setting-label">El gato mientras lees</span>
+                    </div>
+                    <div
+                      className="segmented segmented--wrap"
+                      role="group"
+                      aria-label="Presencia del gato al leer"
+                    >
+                      {(
+                        [
+                          ["off", "No mostrar"],
+                          ["visits", "Visitas discretas"],
+                          ["always", "Siempre cerca"],
+                          ["playful", "Más juguetón"],
+                        ] as const
+                      ).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          data-active={presence === val || undefined}
+                          aria-pressed={presence === val}
+                          onClick={() => void changePresence(val)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="setting-row setting-row--stack">
+                    <div className="setting-info">
+                      <span className="setting-label">Animaciones del gato</span>
+                      <p className="setting-hint">
+                        Solo mueve al gato, sus festejos y sus cofres — el resto de Lecta sigue la regla de tu sistema.
+                      </p>
+                    </div>
+                    <div
+                      className="segmented segmented--wrap"
+                      role="group"
+                      aria-label="Animaciones del gato"
+                    >
+                      {(
+                        [
+                          ["system", "Según el sistema"],
+                          ["reduced", "Reducidas"],
+                          ["full", "Completas"],
+                        ] as const
+                      ).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          data-active={
+                            (devicePrefs?.motion ?? "system") === val || undefined
+                          }
+                          aria-pressed={(devicePrefs?.motion ?? "system") === val}
+                          onClick={() => void changeMotion(val)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="setting-row setting-row--toggle">
+                    <div className="setting-info">
+                      <span className="setting-label">Sonido del gato</span>
+                      <p className="setting-hint">
+                        Suena solo al abrir su hoja o mientras lo acaricias, y solo en este dispositivo.
+                      </p>
+                    </div>
+                    <Toggle
+                      label="Sonido del gato"
+                      checked={devicePrefs?.soundEnabled ?? false}
+                      onChange={toggleSound}
+                    />
+                  </div>
+                </>
+              ) : null}
+            </section>
+          </div>
+        </details>
+
+        <details className="account-fold" data-fold="emails">
+          <summary className="account-fold-summary">
+            <span>Correos y avisos</span>
+            <span className="account-fold-chevron" aria-hidden="true">
+              <Icon name="chevron-right" size={16} />
+            </span>
+          </summary>
+          <div className="account-fold-body">
+            <section className="account-card" aria-label="Correos de Lecta">
+              <div className="account-card-header">
+                <strong className="account-card-title">Correos de Lecta</strong>
+                <p className="account-card-desc">
+                  El resumen de los lunes y el aviso cuando llevas una semana sin leer.
+                </p>
+              </div>
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">Correo de regreso</span>
+                  <p className="setting-hint">
+                    {reengageOn
+                      ? "Activo: si dejas de leer una semana, te recordamos tu libro y tus palabras (máximo uno al mes)."
+                      : "Desactivado: no te escribiremos cuando dejes de leer."}
+                  </p>
+                </div>
+                <Toggle
+                  label="Recibir el correo de regreso"
+                  checked={reengageOn}
+                  onChange={toggleReengage}
+                />
+              </div>
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">Recibir resumen semanal</span>
+                  <p className="setting-hint">
+                    {digestOptIn
+                      ? "Activo: te enviaremos el resumen cada lunes."
+                      : "Desactivado: no recibirás correos semanales."}
+                  </p>
+                </div>
+                <Toggle
+                  label="Recibir resumen semanal"
+                  checked={digestOptIn}
+                  onChange={toggleDigestOptIn}
+                />
+              </div>
+              <div className="setting-row">
+                <div className="setting-info">
+                  <span className="setting-label">Enviar ahora</span>
+                  <p className="setting-hint">
+                    Manda el resumen de esta semana a tu correo de inmediato.
+                  </p>
+                </div>
                 <button
                   type="button"
                   className="btn--quiet"
-                  onClick={() => setShowAdmin(true)}
+                  onClick={() => void sendDigestNow()}
+                  disabled={digestSending}
                 >
-                  Panel de análisis
+                  {digestSending ? "Enviando…" : "Enviar resumen"}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn--quiet"
-                disabled={resyncLoading}
-                onClick={async () => {
-                  if (resyncLoading) return;
-                  setResyncLoading(true);
-                  setResyncMessage("");
-                  try {
-                    const res = await forceFullResyncFromServer();
-                    if (res.ok) {
-                      setResyncMessage(
-                        res.booksDownloaded
-                          ? `Sincronizado · ${res.booksDownloaded} ${
-                              res.booksDownloaded === 1 ? "libro recuperado" : "libros recuperados"
-                            }`
-                          : res.diverged
-                            ? "Sincronizado (divergencia detectada)"
-                            : "Sincronizado correctamente",
-                      );
-                      // La biblioteca pudo recuperar libros: repintar la
-                      // estantería sin salir de Cuenta.
-                      if (onRestored) await onRestored();
-                    } else {
-                      setResyncMessage(res.error || "Error al sincronizar");
+              </div>
+            </section>
+          </div>
+        </details>
+
+        <details
+          className="account-fold"
+          data-fold="account"
+          open={isAccountFoldOpen}
+          onToggle={(e) => setAccountFoldOpen(e.currentTarget.open)}
+        >
+          <summary className="account-fold-summary account-advanced-summary">
+            <span>Cuenta, respaldos y datos</span>
+            <span className="account-fold-chevron" aria-hidden="true">
+              <Icon name="chevron-right" size={16} />
+            </span>
+          </summary>
+          <div className="account-fold-body">
+            {!isPending && session?.user ? (
+              <section className="account-card" aria-label="Tu cuenta">
+                <div className="account-card-header">
+                  <strong className="account-card-email">{session.user.email}</strong>
+                  <span className="meta">
+                    {!online
+                      ? "Sin conexión: tu Herbario se sincroniza al volver."
+                      : lastSync
+                        ? `Herbario sincronizado ${timeAgo(lastSync)}.`
+                        : "Sincronización activa en este dispositivo."}
+                  </span>
+                </div>
+                <div className="actions">
+                  <button type="button" className="btn" disabled={busy} onClick={signOut}>
+                    Cerrar sesión
+                  </button>
+                  {hasCredential ? (
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      disabled={busy}
+                      onClick={() => setShowChange(!showChange)}
+                    >
+                      {showChange ? "Cancelar cambio" : "Cambiar contraseña"}
+                    </button>
+                  ) : hasCredential === false ? (
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      disabled={busy}
+                      onClick={sendSetPasswordLink}
+                    >
+                      Definir contraseña por correo
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn--quiet btn--danger"
+                    disabled={busy}
+                    onClick={requestDelete}
+                  >
+                    {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
+                  </button>
+                </div>
+                {showChange ? (
+                  <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
+                    <label htmlFor="current-password">Contraseña actual</label>
+                    <input
+                      id="current-password"
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                    />
+                    <label htmlFor="new-password">Nueva contraseña</label>
+                    <input
+                      id="new-password"
+                      type="password"
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                    />
+                    <div className="actions">
+                      <button type="submit" className="btn btn--primary" disabled={busy}>
+                        Guardar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn--quiet"
+                        onClick={() => setShowChange(false)}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+                <ResetAccountSection userId={session.user.id} />
+              </section>
+            ) : null}
+
+            <div className="setting-block">
+              <h3 className="eyebrow">Respaldos</h3>
+              <div className="setting-row setting-row--toggle">
+                <div className="setting-info">
+                  <span className="setting-label">Copia de tus datos</span>
+                  <p className="setting-hint">
+                    El respaldo guarda tus palabras, notas, posiciones e historial. Los archivos EPUB no viajan en el archivo de respaldo: si tienes cuenta se descargan desde tu nube, y si lees sin cuenta basta con volver a abrir tu archivo EPUB para recuperar tu progreso automáticamente.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "var(--s-2)", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    onClick={() =>
+                      void downloadBackup().catch(() =>
+                        setError("No se pudo preparar el respaldo. Intenta de nuevo."),
+                      )
                     }
-                  } catch (e) {
-                    setResyncMessage(
-                      e instanceof Error ? e.message : "Error al sincronizar",
-                    );
-                  } finally {
-                    setResyncLoading(false);
-                  }
-                }}
-              >
-                {resyncLoading ? "Resincronizando…" : "Resincronizar desde el servidor"}
-              </button>
-              {resyncMessage ? (
-                <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
-                  {resyncMessage}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() => setShowLegal("privacy")}
-              >
-                Aviso de Privacidad
-              </button>
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() => setShowLegal("terms")}
-              >
-                Términos de Uso
-              </button>
+                  >
+                    Descargar mis datos (JSON)
+                  </button>
+                  <RestoreBackupDialog
+                    onRestored={async () => {
+                      setMessage("Respaldo restaurado correctamente.");
+                      if (onRestored) await onRestored();
+                    }}
+                    trigger={(openPicker) => (
+                      <button
+                        type="button"
+                        className="btn--quiet"
+                        onClick={openPicker}
+                      >
+                        Restaurar respaldo (JSON)
+                      </button>
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="setting-block">
+              <h3 className="eyebrow">Acerca de y Diagnóstico</h3>
+              <p className="meta">
+                Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
+                wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones y pronunciación IPA del Wikcionario
+                en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Contiene información de
+                «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
+                <a
+                  href="https://github.com/LuisSG9915/lecta-lexicon-data"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Tablas derivadas y licencias
+                </a>
+                .
+                {SCREEN_ZONE_ENABLED
+                  ? " Las listas de series y películas vienen de Trakt. Lecta usa Trakt, pero no está avalada ni certificada por Trakt."
+                  : null}
+              </p>
+              <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => setShowDiagnostics(true)}
+                >
+                  Centro de diagnóstico
+                </button>
+                {isOwner ? (
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    onClick={() => setShowAdmin(true)}
+                  >
+                    Panel de análisis
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  disabled={resyncLoading}
+                  onClick={async () => {
+                    if (resyncLoading) return;
+                    setResyncLoading(true);
+                    setResyncMessage("");
+                    try {
+                      const res = await forceFullResyncFromServer();
+                      if (res.ok) {
+                        setResyncMessage(
+                          res.booksDownloaded
+                            ? `Sincronizado · ${res.booksDownloaded} ${
+                                res.booksDownloaded === 1 ? "libro recuperado" : "libros recuperados"
+                              }`
+                            : res.diverged
+                              ? "Sincronizado (divergencia detectada)"
+                              : "Sincronizado correctamente",
+                        );
+                        // La biblioteca pudo recuperar libros: repintar la
+                        // estantería sin salir de Cuenta.
+                        if (onRestored) await onRestored();
+                      } else {
+                        setResyncMessage(res.error || "Error al sincronizar");
+                      }
+                    } catch (e) {
+                      setResyncMessage(
+                        e instanceof Error ? e.message : "Error al sincronizar",
+                      );
+                    } finally {
+                      setResyncLoading(false);
+                    }
+                  }}
+                >
+                  {resyncLoading ? "Resincronizando…" : "Resincronizar desde el servidor"}
+                </button>
+                {resyncMessage ? (
+                  <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+                    {resyncMessage}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => setShowLegal("privacy")}
+                >
+                  Aviso de Privacidad
+                </button>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => setShowLegal("terms")}
+                >
+                  Términos de Uso
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </details>
+        </details>
+      </div>
 
       {showDiagnostics ? (
         <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />

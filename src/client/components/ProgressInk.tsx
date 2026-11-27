@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { memo } from "react";
+import Icon from "./Icon";
 
 export interface ProgressInkProps {
   value: number;
@@ -180,7 +181,7 @@ function ProgressInkImpl({
       </div>
       {checkpointFlash && !reducedMotion ? (
         <span className="progress-ink-drops" aria-hidden="true">
-          +3 💧
+          +3 <Icon name="droplet" size={13} />
         </span>
       ) : null}
     </div>

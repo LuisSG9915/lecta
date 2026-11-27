@@ -15,6 +15,7 @@ export function WordRow({
   onSpeak,
   bookTitle,
   onQuickGame,
+  onShareCard,
 }: {
   word: SavedWord;
   state: { label: string; level: MarkLevel | "due" };
@@ -26,6 +27,7 @@ export function WordRow({
   onSpeak: () => void;
   bookTitle?: string;
   onQuickGame?: () => void;
+  onShareCard?: () => void;
 }) {
   const detailId = `word-detail-${word.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const cardStability = safeStability(word.card?.stability);
@@ -148,6 +150,17 @@ export function WordRow({
                 onClick={onLearn}
               >
                 Aprender
+              </button>
+            ) : null}
+            {onShareCard ? (
+              <button
+                type="button"
+                className="btn--quiet"
+                aria-label={`Crear postal de ${word.form}`}
+                title="Crear postal compartible"
+                onClick={onShareCard}
+              >
+                Postal
               </button>
             ) : null}
             <button

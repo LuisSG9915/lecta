@@ -11,6 +11,7 @@ import { generateClozeOptions } from "../lib/game";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
 import { speakWord } from "../lib/speech";
+import Icon from "./Icon";
 
 export interface SentenceBuilderGameProps {
   readonly targetWord: string;
@@ -579,7 +580,7 @@ export function SentenceBuilderGame({
             onClick={handleClozeHint}
             title="Descartar una opción incorrecta"
           >
-            💡 Descartar opción
+            <Icon name="bulb" size={14} /> Descartar opción
           </button>
           {onAskHint ? (
             <button
@@ -591,7 +592,13 @@ export function SentenceBuilderGame({
                 onAskHint();
               }}
             >
-              {hintBusy ? "Consultando…" : "🐱 Michi"}
+              {hintBusy ? (
+                "Consultando…"
+              ) : (
+                <>
+                  <Icon name="cat" size={14} /> Michi
+                </>
+              )}
             </button>
           ) : null}
         </div>
@@ -707,7 +714,7 @@ export function SentenceBuilderGame({
           onClick={shuffleAvailable}
           title="Barajar palabras restantes"
         >
-          🔀 Barajar
+          <Icon name="shuffle" size={14} /> Barajar
         </button>
         <button
           type="button"
@@ -734,7 +741,7 @@ export function SentenceBuilderGame({
           onClick={giveAutoHint}
           title="Colocar la siguiente palabra correcta"
         >
-          💡 Pista
+          <Icon name="bulb" size={14} /> Pista
         </button>
         {onAskHint ? (
           <button
@@ -746,7 +753,13 @@ export function SentenceBuilderGame({
               onAskHint();
             }}
           >
-            {hintBusy ? "Consultando…" : "🐱 Michi"}
+            {hintBusy ? (
+              "Consultando…"
+            ) : (
+              <>
+                <Icon name="cat" size={14} /> Michi
+              </>
+            )}
           </button>
         ) : null}
       </div>

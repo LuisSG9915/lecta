@@ -11,6 +11,8 @@ export type QuoteCardRequest = {
   bookTitle?: string;
   author?: string;
   chapterTitle?: string;
+  highlightWord?: string;
+  gloss?: string;
 };
 
 type QuotesPanelProps = {

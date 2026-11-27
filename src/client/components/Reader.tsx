@@ -23,7 +23,7 @@ import {
 import {
   captureDbScope,
   getStoredBook,
-  listAllKnowledge,
+  listAllKnowledge, listIntervals,
   listReadingEvents,
   listSavedWords,
   loadBookPosition,
@@ -143,7 +143,7 @@ import {
   generateZeroSpoilerSceneRecap,
   type SceneReturnRecap,
 } from "../lib/page-recap";
-import { type TimeInterval } from "../lib/reading-activity";
+import { totalMs, type TimeInterval } from "../lib/reading-activity";
 import {
   checkPassiveExposure as checkPassiveExposureEvidence,
   refreshProfile,
@@ -924,6 +924,7 @@ export default function Reader({
   const glossaryReleaseRef = useRef<OverlayHandle | null>(null);
   const quoteReleaseRef = useRef<OverlayHandle | null>(null);
   const summaryReleaseRef = useRef<OverlayHandle | null>(null);
+  const [exlibrisModal, setExlibrisModal] = useState<{ words: string[]; readingMinutes: number } | null>(null);
 
   // Cableado de overlays (glosario, resumen) — extraído a useReaderOverlayWiring (B7).
   useReaderOverlayWiring({
@@ -3704,6 +3705,37 @@ export default function Reader({
         onCloseDeepModal={() => setDeepModal(false)}
         deepSummary={deepSummary}
         postChapterQueue={postChapterQueue}
+        bookCompleted={sectionTotal > 0 && sectionIndex + 1 >= sectionTotal}
+        exlibrisModal={exlibrisModal}
+        onCloseExlibris={() => {
+          quoteReleaseRef.current?.release();
+          quoteReleaseRef.current = null;
+          setExlibrisModal(null);
+        }}
+        onOpenDeepSummaryExlibris={() => {
+          if (summaryReleaseRef.current) {
+            quoteReleaseRef.current?.release();
+            quoteReleaseRef.current = summaryReleaseRef.current;
+            summaryReleaseRef.current = null;
+            quoteReleaseRef.current.swap(() => setExlibrisModal(null));
+          }
+          setDeepSummary(null);
+          const scope = captureDbScope();
+          void Promise.all([
+            Promise.resolve(listSavedWords(undefined, scope)).catch(() => [] as SavedWord[]),
+            Promise.resolve(listIntervals(scope)).catch(() => []),
+          ]).then(([allWords, allIntervals]) => {
+            const wordsForBook = allWords
+              .filter((w) => !w.deleted && w.bookHash === bookHash)
+              .slice()
+              .sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0))
+              .map((w) => w.lemma?.trim() || w.form?.trim() || "")
+              .filter(Boolean);
+            const ms = totalMs(allIntervals.filter((iv) => iv.bookHash === bookHash));
+            const readingMinutes = ms > 0 ? Math.max(1, Math.round(ms / 60_000)) : 0;
+            setExlibrisModal({ words: wordsForBook, readingMinutes });
+          });
+        }}
         onShareDeepSummaryQuote={(quote) => {
           if (summaryReleaseRef.current) {
             quoteReleaseRef.current?.release();

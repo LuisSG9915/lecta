@@ -46,20 +46,15 @@ import { decidePendingDelete, PENDING_DELETE_KEY, clearSyncCursors } from "./lib
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { loadTtsLandingPosition } from "./lib/tts-landing";
-import { downloadCatalogEpub, listCatalog, type CatalogBook } from "./lib/catalog";
+import type { CatalogBook } from "./lib/catalog";
 import { parseTrialBook, type TrialBook } from "./lib/trial";
 import { isReviewDueWord } from "./lib/fsrs-light";
 import {
   COMPANION_LETTERS_KEY,
   parseCompanionLetters,
 } from "./lib/companion-inbox";
-import {
-  CALIBRATION_DONE_KEY,
-  calibrationDoneKey,
-  catHistoryToCalibration,
-  recordCalibration,
-  type CalibrationWord,
-} from "./lib/calibration";
+import { CALIBRATION_DONE_KEY, calibrationDoneKey } from "./lib/calibration-keys";
+import type { CalibrationWord } from "./lib/calibration";
 import { LoadingScreen } from "./components/LoadingScreen";
 import {
   captureDbScope,
@@ -102,40 +97,19 @@ import {
 } from "./lib/last-user";
 import {
   bookDisplayName,
-  coverToJpegBlob,
   displayTitle,
   humanizeFilename,
   isHashLikeIdentifier,
-  readBookMeta,
-} from "./lib/cover";
-import { downloadBookWithStatus, fetchBookGuide, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
+} from "../shared/book-display";
+import { genreFromSubjects } from "../shared/book-genres";
 import { paperGuideSessionKey, sanitizePaperBookGuide } from "../shared/paper-guide";
 import type {
   SubtitleWorkRef,
 } from "./lib/subtitle-works";
 import type { SubtitleGuide } from "./components/SubtitleShelf";
-import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
-import { primeSyncChanges } from "./lib/sync-changes";
 import { findDeepLinkItem, parseOpenBookParam } from "./lib/deep-link";
 import { shouldShowTrialEnd } from "./lib/trial-notice";
-import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
-
-import { extractEpubMeta } from "../shared/epub-meta";
-import { genreFromSubjects } from "../shared/book-genres";
-import { syncSavedWords } from "./lib/vocab";
-import {
-  flushPendingReadingSync,
-  registerReadingSyncRunner,
-  syncActivity,
-  syncAnnotations,
-  syncKnowledge,
-  syncReviews,
-  pullMissingUserBooksFromCloud,
-  syncUserBookUpload,
-} from "./lib/reading-sync";
-import { pushDailySummaries } from "./lib/daily-summary";
-import { syncCompanion } from "./lib/companion-sync";
-import { checkRemoteReset } from "./lib/account-reset";
+import type { PositionConflict } from "./lib/positions-sync";
 import {
   claimStarterCoat,
   loadPlan,
@@ -146,7 +120,6 @@ import {
   useUserPlan,
 } from "./lib/account-plan";
 import { hasLectaPlus } from "../shared/plan";
-import { checkEpubFile, epubCheckMessage } from "./lib/epub-intake";
 import { authClient } from "./lib/auth";
 import { SCREEN_ZONE_ENABLED } from "./lib/screen-zone";
 
@@ -164,6 +137,7 @@ type BookSelection = BookFileSelection & {
 };
 
 const LOCAL_ONLY_NOTICE_KEY = "lecta:local-only-notice:v1";
+const RESUME_TRIAL_BOOK_KEY = "lecta:resume-trial-book";
 /** true si aún no se mostró (sin storage no se muestra). */
 function localOnlyNoticePending(): boolean {
   try {
@@ -417,7 +391,9 @@ export default function App() {
       });
       // La posición final de la sesión de lectura sale aquí hacia la
       // cuenta, para que los demás dispositivos continúen donde quedó.
-      void syncPositions().catch(() => null);
+      void import("./lib/positions-sync")
+        .then(({ syncPositions }) => syncPositions())
+        .catch(() => null);
     };
     // Guardar antes de cerrar. Con «atrás» del navegador (gesto o botón)
     // el cierre no pasa por el guardado del lector: el desmontaje escribe
@@ -799,12 +775,16 @@ export default function App() {
     const bound = captureDbScope();
     let books: StoredBook[];
     let ops: Awaited<ReturnType<typeof listBookOps>>;
-    let remote: Awaited<ReturnType<typeof listRemoteBooks>>;
+    let remote: Awaited<ReturnType<typeof import("./lib/books").listRemoteBooks>>;
     try {
       [books, ops, remote] = await Promise.all([
         listStoredBooks(bound),
         listBookOps(bound),
-        sessionUserId ? listRemoteBooks(bound).catch(() => []) : Promise.resolve([]),
+        sessionUserId
+          ? import("./lib/books")
+              .then(({ listRemoteBooks }) => listRemoteBooks(bound))
+              .catch(() => [])
+          : Promise.resolve([]),
       ]);
     } catch (err) {
       if (isDbScopeActive(bound)) {
@@ -860,8 +840,11 @@ export default function App() {
         if (local?.cover) {
           retrofilledCoversRef.current.add(r.hash);
           const bound = captureDbScope();
-          void coverToJpegBlob(local.cover)
-            .then((jpeg) => uploadBookCover(r.hash, jpeg, bound))
+          void Promise.all([import("./lib/cover"), import("./lib/books")])
+            .then(async ([{ coverToJpegBlob }, { uploadBookCover }]) => {
+              const jpeg = await coverToJpegBlob(local.cover!);
+              return uploadBookCover(r.hash, jpeg, bound);
+            })
             .catch(() => {});
         }
       }
@@ -914,6 +897,10 @@ export default function App() {
     if (!plus || before === true || !userPlan) return;
     const scope = captureDbScope();
     void (async () => {
+      const [{ listRemoteBooks }, { queueBookUpload, runBookQueue }] = await Promise.all([
+        import("./lib/books"),
+        import("./lib/book-queue"),
+      ]);
       const remote = await listRemoteBooks(scope).catch(() => []);
       const local = new Set((await listStoredBooks(scope).catch(() => [])).map((b) => b.hash));
       const pending = remote.filter((r) => r.hasFile === false && local.has(r.hash));
@@ -1098,11 +1085,32 @@ export default function App() {
       // checkRemoteReset trae el plan fresco en el mismo cuerpo.
       await loadPlan(sessionUserId, scope);
 
+      const [
+        accountResetMod,
+        vocabMod,
+        readingSyncMod,
+        companionSyncMod,
+        positionsSyncMod,
+        dailySummaryMod,
+        booksMod,
+        bookQueueMod,
+      ] = await Promise.all([
+        import("./lib/account-reset"),
+        import("./lib/vocab"),
+        import("./lib/reading-sync"),
+        import("./lib/companion-sync"),
+        import("./lib/positions-sync"),
+        import("./lib/daily-summary"),
+        import("./lib/books"),
+        import("./lib/book-queue"),
+      ]);
+      if (cancelled) return;
+
       // Antes de empujar nada: si la cuenta se reinició en otro
       // dispositivo, esta copia local quedó obsoleta — el chequeo la
       // vacía y devuelve true, y el contexto se recaptura sobre la base
       // limpia. Sin este paso la copia vieja resucitaría lo borrado.
-      if (await checkRemoteReset(scope, { force: true })) {
+      if (await accountResetMod.checkRemoteReset(scope, { force: true })) {
         scope = captureDbScope();
         void refreshLibrary();
       }
@@ -1114,7 +1122,8 @@ export default function App() {
       void claimStarterCoat(sessionUserId, scope);
       if (authLink.carne === "gracias") void pollPlanUntilPlus(sessionUserId, scope);
 
-      const pulled = await syncSavedWords(scope)
+      const pulled = await vocabMod
+        .syncSavedWords(scope)
         .then((res) => {
           if (res !== null) {
             recordCollectionSyncSuccess("words");
@@ -1128,11 +1137,12 @@ export default function App() {
           return null;
         });
       if (!cancelled && pulled) {
-        setMessage(`Cuaderno sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
+        setMessage(`Herbario sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
         setVocabVersion((v) => v + 1);
       }
       // Marcadores y pasajes: mismo ciclo, sin bloquear la estantería.
-      const pulledMarks = await syncAnnotations(scope)
+      const pulledMarks = await readingSyncMod
+        .syncAnnotations(scope)
         .then((res) => {
           if (res !== null) {
             recordCollectionSyncSuccess("annotations");
@@ -1150,7 +1160,8 @@ export default function App() {
       }
       // Actividad de lectura: mismas reglas, anexable por id. Si
       // llegaron intervalos el panel del Cuaderno relee su progreso.
-      void syncActivity(scope)
+      void readingSyncMod
+        .syncActivity(scope)
         .then((pulledAct) => {
           if (pulledAct !== null) {
             recordCollectionSyncSuccess("activity");
@@ -1163,7 +1174,8 @@ export default function App() {
           recordCollectionSyncFailure("activity", err);
         });
       // Repasos del cuaderno: anexables por id, mismo ciclo.
-      void syncReviews(scope)
+      void readingSyncMod
+        .syncReviews(scope)
         .then((res) => {
           if (res !== null) {
             recordCollectionSyncSuccess("reviews");
@@ -1176,7 +1188,8 @@ export default function App() {
         });
       // El compañero: baja lo que otros dispositivos escribieron y
       // sube journal, registros y recepciones pendientes.
-      void syncCompanion(scope)
+      void companionSyncMod
+        .syncCompanion(scope)
         .then((res) => {
           if (res !== null) {
             recordCollectionSyncSuccess("companion");
@@ -1190,7 +1203,8 @@ export default function App() {
       // Conocimiento del lector: misma fusión por clave con updatedAt
       // como árbitro, lápidas incluidas. Si bajó algo, el lector
       // recarga su perfil como cuando llegan palabras nuevas.
-      void syncKnowledge(scope)
+      void readingSyncMod
+        .syncKnowledge(scope)
         .then((pulledKnow) => {
           if (pulledKnow !== null) {
             recordCollectionSyncSuccess("knowledge");
@@ -1204,7 +1218,8 @@ export default function App() {
         });
       // Posiciones de lectura: misma fusión por libro, empuja lo local
       // y baja lo que otros dispositivos dejaron más reciente.
-      void syncPositions(scope)
+      void positionsSyncMod
+        .syncPositions(scope)
         .then((res) => {
           if (res !== null) {
             recordCollectionSyncSuccess("positions");
@@ -1218,18 +1233,18 @@ export default function App() {
       // Resumen diario del dispositivo: sube la telemetría del ciclo
       // (foco, ritmo, repasos) sellada por huella — sin cambios no sube
       // nada, y un fallo se reintenta en el siguiente ciclo.
-      void pushDailySummaries(scope).catch(() => null);
+      void dailySummaryMod.pushDailySummaries(scope).catch(() => null);
       try {
         const bookOps = await listBookOps(scope).catch(() => []);
-        setPendingChangesCount(bookOps.length + getPendingPositionsCount());
+        setPendingChangesCount(bookOps.length + positionsSyncMod.getPendingPositionsCount());
       } catch {
         // Ignore
       }
-      let remote: Awaited<ReturnType<typeof listRemoteBooks>>;
+      let remote: Awaited<ReturnType<typeof import("./lib/books").listRemoteBooks>>;
       let localBooks: StoredBook[];
       try {
         [remote, localBooks] = await Promise.all([
-          listRemoteBooks(scope).catch(() => []),
+          booksMod.listRemoteBooks(scope).catch(() => []),
           listStoredBooks(scope),
         ]);
       } catch (err) {
@@ -1248,7 +1263,7 @@ export default function App() {
         if (!remoteHashes.has(storedBook.hash)) {
           if (storedBook.data && storedBook.data.size > 0) {
             // Free: solo metadatos; Lecta+: también el archivo (027).
-            await queueBookSync(
+            await bookQueueMod.queueBookSync(
               storedBook.hash,
               storedBook.name,
               hasLectaPlus(planStore.get()?.plan),
@@ -1264,12 +1279,14 @@ export default function App() {
       // La recuperación de libros de la era user-books/ no espera a la
       // cola: un EPUB subiendo en red lenta no debe retrasar bajar la
       // biblioteca de la cuenta.
-      void pullMissingUserBooksFromCloud(scope)
+      void readingSyncMod
+        .pullMissingUserBooksFromCloud(scope)
         .then((downloaded) => {
           if (downloaded > 0 && !cancelled) void refreshLibrary();
         })
         .catch(() => null);
-      await runBookQueue(scope)
+      await bookQueueMod
+        .runBookQueue(scope)
         .then(() => {
           setCollectionPendingCount("books", 0);
         })
@@ -1279,7 +1296,7 @@ export default function App() {
         .finally(async () => {
           try {
             const bookOps = await listBookOps(scope).catch(() => []);
-            setPendingChangesCount(bookOps.length + getPendingPositionsCount());
+            setPendingChangesCount(bookOps.length + positionsSyncMod.getPendingPositionsCount());
           } catch {
             // Ignore
           }
@@ -1309,9 +1326,27 @@ export default function App() {
     const runFullSync = async () => {
       let scope = captureDbScope();
       if (!scope.userId) return;
+      const [
+        accountResetMod,
+        syncChangesMod,
+        vocabMod,
+        readingSyncMod,
+        companionSyncMod,
+        positionsSyncMod,
+        bookQueueMod,
+      ] = await Promise.all([
+        import("./lib/account-reset"),
+        import("./lib/sync-changes"),
+        import("./lib/vocab"),
+        import("./lib/reading-sync"),
+        import("./lib/companion-sync"),
+        import("./lib/positions-sync"),
+        import("./lib/book-queue"),
+      ]);
+      if (!isDbScopeActive(scope)) return;
       // Igual que en el arranque: un reset hecho en otro dispositivo
       // vacía esta copia antes de que cualquier colección empuje datos.
-      if (await checkRemoteReset(scope)) {
+      if (await accountResetMod.checkRemoteReset(scope)) {
         scope = captureDbScope();
         void refreshLibrary();
       }
@@ -1321,20 +1356,23 @@ export default function App() {
       // Sonda de cambios (docs/designs/2026-11-24-sonda-de-cambios-sync.md): cada
       // colección salta su pull si el servidor no tiene nada nuevo. Van en serie
       // para que sus escrituras no compitan por el candado de withResetGuard.
-      if (fullSyncUserId) await primeSyncChanges(fullSyncUserId, scope);
-      await syncSavedWords(scope)
+      if (fullSyncUserId) await syncChangesMod.primeSyncChanges(fullSyncUserId, scope);
+      await vocabMod
+        .syncSavedWords(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("words");
           else recordCollectionSyncFailure("words", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("words", e));
-      await syncAnnotations(scope)
+      await readingSyncMod
+        .syncAnnotations(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("annotations");
           else recordCollectionSyncFailure("annotations", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("annotations", e));
-      await syncActivity(scope)
+      await readingSyncMod
+        .syncActivity(scope)
         .then((pulled) => {
           if (pulled !== null) {
             recordCollectionSyncSuccess("activity");
@@ -1344,19 +1382,22 @@ export default function App() {
           }
         })
         .catch((e) => recordCollectionSyncFailure("activity", e));
-      await syncReviews(scope)
+      await readingSyncMod
+        .syncReviews(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("reviews");
           else recordCollectionSyncFailure("reviews", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("reviews", e));
-      await syncCompanion(scope)
+      await companionSyncMod
+        .syncCompanion(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("companion");
           else recordCollectionSyncFailure("companion", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("companion", e));
-      await syncKnowledge(scope)
+      await readingSyncMod
+        .syncKnowledge(scope)
         .then((pulled) => {
           if (pulled !== null) {
             recordCollectionSyncSuccess("knowledge");
@@ -1366,13 +1407,15 @@ export default function App() {
           }
         })
         .catch((e) => recordCollectionSyncFailure("knowledge", e));
-      await syncPositions(scope)
+      await positionsSyncMod
+        .syncPositions(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("positions");
           else recordCollectionSyncFailure("positions", "Sync parcial o interrumpido");
         })
         .catch((e) => recordCollectionSyncFailure("positions", e));
-      void runBookQueue(scope)
+      void bookQueueMod
+        .runBookQueue(scope)
         .then(() => {
           setCollectionPendingCount("books", 0);
           return refreshLibrary();
@@ -1383,14 +1426,19 @@ export default function App() {
         .finally(async () => {
           try {
             const bookOps = await listBookOps(scope).catch(() => []);
-            setPendingChangesCount(bookOps.length + getPendingPositionsCount());
+            setPendingChangesCount(bookOps.length + positionsSyncMod.getPendingPositionsCount());
           } catch {
             // Ignore
           }
         });
     };
 
-    registerReadingSyncRunner(runFullSync);
+    let runnerCancelled = false;
+    void import("./lib/reading-sync")
+      .then(({ registerReadingSyncRunner }) => {
+        if (!runnerCancelled) registerReadingSyncRunner(runFullSync);
+      })
+      .catch(() => {});
     registerSyncRetryRunner(runFullSync);
 
     const onOnline = () => {
@@ -1399,12 +1447,16 @@ export default function App() {
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        void flushPendingReadingSync();
+        void import("./lib/reading-sync").then(({ flushPendingReadingSync }) =>
+          flushPendingReadingSync(),
+        );
       }
     };
 
     const onPageHide = () => {
-      void flushPendingReadingSync();
+      void import("./lib/reading-sync").then(({ flushPendingReadingSync }) =>
+        flushPendingReadingSync(),
+      );
     };
 
     window.addEventListener("online", onOnline);
@@ -1412,6 +1464,7 @@ export default function App() {
     window.addEventListener("pagehide", onPageHide);
 
     return () => {
+      runnerCancelled = true;
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", onPageHide);
@@ -1427,6 +1480,7 @@ export default function App() {
     try {
       // Comprobación mínima antes de guardar: tamaño, firma ZIP y
       // mimetype, sin cargar el libro completo todavía.
+      const { checkEpubFile, epubCheckMessage } = await import("./lib/epub-intake");
       const check = await checkEpubFile(file);
       if (!check.ok) {
         setMessage("");
@@ -1436,6 +1490,7 @@ export default function App() {
       const hash = await sha256Hex(file);
       const scope = captureDbScope();
       const fileBytes = new Uint8Array(await file.arrayBuffer());
+      const { extractEpubMeta } = await import("../shared/epub-meta");
       const quickMeta = await extractEpubMeta(fileBytes).catch(() => null);
       const initialMeta = {
         title: quickMeta?.title,
@@ -1459,6 +1514,7 @@ export default function App() {
         scope,
       )
         .then(async () => {
+          const { readBookMeta } = await import("./lib/cover");
           const fullMeta = await readBookMeta(file).catch(() => null);
           if (fullMeta) {
             await updateBookMeta(
@@ -1510,10 +1566,15 @@ export default function App() {
         // R4/M13); otro dispositivo los vuelve a obtener del catálogo.
         const withFile =
           !metaOverride?.catalog && hasLectaPlus(planStore.get()?.plan);
-        void queueBookSync(hash, file.name, withFile, scope)
-          .then(() => runBookQueue(scope))
+        void import("./lib/book-queue")
+          .then((bookQueueMod) =>
+            bookQueueMod
+              .queueBookSync(hash, file.name, withFile, scope)
+              .then(() => bookQueueMod.runBookQueue(scope)),
+          )
           .then(() => refreshLibrary());
-        if (withFile) void file.arrayBuffer().then((buf) => {
+        if (withFile) void file.arrayBuffer().then(async (buf) => {
+          const { syncUserBookUpload } = await import("./lib/reading-sync");
           void syncUserBookUpload({
             id: hash,
             title: initialMeta.title || file.name,
@@ -1537,6 +1598,7 @@ export default function App() {
   const getCatalogBook = async (
     item: Pick<CatalogBook, "id" | "title" | "author" | "language">,
   ) => {
+    const { downloadCatalogEpub } = await import("./lib/catalog");
     const file = await downloadCatalogEpub(item);
     if (!file) throw new Error("catalog download failed");
     const hash = await sha256Hex(file);
@@ -1557,6 +1619,7 @@ export default function App() {
     // La validez del id se comprueba aquí contra el índice del catálogo
     // (nunca contra el seed local); sin índice (offline) se intenta igual y
     // getCatalogBook falla con 404 si no existe.
+    const { listCatalog } = await import("./lib/catalog");
     const index = await listCatalog(captureDbScope()).catch(() => null);
     if (!index) return getCatalogBook(item);
     const found = index.books.find((b) => b.id === item.id);
@@ -1577,12 +1640,22 @@ export default function App() {
       });
   }, [trial, sessionDbReady, trialBook, sessionUserId]);
   // Al cerrar el libro de prueba (flecha, «atrás» o gesto) termina el
-  // modo prueba y vuelve Welcome, con el aviso de crear cuenta.
+  // modo prueba y vuelve Welcome, con el aviso de crear cuenta. Se anota
+  // el libro probado en sessionStorage para reabrirlo tras crear cuenta.
   useEffect(() => {
     if (trial !== "reading") return;
     if (book) trialBookSeen.current = true;
-    else if (trialBookSeen.current) setTrial("ended");
-  }, [trial, book]);
+    else if (trialBookSeen.current) {
+      if (trialBook?.id) {
+        try {
+          sessionStorage.setItem(RESUME_TRIAL_BOOK_KEY, trialBook.id);
+        } catch {
+          // Sin almacenamiento: vuelve a la estantería tras crear cuenta
+        }
+      }
+      setTrial("ended");
+    }
+  }, [trial, book, trialBook]);
 
   const openStoredBook = async (item: ShelfItem) => {
     setError("");
@@ -1606,7 +1679,8 @@ export default function App() {
     // nube trae un avance más nuevo, se aplica sin recargar; si hay
     // conflicto, el aviso llega sobre el libro ya abierto.
     open();
-    void syncPositions(scope)
+    void import("./lib/positions-sync")
+      .then(({ syncPositions }) => syncPositions(scope))
       .then((sync) => {
         if (!sync || openBookHashRef.current !== item.hash) return;
         const conflict = sync.conflicts.find((entry) => entry.bookHash === item.hash);
@@ -1651,7 +1725,12 @@ export default function App() {
     setMessage(`Descargando «${displayTitle(item.name, item.title)}»…`);
     try {
       const scope = captureDbScope();
-      const { file, status } = await downloadBookWithStatus(
+      const [booksMod, coverMod, positionsSyncMod] = await Promise.all([
+        import("./lib/books"),
+        import("./lib/cover"),
+        import("./lib/positions-sync"),
+      ]);
+      const { file, status } = await booksMod.downloadBookWithStatus(
         { hash: item.hash, uploaded: "", name: item.name },
         scope,
       ).catch(() => ({ file: null, status: 0 }));
@@ -1682,7 +1761,7 @@ export default function App() {
         scope,
       );
 
-      const meta = await readBookMeta(file).catch(() => null);
+      const meta = await coverMod.readBookMeta(file).catch(() => null);
       const resolvedTitle = (!meta?.title || isHashLikeIdentifier(meta.title))
         ? (item.title && !isHashLikeIdentifier(item.title) ? item.title : humanizeFilename(file.name) || undefined)
         : meta.title;
@@ -1708,7 +1787,7 @@ export default function App() {
           openBook({ hash: item.hash, name: file.name, file });
           setMessage(`Abriendo «${meta?.title ?? item.title ?? item.name}»…`);
         };
-        const sync = await syncPositions(scope).catch(() => null);
+        const sync = await positionsSyncMod.syncPositions(scope).catch(() => null);
         const conflict = hadLocalPosition
           ? sync?.conflicts.find((entry) => entry.bookHash === item.hash)
           : undefined;
@@ -1727,6 +1806,7 @@ export default function App() {
   // catálogo se obtiene gratis de ahí; si no, se adjunta a mano.
   const openCatalogOrAttach = async (item: ShelfItem) => {
     try {
+      const { listCatalog } = await import("./lib/catalog");
       const index = await listCatalog(captureDbScope());
       const match = index?.books.find((b) => b.epubSha256 === item.hash);
       if (match) {
@@ -1842,6 +1922,7 @@ export default function App() {
       setMessage(`Preparando la guía de «${displayTitle(item.name, item.title)}»…`);
       void (async () => {
         const scope = captureDbScope();
+        const { fetchBookGuide } = await import("./lib/books");
         const guideRaw = await fetchBookGuide(item.hash, scope).catch(
           () => null,
         );
@@ -2054,6 +2135,7 @@ export default function App() {
         return;
       }
     }
+    const { shareBook } = await import("./lib/books");
     const ok = await shareBook(item.hash, shared, scope, guide, genre);
     if (ok) {
       await refreshLibrary();
@@ -2159,6 +2241,7 @@ export default function App() {
       // El encolado se espera antes de refrescar: así la op ya está en
       // bookOps cuando refreshLibrary la lee y el libro no reaparece
       // como «En la nube» mientras el DELETE corre en segundo plano.
+      const { queueBookDelete, runBookQueue } = await import("./lib/book-queue");
       await queueBookDelete(hash, scope).catch(() => undefined);
       void runBookQueue(scope);
     }
@@ -2231,6 +2314,71 @@ export default function App() {
     const timer = setTimeout(() => openDeepLink(item), 0);
     return () => clearTimeout(timer);
   }, [library, sessionUserId, checkingLibrary, authLink.openHash]);
+
+  // Continuidad ?probar=<id> → cuenta creada: si el lector cerró una prueba
+  // para registrarse, vuelve directo al libro que estaba leyendo (migrado en
+  // `library` o desde el catálogo) en vez de quedar detenido en la estantería.
+  const trialResumeDone = useRef(false);
+  const resumePendingTrialBook = useEffectEvent(async (resumeId: string) => {
+    try {
+      const { listCatalog } = await import("./lib/catalog");
+      const index = await listCatalog(captureDbScope()).catch(() => null);
+      setTrial(null);
+      const found = index?.books.find((b) => b.id === resumeId);
+      const localMatch = library.find((item) => {
+        if (item.remoteOnly) return false;
+        if (found?.epubSha256 && item.hash === found.epubSha256) return true;
+        if (found?.title && item.title) {
+          return item.title.trim().toLowerCase() === found.title.trim().toLowerCase();
+        }
+        return false;
+      });
+      if (localMatch) {
+        await openStoredBook(localMatch);
+        return;
+      }
+      if (found) {
+        await getCatalogBook(found);
+        return;
+      }
+      const parsed = parseTrialBook(resumeId);
+      if (parsed) {
+        await getCatalogBook({ ...parsed, language: "es" });
+      }
+    } catch {
+      // Sin red o error puntual: el usuario queda en la estantería sin bloqueo
+    }
+  });
+  useEffect(() => {
+    if (!sessionUserId || !sessionDbReady || checkingLibrary || book) return;
+    if (authLink.trial) {
+      try {
+        sessionStorage.removeItem(RESUME_TRIAL_BOOK_KEY);
+      } catch {
+        // Ignore
+      }
+      return;
+    }
+    if (authLink.openHash || trialResumeDone.current) return;
+    let resumeId: string | null;
+    try {
+      resumeId = sessionStorage.getItem(RESUME_TRIAL_BOOK_KEY);
+    } catch {
+      resumeId = null;
+    }
+    if (!resumeId) return;
+    const timer = setTimeout(() => {
+      if (trialResumeDone.current) return;
+      trialResumeDone.current = true;
+      try {
+        sessionStorage.removeItem(RESUME_TRIAL_BOOK_KEY);
+      } catch {
+        // Ignore
+      }
+      void resumePendingTrialBook(resumeId);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [sessionUserId, sessionDbReady, checkingLibrary, book, authLink.openHash, authLink.trial]);
 
   const trialOpen = !sessionUserId && (trial === "loading" || trial === "reading");
   const showWelcome =
@@ -2475,7 +2623,10 @@ export default function App() {
                     deepLinkPending: authLink.openHash !== null,
                   }) ? (
                     <Suspense fallback={null}>
-                      <TrialEndSheet endedAt={userPlan?.trialEndedAt} />
+                      <TrialEndSheet
+                        endedAt={userPlan?.trialEndedAt}
+                        welcomeOfferEndsAt={userPlan?.welcomeOfferEndsAt}
+                      />
                     </Suspense>
                   ) : null}
                 </Activity>
@@ -2639,9 +2790,12 @@ export default function App() {
               // El examen terminó: sus respuestas quedan como
               // evidencia `calibration` (cobertura, Cuenta, sync).
               const scope = calibrationScope.current ?? captureDbScope();
-              const { words: answered, answers } =
-                catHistoryToCalibration(history);
               void (async () => {
+                const { catHistoryToCalibration, recordCalibration } = await import(
+                  "./lib/calibration"
+                );
+                const { words: answered, answers } =
+                  catHistoryToCalibration(history);
                 await recordCalibration(answered, answers, calibrationLang, scope).catch(
                   () => null,
                 );

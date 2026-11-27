@@ -76,6 +76,10 @@ describe("ResumeSessionOverlay", () => {
     );
     expect(container.textContent).toContain("Retomar lectura");
     expect(container.textContent).not.toContain("Dosificar repasos pendientes");
+    expect(container.querySelector(".resume-session-icon .icon--book")).toBeTruthy();
+    expect(container.textContent ?? "").not.toMatch(
+      /[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|\uFE0F/u,
+    );
 
     const button = container.querySelector("button");
     act(() => {

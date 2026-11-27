@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
+import Icon from "./Icon";
 import { coverPalette } from "../lib/cover";
 import {
   fetchSeasonEpisodes,
@@ -35,7 +36,7 @@ type Props = {
   // una serie preparada en inglés no cambia de voz por accidente.
   fixedLanguage?: "en" | "es";
   // Obras instaladas: con su hash se sabe si este imdbId+idioma ya
-  // tiene capítulos preparados (✓ y «Ver palabras»).
+  // tiene capítulos preparados (marca de listo y «Ver palabras»).
   works: ShelfItem[];
   loadPreparedChapters?: (hash: string) => Promise<string[]>;
   onClose: () => void;
@@ -339,7 +340,11 @@ export default function ScreenPrepareSheet({
                             )
                           }
                         >
-                          {prepared ? "✓ " : ""}
+                          {prepared ? (
+                            <>
+                              <Icon name="check" size={13} />{" "}
+                            </>
+                          ) : null}
                           {n}
                         </button>
                       );

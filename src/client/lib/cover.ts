@@ -1,8 +1,17 @@
-import { openEpub, getBookAuthor, getBookLanguage, getBookSubjects, getBookTitle, detectBookLanguage } from "./epub";
-import { isHashLikeIdentifier, humanizeFilename } from "../../shared/epub-meta";
+import {
+  bookDisplayName,
+  displayTitle,
+  humanizeFilename,
+  isHashLikeIdentifier,
+} from "../../shared/book-display";
 import { genreFromSubjects } from "../../shared/book-genres";
 
-export { isHashLikeIdentifier, humanizeFilename };
+export {
+  bookDisplayName,
+  displayTitle,
+  humanizeFilename,
+  isHashLikeIdentifier,
+};
 
 export type BookMeta = {
   id?: string;
@@ -18,40 +27,18 @@ export type BookMeta = {
   genre?: string;
 };
 
-export function bookDisplayName(item: {
-  title?: string | null;
-  name?: string | null;
-  author?: string | null;
-  hash?: string | null;
-  isRemoteOnly?: boolean;
-}): string {
-  // 1. item.title limpio (si no está vacío y !isHashLikeIdentifier(item.title))
-  const cleanTitle = item.title?.trim();
-  if (cleanTitle && !isHashLikeIdentifier(cleanTitle)) {
-    return cleanTitle;
-  }
-  // 2. humanizeFilename(item.name) (si no está vacío)
-  const humanized = humanizeFilename(item.name);
-  if (humanized) {
-    return humanized;
-  }
-  // 3. Si item.author es legible y no-hash: "Libro de " + item.author.trim()
-  const cleanAuthor = item.author?.trim();
-  if (cleanAuthor && !isHashLikeIdentifier(cleanAuthor)) {
-    return `Libro de ${cleanAuthor}`;
-  }
-  // 4. Fallback seguro que jamás expone el hash
-  return item.isRemoteOnly ? "Libro en la nube" : "Libro sin título";
-}
-
-export function displayTitle(name: string, title?: string): string {
-  return bookDisplayName({ name, title });
-}
-
 // Abre el EPUB solo para leer metadatos y portada; se usa en la
 // estantería de forma perezosa y no compite con el lector.
 export async function readBookMeta(file: Blob): Promise<BookMeta | null> {
   try {
+    const {
+      openEpub,
+      getBookAuthor,
+      getBookLanguage,
+      getBookSubjects,
+      getBookTitle,
+      detectBookLanguage,
+    } = await import("./epub");
     const { book, close } = await openEpub(file);
     try {
       const cover = (await book.getCover?.().catch(() => null)) ?? null;

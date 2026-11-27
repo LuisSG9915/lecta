@@ -14,6 +14,7 @@ import {
   type StoredBook,
 } from "../lib/idb";
 import { isReviewDueWord } from "../lib/fsrs-light";
+import Icon from "./Icon";
 import {
   computeFlowStateSummary,
   dayKeyOf,
@@ -245,7 +246,9 @@ export default function ReadingActivity({
       {goal ? (
         <section className="act-streak-shield" aria-label="Escudo de Ronroneo">
           <div className="act-shield-badge">
-            <span className="act-shield-icon" aria-hidden="true">🛡️ 🐾</span>
+            <span className="act-shield-icon" aria-hidden="true">
+              <Icon name="shield" size={15} /> <Icon name="paw" size={15} />
+            </span>
             <div className="act-shield-details">
               <strong className="act-shield-title">
                 Escudo de Ronroneo: {goal.streakShields ?? 0}/{MAX_STREAK_SHIELDS}
@@ -316,7 +319,9 @@ export default function ReadingActivity({
       <section aria-label="Estado de flujo y ritmo" className="reading-flow-mirror">
         <div className="reading-flow-header">
           <div className="reading-flow-title-wrap">
-            <span className="reading-flow-icon" aria-hidden="true">🌊</span>
+            <span className="reading-flow-icon" aria-hidden="true">
+              <Icon name="wave" size={16} />
+            </span>
             <div>
               <h2 className="eyebrow act-eyebrow reading-flow-title">Estado de flujo y ritmo</h2>
               <span className="meta">{flowSummary.paceDescriptor}</span>

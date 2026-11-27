@@ -26,7 +26,7 @@ export function ChapterEndCard({
         </button>
       ) : null}
       <button type="button" className="btn--quiet" onClick={onOpenNotebook}>
-        Ver Cuaderno
+        Ver Herbario
       </button>
     </div>
   );

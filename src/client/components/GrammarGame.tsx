@@ -9,6 +9,7 @@ import { conciseMeaning } from "../lib/practice";
 import { PracticeContext } from "./PracticeContext";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
+import Icon from "./Icon";
 
 export interface GrammarGameProps {
   readonly targetWord: string;
@@ -54,7 +55,7 @@ export function GrammarGame({
         const info = GRAMMAR_CATEGORIES.find((c) => c.id === catId);
         const toneNote = grammarToneNote(catId, targetWord);
         setFeedback(
-          `¡Exacto! «${targetWord}» es un ${info?.label.toLowerCase() ?? catId}. ${toneNote} ✨`,
+          `¡Exacto! «${targetWord}» es un ${info?.label.toLowerCase() ?? catId}. ${toneNote}`,
         );
         window.setTimeout(() => {
           onSolve();
@@ -182,7 +183,13 @@ export function GrammarGame({
             disabled={disabled || hintBusy || status === "correct"}
             onClick={onAskHint}
           >
-            {hintBusy ? "Consultando a Michi…" : "💡 Pedir pista a Michi"}
+            {hintBusy ? (
+              "Consultando a Michi…"
+            ) : (
+              <>
+                <Icon name="bulb" size={15} /> Pedir pista a Michi
+              </>
+            )}
           </button>
         ) : null}
       </div>

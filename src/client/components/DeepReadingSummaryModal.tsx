@@ -37,7 +37,7 @@ export interface DeepReadingSummaryModalProps {
   author?: string;
   chapterTitle?: string;
   chapterId?: string;
-  onShareQuote?: (quote?: string) => void;
+  onShareQuote?: (quote?: string) => void; bookCompleted?: boolean; onOpenExlibris?: () => void;
   onWordConsolidated?: (word: SavedWord) => void;
   /** Cuenta free con la cortesía de IA de hoy agotada: avisa sin llamar a la IA. */
   aiCourtesyExhausted?: boolean;
@@ -54,7 +54,7 @@ export default function DeepReadingSummaryModal({
   harvestWords,
   featuredQuote, bookTitle, author, chapterTitle,
   chapterId,
-  onShareQuote,
+  onShareQuote, bookCompleted = false, onOpenExlibris,
   onWordConsolidated,
   aiCourtesyExhausted,
 }: DeepReadingSummaryModalProps) {
@@ -172,7 +172,7 @@ export default function DeepReadingSummaryModal({
             onClick={handleContinue}
             aria-label="Continuar"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -210,6 +210,18 @@ export default function DeepReadingSummaryModal({
           >
             Crear postal del capítulo
           </button>
+          {bookCompleted && onOpenExlibris ? (
+            <button
+              type="button"
+              className="btn--quiet deep-summary-quote-btn"
+              onClick={() => {
+                triggerHaptic("selection");
+                onOpenExlibris();
+              }}
+            >
+              Ver tu Exlibris
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn--primary"
@@ -436,6 +448,18 @@ export default function DeepReadingSummaryModal({
             >
               Crear postal del capítulo
             </button>
+            {bookCompleted && onOpenExlibris ? (
+              <button
+                type="button"
+                className="deep-summary-quote-btn"
+                onClick={() => {
+                  triggerHaptic("selection");
+                  onOpenExlibris();
+                }}
+              >
+                Ver tu Exlibris
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -466,7 +490,7 @@ export default function DeepReadingSummaryModal({
                       role="menuitem"
                       onClick={handleMuteThisBook}
                     >
-                      ✕ Ocultar en este libro
+                      <Icon name="close" size={14} /> Ocultar en este libro
                     </button>
                   ) : null}
                   <button

@@ -125,7 +125,7 @@ export function PracticeCard({
   const hintBox =
     hintText && current.mode !== "write" ? (
       <p className="scramble-hint-box" role="status">
-        💡 {hintText}
+        <Icon name="bulb" size={14} /> {hintText}
       </p>
     ) : null;
 

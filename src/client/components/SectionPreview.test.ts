@@ -361,7 +361,8 @@ describe("SectionPreview", () => {
 
       const pill = host.querySelector<HTMLButtonElement>(".reader-section-preview-pill");
       expect(pill).toBeTruthy();
-      expect(pill?.textContent).toBe("✨ 3 palabras clave en este capítulo · Ver");
+      expect(pill?.textContent?.trim()).toBe("3 palabras clave en este capítulo · Ver");
+      expect(pill?.querySelector(".icon--sparkles")).toBeTruthy();
       expect(host.querySelector(".dialog-scrim")).toBeNull();
       expect(host.querySelector(".portico-overlay")).toBeNull();
 
@@ -589,13 +590,15 @@ describe("SectionPreview", () => {
         }),
       );
 
-      expect(text()).toContain("✨ Lectura sin tropiezos · 20 seg");
+      expect(text()).toContain("Lectura sin tropiezos · 20 seg");
+      expect(host.querySelector(".lecta-chapter-priming__badge .icon--sparkles")).toBeTruthy();
       expect(text()).toContain("Palabras clave antes de entrar al capítulo");
       expect(text()).toContain(
         "Dales un vistazo rápido; así cuando aparezcan en la historia las leerás de corrido sin perder la magia.",
       );
       const knownBtns = host.querySelectorAll(".lecta-priming-card__btn-known");
-      expect(knownBtns[0]?.textContent).toBe("✓ Ya la conozco");
+      expect(knownBtns[0]?.textContent?.trim()).toBe("Ya la conozco");
+      expect(knownBtns[0]?.querySelector(".icon--check")).toBeTruthy();
     });
   });
 });

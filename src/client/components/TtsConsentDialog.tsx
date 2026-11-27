@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Icon from "./Icon";
 import type { TtsEngineMode } from "../lib/ttsTypes";
 import { kittenTtsEngine } from "../lib/kittenTtsEngine";
 import type { TtsEngineKind } from "../workers/kitten-tts.worker";
@@ -169,7 +170,7 @@ export default function TtsConsentDialog({
                   onClick={onDeleteModel}
                   aria-label="Borrar datos de voz offline"
                 >
-                  🗑️ Borrar datos de voz offline ({neuralSize})
+                  <Icon name="trash" size={15} /> Borrar datos de voz offline ({neuralSize})
                 </button>
               ) : null}
               <button

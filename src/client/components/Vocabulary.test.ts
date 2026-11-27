@@ -2389,3 +2389,53 @@ describe("Hueco 3.1 & 3.2 — Estabilidad y Resalte Morfológico", () => {
     expect(rawContext.slice(range!.start, range!.end).normalize("NFC")).toBe("a través de");
   });
 });
+
+describe("E13 — Postal de palabra en su frase desde el Herbario", () => {
+  it("muestra el botón Postal en palabras con contexto, oculta en palabras sin contexto y abre QuoteCardModal", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "efímero",
+        lemma: "efímero",
+        meaning: "de corta duración",
+        context: "Un efímero destello cruzó el cielo.",
+      }),
+      word({
+        key: "es:sincontexto",
+        form: "solaz",
+        lemma: "solaz",
+        meaning: "alivio",
+        context: "",
+      }),
+    ]);
+    await render();
+
+    // Expandir palabra con contexto
+    const rows = Array.from(host.querySelectorAll<HTMLButtonElement>(".nb-word-row"));
+    await act(async () => {
+      rows[0].click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    const postalBtn = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Crear postal de efímero"]',
+    );
+    expect(postalBtn).toBeTruthy();
+
+    // Expandir palabra sin contexto -> no ofrece Postal
+    await act(async () => {
+      rows[1].click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(host.querySelector('button[aria-label="Crear postal de solaz"]')).toBeNull();
+
+    // Abrir QuoteCardModal lazy desde Postal
+    await act(async () => {
+      postalBtn!.click();
+    });
+    await vi.waitFor(() =>
+      expect(document.querySelector('[aria-label="Postal de palabra"]')).toBeTruthy(),
+    );
+    const modal = document.querySelector('[aria-label="Postal de palabra"]')!;
+    expect(modal.textContent).toContain("Postal de palabra");
+    expect(modal.textContent).toContain("Significado");
+  });
+});

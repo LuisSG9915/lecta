@@ -848,32 +848,84 @@ button.app-nav-sync-indicator:focus-visible {
   min-inline-size: 0;
 }
 
-/* Bloque desplegable de opciones avanzadas */
-.account-advanced-details {
-  margin-block-start: var(--s-6);
-  padding-block-start: var(--s-4);
-  border-top: var(--border);
+/* Capa 2 de «Tú»: cajón plegable de preferencias y cuenta */
+.account-drawer {
+  margin-block-start: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
 }
 
-.account-advanced-summary {
+.account-fold {
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  overflow: hidden;
+  transition: border-color var(--dur-1) var(--ease-out);
+}
+
+.account-fold:hover {
+  border-color: var(--vermilion);
+}
+
+.account-fold-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding: var(--s-3) var(--s-4);
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
   font-weight: 500;
-  color: var(--ink-soft);
+  color: var(--ink);
+  list-style: none;
   cursor: pointer;
   user-select: none;
-  padding-block: var(--s-2);
-  transition: color var(--dur-1) var(--ease-out);
 }
 
-.account-advanced-summary:hover {
-  color: var(--ink);
+.account-fold-summary::-webkit-details-marker {
+  display: none;
 }
 
-.account-advanced-content {
-  display: grid;
+.account-fold[open] > .account-fold-summary {
+  border-bottom: var(--border);
+}
+
+.account-fold-chevron {
+  display: inline-flex;
+  color: var(--ink-soft);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.account-fold[open] > .account-fold-summary .account-fold-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-fold-chevron {
+    transition: none;
+  }
+}
+
+.account-fold-body {
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
-  padding-block-start: var(--s-3);
+}
+
+.account-fold-body > .account-card {
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.account-fold-body > * + * {
+  padding-top: var(--s-4);
+  border-top: var(--border);
 }
 
 /* Pestañas de autenticación en el diálogo modal */

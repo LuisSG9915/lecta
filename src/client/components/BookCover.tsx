@@ -6,7 +6,6 @@ import {
   getRemoteCoverObjectUrl,
   setRemoteCoverCache,
 } from "../lib/cover";
-import { fetchBookCover } from "../lib/books";
 import type { StoredBook } from "../lib/idb";
 
 // Solo los campos que la portada usa: la estantería también pasa
@@ -41,11 +40,13 @@ export default function BookCover({
         if (cached) {
           setRemoteCoverUrl(cached);
         } else {
-          void fetchBookCover(book.hash).then(async (blob) => {
-            if (cancelled || !blob) return;
-            const url = await setRemoteCoverCache(book.hash, blob);
-            if (!cancelled) setRemoteCoverUrl(url);
-          });
+          void import("../lib/books")
+            .then(({ fetchBookCover }) => fetchBookCover(book.hash))
+            .then(async (blob) => {
+              if (cancelled || !blob) return;
+              const url = await setRemoteCoverCache(book.hash, blob);
+              if (!cancelled) setRemoteCoverUrl(url);
+            });
         }
       });
     }

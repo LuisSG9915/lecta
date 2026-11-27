@@ -53,10 +53,31 @@ describe("account-plan", () => {
     expect(snap?.plan).toBe("free");
     expect(snap?.trialEndedAt).toBeUndefined();
   });
-  it("planFromAccountState conserva trialEndedAt", () => {
+  it("planFromAccountState conserva trialEndedAt y filtra welcomeOfferEndsAt según vigencia", () => {
     const snap = planFromAccountState({ ok: true, plan: "free", starterCoat: null, planExpiresAt: null, trialEndedAt: 1234 });
     expect(snap?.trialEndedAt).toBe(1234);
     expect(planFromAccountState({ ok: true, plan: "free", trialEndedAt: null })?.trialEndedAt).toBeUndefined();
+
+    expect(
+      planFromAccountState({ ok: true, plan: "free", welcomeOfferEndsAt: 5000 }, 2000)?.welcomeOfferEndsAt,
+    ).toBe(5000);
+    expect(
+      planFromAccountState({ ok: true, plan: "free", welcomeOfferEndsAt: 1500 }, 2000)?.welcomeOfferEndsAt,
+    ).toBeNull();
+    expect(
+      planFromAccountState({ ok: true, plan: "lecta_plus", pastDue: true })?.pastDue,
+    ).toBe(true);
+    expect(
+      planFromAccountState({ ok: true, plan: "lecta_plus", pastDue: false })?.pastDue,
+    ).toBe(false);
+    expect(
+      planFromAccountState({
+        ok: true,
+        plan: "free",
+        passYearlyAvailable: true,
+        hasSubscription: false,
+      }),
+    ).toMatchObject({ passYearlyAvailable: true, hasSubscription: false });
   });
 
   it("planFromAccountState: sin plan conserva la caché (null)", () => {

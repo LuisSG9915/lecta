@@ -3037,63 +3037,6 @@
   color: var(--ink-soft);
 }
 
-/* Vitrina de Estampas y Exlibris */
-.companion-stamps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
-  gap: var(--s-2);
-}
-
-.companion-stamp {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: var(--s-3) var(--s-2);
-  border: 1.5px dashed var(--line);
-  border-radius: var(--r-2);
-  background: var(--paper-raised);
-  transition:
-    border-color var(--dur-1) var(--ease-out),
-    background-color var(--dur-1) var(--ease-out);
-}
-
-.companion-stamp:hover {
-  border-color: var(--rule-strong);
-}
-
-.companion-stamp[data-earned="true"] {
-  border-style: solid;
-  border-color: var(--ochre-soft);
-  background: color-mix(in srgb, var(--ochre) 6%, var(--paper-raised));
-}
-
-.companion-stamp-icon {
-  font-size: 1.5rem;
-  margin-block-end: var(--s-1);
-}
-
-.companion-stamp-title {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.companion-stamp-desc {
-  font-size: 0.72rem;
-  color: var(--ink-soft);
-  margin: 0.2rem 0 0;
-  line-height: 1.25;
-}
-
-.companion-stamp-xp {
-  margin-block-start: var(--s-1);
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--vermilion);
-}
-
 /* Vitrina de familias de logros (tinta y papel) */
 .vitrina-families {
   display: flex;
@@ -3317,6 +3260,34 @@
   max-width: 100%;
 }
 
+.exlibris-action-btn {
+  margin-top: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--vermilion);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
+}
+
+.exlibris-action-btn:hover {
+  border-color: var(--vermilion);
+  background: var(--paper-sunken);
+}
+
+.exlibris-modal-title {
+  display: block;
+  font-family: var(--font-book);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+}
+
 /* ---------- Tu recorrido ---------- */
 
 .journey-sheet,
@@ -3373,33 +3344,44 @@
   box-sizing: border-box;
 }
 
-/* Bento de escritorio: el recorrido dejaba más de la mitad de la
-   pantalla vacía en una sola columna de 44rem. En ≥64rem se abre a
-   dos columnas con la pareja «Gato + Rango» a la izquierda y el
-   Sendero de Tinta a la derecha ocupando ambas filas. El orden del
-   DOM se conserva, así que móvil y lector de pantalla leen igual. */
+.journey-act {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.journey-act + .journey-act {
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+.journey-act-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.journey-act-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-lg);
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+}
+
 @media (min-width: 64rem) {
   .journey-content {
-    max-width: 72rem;
+    max-width: 58rem;
+    gap: var(--s-6);
+  }
+
+  .journey-trail-fold .journey-fold-body {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--s-4);
-    row-gap: var(--s-5);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: var(--s-4);
     align-items: start;
-  }
-
-  .journey-content > * {
-    grid-column: 1 / -1;
-  }
-
-  .journey-content > .journey-sanctuary,
-  .journey-content > .journey-rank-card {
-    grid-column: 1;
-  }
-
-  .journey-content > .journey-ink-section {
-    grid-column: 2;
-    grid-row: 1 / span 2;
   }
 }
 

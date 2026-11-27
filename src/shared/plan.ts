@@ -38,6 +38,21 @@ export function effectivePlan(
 }
 
 /**
+ * `true` cuando una suscripción pagada de Lecta+ venció pero sigue dentro de
+ * los 3 días de gracia (`PLAN_GRACE_MS`): Stripe está reintentando el cobro.
+ */
+export function isPlanPastDue(
+  plan: UserPlan,
+  expiresAt: number | null | undefined,
+  stripeSubscriptionId: string | null | undefined,
+  now: number,
+): boolean {
+  if (plan !== "lecta_plus" || !stripeSubscriptionId) return false;
+  if (expiresAt == null || !Number.isFinite(expiresAt)) return false;
+  return expiresAt < now && expiresAt + PLAN_GRACE_MS >= now;
+}
+
+/**
  * Prueba inversa (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md):
  * una cuenta free tiene Lecta+ los primeros 14 días, contados desde el alta o
  * desde el lanzamiento si la cuenta es anterior. Sin gracia ni tarjeta.
@@ -49,6 +64,26 @@ export const REVERSE_TRIAL_START = Date.UTC(2026, 10, 25);
 export function reverseTrialEndsAt(createdAt: number | null | undefined): number | null {
   if (createdAt == null || !Number.isFinite(createdAt)) return null;
   return Math.max(createdAt, REVERSE_TRIAL_START) + REVERSE_TRIAL_MS;
+}
+
+/** Oferta real de bienvenida tras vencer la prueba inversa (72 h). */
+export const WELCOME_OFFER_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+/** Fin de la oferta de bienvenida (ms) si está vigente en `now`; si no, null. */
+export function welcomeOfferEndsAt(
+  trialEndedAt: number | null | undefined,
+  now: number,
+): number | null {
+  if (trialEndedAt == null || !Number.isFinite(trialEndedAt)) return null;
+  const endsAt = trialEndedAt + WELCOME_OFFER_WINDOW_MS;
+  return now >= trialEndedAt && now < endsAt ? endsAt : null;
+}
+
+export function isWelcomeOfferActive(
+  trialEndedAt: number | null | undefined,
+  now: number,
+): boolean {
+  return welcomeOfferEndsAt(trialEndedAt, now) !== null;
 }
 
 /** Consultas de IA de cortesía al día (CDMX) para cuentas free. */

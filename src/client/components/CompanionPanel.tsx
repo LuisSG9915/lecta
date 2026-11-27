@@ -14,6 +14,7 @@ import {
 import { memo } from "react";
 import "../styles/game.css";
 import Sheet from "./Sheet";
+import Icon from "./Icon";
 import { Companion } from "./Companion";
 import { CompanionStage } from "./CompanionStage";
 import {
@@ -162,14 +163,16 @@ function CatCornerSheetImpl({
       {/* Cabecera con el Escenario del Gato siempre visible arriba */}
       <header className="cat-corner-header">
         <div className="cat-corner-title-bar">
-          <h2 className="cat-corner-title">🐱 El Rincón de {catName}</h2>
+          <h2 className="cat-corner-title">
+            <Icon name="cat" size={18} /> El Rincón de {catName}
+          </h2>
           <button
             type="button"
             className="cat-corner-close-btn"
             onClick={onClose}
             aria-label="Cerrar rincón del gato"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -189,7 +192,7 @@ function CatCornerSheetImpl({
                 className="cat-magic-pill-btn"
                 onClick={onTriggerWhereWasI}
               >
-                ✨ ¿En qué me quedé? (15s)
+                <Icon name="sparkles" size={15} /> ¿En qué me quedé? (15s)
               </button>
             )}
             {onTriggerWhoIsOnPage && (
@@ -198,7 +201,7 @@ function CatCornerSheetImpl({
                 className="cat-magic-pill-btn"
                 onClick={onTriggerWhoIsOnPage}
               >
-                👥 Personajes en esta página
+                <Icon name="users" size={15} /> Personajes en esta página
               </button>
             )}
           </div>
@@ -213,7 +216,7 @@ function CatCornerSheetImpl({
             className={`cat-corner-tab-btn ${activeTab === "progress" ? "is-active" : ""}`}
             onClick={() => setActiveTab("progress")}
           >
-            🌱 Mi Progreso
+            <Icon name="sprout" size={15} /> Mi Progreso
           </button>
           <button
             type="button"
@@ -222,7 +225,7 @@ function CatCornerSheetImpl({
             className={`cat-corner-tab-btn ${activeTab === "customize" ? "is-active" : ""}`}
             onClick={() => setActiveTab("customize")}
           >
-            🎀 Personalizar Gato
+            <Icon name="shirt" size={15} /> Personalizar Gato
           </button>
         </div>
       </header>
@@ -233,19 +236,23 @@ function CatCornerSheetImpl({
           <div className="cat-progress-view">
             <div className="cat-stats-grid">
               <div className="cat-stat-card">
-                <span className="cat-stat-value">🔥 {streakDays} d</span>
+                <span className="cat-stat-value">
+                  <Icon name="flame" size={14} /> {streakDays} d
+                </span>
                 <span className="cat-stat-label">Racha de lectura</span>
               </div>
               <div className="cat-stat-card">
                 <span className="cat-stat-value">
-                  ⏱️ {minutesReadToday}/{dailyGoalMinutes} m
+                  <Icon name="clock" size={14} /> {minutesReadToday}/{dailyGoalMinutes} m
                 </span>
                 <span className="cat-stat-label">
                   Meta de hoy ({goalPercent}%)
                 </span>
               </div>
               <div className="cat-stat-card">
-                <span className="cat-stat-value">✨ {wordsLearnedCount}</span>
+                <span className="cat-stat-value">
+                  <Icon name="sparkles" size={14} /> {wordsLearnedCount}
+                </span>
                 <span className="cat-stat-label">Palabras tuyas</span>
               </div>
             </div>
@@ -818,7 +825,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
               aria-label="Cambiar nombre"
               title="Cambiar nombre"
             >
-              ✎
+              <Icon name="edit" size={14} />
             </button>
           </div>
           <div className="companion-head-meta">
@@ -1038,7 +1045,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                         aria-label="¿En qué me quedé?"
                         style={{ width: "100%", justifyContent: "center", marginBottom: "var(--s-2)" }}
                       >
-                        ✨ ¿En qué me quedé? (15s)
+                        <Icon name="sparkles" size={15} /> ¿En qué me quedé? (15s)
                       </button>
                     )}
                     <button
@@ -1049,7 +1056,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                       aria-label="¿Quién está en esta página?"
                       style={{ width: "100%", justifyContent: "center" }}
                     >
-                      👥 {charactersLoading ? "Buscando personajes…" : "¿Quién está en esta página?"}
+                      <Icon name="users" size={15} /> {charactersLoading ? "Buscando personajes…" : "¿Quién está en esta página?"}
                     </button>
                     {characterCards !== null && (
                       <div
@@ -1222,7 +1229,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                 {revealedChest ? (
                   <div className="companion-reveal-box" role="status">
                     <div className="companion-reveal-sparkle" aria-hidden="true">
-                      ✨🎁✨
+                      <Icon name="gift" size={20} />
                     </div>
                     <h3 className="companion-reveal-title">¡Tesoro abierto!</h3>
                     <p className="companion-reveal-desc">
@@ -1401,7 +1408,9 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                                 gap: "0.4rem",
                               }}
                             >
-                              <span aria-hidden="true">{isAchieved ? "✓" : isNext ? "→" : "—"}</span>
+                              <span aria-hidden="true">
+                                {isAchieved ? <Icon name="check" size={14} /> : isNext ? "→" : "—"}
+                              </span>
                               <strong>
                                 Nivel {idx + 1} · {lvl.name}
                               </strong>

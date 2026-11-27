@@ -67,20 +67,19 @@ export { itemFisherInformation, itemResponseProbability };
 // evidencia `calibration` del modelo de conocimiento (knowledge.ts);
 // lo no tocado no es conocido ni desconocido: es pendiente.
 
-// Marca «la prueba ya se ofreció» en el almacén de sesión por cuenta;
-// sin ella se vuelve a ofrecer antes de entrar al primer libro.
-export const CALIBRATION_DONE_KEY = "calibrationDone";
-// Borrador de respuestas mientras la prueba está abierta: un cierre
-// accidental no las pierde — se restauran en la próxima oferta.
-export const CALIBRATION_DRAFT_KEY = "calibrationDraft";
+import {
+  CALIBRATION_DONE_KEY,
+  CALIBRATION_DRAFT_KEY,
+  calibrationDoneKey,
+  calibrationDraftKey,
+} from "./calibration-keys";
 
-export function calibrationDoneKey(language = "es"): string {
-  return language === "es" ? CALIBRATION_DONE_KEY : `${CALIBRATION_DONE_KEY}:${language}`;
-}
-
-export function calibrationDraftKey(language = "es"): string {
-  return language === "es" ? CALIBRATION_DRAFT_KEY : `${CALIBRATION_DRAFT_KEY}:${language}`;
-}
+export {
+  CALIBRATION_DONE_KEY,
+  CALIBRATION_DRAFT_KEY,
+  calibrationDoneKey,
+  calibrationDraftKey,
+};
 
 export type CalibrationAnswerValue = "known" | "unknown" | "unsure";
 export type CalibrationAnswers = Record<string, CalibrationAnswerValue>;

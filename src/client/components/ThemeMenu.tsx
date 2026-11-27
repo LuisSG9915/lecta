@@ -16,6 +16,7 @@ import {
   type ThemeChoice,
 } from "../lib/settings";
 import { Toggle } from "./Toggle";
+import Icon from "./Icon";
 
 export interface ThemeMenuProps {
   settings?: ReaderSettings;
@@ -168,7 +169,7 @@ export function ThemeMenu({
             onClick={onClose}
             aria-label="Cerrar menú"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
       )}

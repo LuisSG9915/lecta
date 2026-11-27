@@ -591,7 +591,8 @@ describe("GamePanel", () => {
     );
     await flush();
 
-    expect(host.textContent).toContain("📖 Eco de: La sombra del viento");
+    expect(host.textContent).toContain("Eco de: La sombra del viento");
+    expect(host.querySelector(".game-book-eco-pill .icon--book")).toBeTruthy();
   });
 
   it("muestra el estado vacío humanizado cuando no hay palabras pendientes con botón 'Volver a mi lectura'", async () => {
@@ -611,8 +612,9 @@ describe("GamePanel", () => {
     await flush();
 
     expect(host.textContent).toContain(
-      "✨ Tu memoria está al día. Sigue disfrutando tu libro; Lecta guardará aquí los momentos y palabras que quieras conservar.",
+      "Tu memoria está al día. Sigue disfrutando tu libro; Lecta guardará aquí los momentos y palabras que quieras conservar.",
     );
+    expect(host.querySelector(".game-empty-review-text .icon--sparkles")).toBeTruthy();
 
     const returnBtn = button("Volver a mi lectura");
     expect(returnBtn).toBeTruthy();

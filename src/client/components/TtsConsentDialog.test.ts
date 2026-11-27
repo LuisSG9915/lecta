@@ -161,7 +161,8 @@ describe("TtsConsentDialog", () => {
       btn.textContent?.includes("Borrar datos de voz offline"),
     );
     expect(deleteBtn).toBeTruthy();
-    expect(deleteBtn?.textContent).toContain("🗑️ Borrar datos de voz offline (~24 MB)");
+    expect(deleteBtn?.textContent).toContain("Borrar datos de voz offline (~24 MB)");
+    expect(deleteBtn?.querySelector(".icon--trash")).toBeTruthy();
 
     act(() => {
       deleteBtn?.click();

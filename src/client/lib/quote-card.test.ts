@@ -8,6 +8,8 @@ import {
   downloadQuoteCard,
   shareQuoteCard,
   drawCompanionCat,
+  renderQuoteCardToCanvas,
+  splitHighlightedLine,
   type QuoteCardConfig,
 } from "./quote-card";
 
@@ -145,6 +147,73 @@ describe("quote-card", () => {
     expect(mockCtx.save).toHaveBeenCalled();
     expect(mockCtx.restore).toHaveBeenCalled();
     expect(mockCtx.fill).toHaveBeenCalled();
+  });
+
+  it("splitHighlightedLine resalta con tildes y límites de palabra, sin falsos positivos ni fallar en fallback", () => {
+    expect(splitHighlightedLine("Un efímero instante de luz.", "EFÍMERO")).toEqual([
+      { text: "Un ", highlighted: false },
+      { text: "efímero", highlighted: true },
+      { text: " instante de luz.", highlighted: false },
+    ]);
+    // No coincide dentro de subcadena ("sol" dentro de "soledad")
+    expect(splitHighlightedLine("La soledad pesa.", "sol")).toEqual([
+      { text: "La soledad pesa.", highlighted: false },
+    ]);
+    // Fallback limpio sin highlightWord o sin coincidencia literal
+    expect(splitHighlightedLine("Una frase cualquiera.")).toEqual([
+      { text: "Una frase cualquiera.", highlighted: false },
+    ]);
+  });
+
+  it("renderQuoteCardToCanvas pinta palabra destacada, glosa al pie y firma lectal.app", async () => {
+    const fills: Array<{ text: string; fillStyle: string }> = [];
+    const strokes: string[] = [];
+    const ctx = {
+      fillStyle: "",
+      strokeStyle: "",
+      lineWidth: 1,
+      font: "",
+      textAlign: "center",
+      fillRect: vi.fn(),
+      strokeRect: vi.fn(),
+      measureText: (s: string) => ({ width: s.length * 10 }),
+      fillText: vi.fn((text: string) => {
+        fills.push({ text, fillStyle: String(ctx.fillStyle) });
+      }),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(() => {
+        strokes.push(String(ctx.strokeStyle));
+      }),
+    };
+    const fakeCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+    } as unknown as HTMLCanvasElement;
+
+    await renderQuoteCardToCanvas(
+      {
+        text: "Un efímero destello.",
+        highlightWord: "efímero",
+        gloss: "De corta duración",
+        format: "story",
+        theme: "papel",
+        showAuthor: false,
+        showBookTitle: false,
+        showChapter: false,
+        showBranding: true,
+      },
+      fakeCanvas,
+    );
+
+    const highlighted = fills.find((f) => f.text === "efímero");
+    expect(highlighted).toBeDefined();
+    expect(highlighted?.fillStyle).toBe(THEME_PALETTES.papel.brand);
+    expect(strokes).toContain(THEME_PALETTES.papel.brand);
+    expect(fills.some((f) => f.text.includes("efímero — De corta duración"))).toBe(true);
+    expect(fills.some((f) => f.text === "Lecta · lectal.app")).toBe(true);
   });
 });
 

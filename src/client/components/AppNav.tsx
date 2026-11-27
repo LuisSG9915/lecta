@@ -104,7 +104,7 @@ export function AppNav({
               </span>
             )}
           </div>
-          <span className="app-nav-label">Cuaderno</span>
+          <span className="app-nav-label">Herbario</span>
         </button>
 
         <button
@@ -119,7 +119,7 @@ export function AppNav({
             {hasJourneyAlert && (
               <span
                 className="app-nav-sparkle"
-                aria-label="Novedad en tu recorrido"
+                aria-label="Novedad en tu camino"
               >
                 <Icon name="sparkles" size={12} />
               </span>
@@ -136,7 +136,7 @@ export function AppNav({
           onClick={() => onNavigate("account")}
         >
           <Icon name="you" size={22} />
-          <span className="app-nav-label">Perfil</span>
+          <span className="app-nav-label">Tú</span>
         </button>
       </div>
 

@@ -48,10 +48,10 @@ describe("ChapterEndCard", () => {
     expect(chip()?.textContent).toBe("Fijar 1 palabra (≈25 s)");
   });
 
-  it("sin cola no hay chip pero sí el cierre y «Ver Cuaderno»", () => {
+  it("sin cola no hay chip pero sí el cierre y «Ver Herbario»", () => {
     render(0);
     expect(chip()).toBeUndefined();
     expect(host.textContent).toContain("Cerraste «Capítulo 1» — 2 consultas");
-    expect(host.textContent).toContain("Ver Cuaderno");
+    expect(host.textContent).toContain("Ver Herbario");
   });
 });

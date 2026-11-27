@@ -126,4 +126,90 @@ describe("ReaderCard (Carné de Lector)", () => {
     );
     expect(host.textContent).toContain("ningún cargo");
   });
+
+  it("con oferta de bienvenida vigente muestra $399 MXN el primer año y el límite; si venció vuelve a $499", () => {
+    const future = Date.now() + 24 * 3_600_000;
+    render({
+      plan: "free",
+      starterCoat: null,
+      expiresAt: null,
+      trialEndedAt: Date.now() - 24 * 3_600_000,
+      welcomeOfferEndsAt: future,
+    });
+    expect(host.textContent).toContain("$399 MXN el primer año");
+    expect(host.textContent).toContain("Oferta de bienvenida (72 h)");
+    expect(host.textContent).toContain("Disponible hasta el");
+
+    render({
+      plan: "free",
+      starterCoat: null,
+      expiresAt: null,
+      trialEndedAt: Date.now() - 80 * 3_600_000,
+      welcomeOfferEndsAt: Date.now() - 1000,
+    });
+    expect(host.textContent).toContain("$499 MXN al año");
+    expect(host.textContent).not.toContain("Oferta de bienvenida (72 h)");
+  });
+
+  it("con pastDue: true avisa del fallo de cobro y ofrece «Actualizar tarjeta» hacia el portal", async () => {
+    const navigate = vi.fn();
+    vi.spyOn(accountFetchModule, "accountFetch").mockResolvedValue(
+      json({ url: "https://billing.stripe.com/update-card" }),
+    );
+    render(
+      {
+        plan: "lecta_plus",
+        starterCoat: null,
+        expiresAt: Date.UTC(2026, 11, 10),
+        pastDue: true,
+      },
+      navigate,
+    );
+    expect(host.querySelector("[role='alert']")?.textContent).toContain(
+      "No pudimos renovar tu pago. Actualiza tu método de pago antes del",
+    );
+    const btn = host.querySelector<HTMLButtonElement>(".btn--primary")!;
+    expect(btn.textContent).toBe("Actualizar tarjeta");
+    await act(async () => btn.click());
+    expect(accountFetchModule.accountFetch).toHaveBeenCalledWith(
+      "/api/billing/portal",
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(navigate).toHaveBeenCalledWith("https://billing.stripe.com/update-card");
+  });
+
+  it("con passYearlyAvailable ofrece pase único $549 MXN y envía period=pass_yearly", async () => {
+    const navigate = vi.fn();
+    const fetchSpy = vi
+      .spyOn(accountFetchModule, "accountFetch")
+      .mockResolvedValue(json({ url: "https://checkout.stripe.com/pass" }));
+
+    render({ plan: "free", starterCoat: null, expiresAt: null, passYearlyAvailable: false });
+    expect(host.querySelector(".reader-card__pass")).toBeNull();
+
+    render(
+      { plan: "free", starterCoat: null, expiresAt: null, passYearlyAvailable: true },
+      navigate,
+    );
+    const passBtn = host.querySelector<HTMLButtonElement>(".reader-card__pass")!;
+    expect(passBtn.textContent).toContain("Pase de 1 año ($549 MXN)");
+    await act(async () => passBtn.click());
+    const [path, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/billing/checkout");
+    expect(JSON.parse(String(init.body))).toEqual({ period: "pass_yearly" });
+    expect(navigate).toHaveBeenCalledWith("https://checkout.stripe.com/pass");
+  });
+
+  it("pase anual activo (hasSubscription: false) muestra vigencia sin renovación y oculta portal", () => {
+    render({
+      plan: "lecta_plus",
+      starterCoat: null,
+      expiresAt: Date.UTC(2027, 10, 27),
+      hasSubscription: false,
+    });
+    expect(host.textContent).toContain("Pase anual Lecta+");
+    expect(host.textContent).toContain("sin renovación automática");
+    expect(host.textContent).not.toContain("Administrar suscripción");
+  });
 });

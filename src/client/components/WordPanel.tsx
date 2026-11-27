@@ -608,7 +608,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     };
   }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, canBeCharacter, initialViewMode, charOffsetInChapter, bookLanguage, language]);
 
-  // Carrera ★ vs IA: si se guardó antes de que llegara el significado, la
+  // Carrera al guardar vs IA: si se guardó antes de que llegara el significado, la
   // fila quedó con meaning vacío; se completa con CAS por sello (nunca pisa
   // un repaso ni un significado ya escrito).
   const readyMeaningText = meaningStatus === "ready" ? meaning?.text?.trim() ?? "" : "";
@@ -1045,7 +1045,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 className="word-panel__saved-pill word-panel-saved-badge"
                 data-sprout={sprouted || undefined}
               >
-                ★ Guardada en tu cuaderno{savedStage ? ` · ${savedStage}` : ""}
+                <Icon name="star" size={14} /> Guardada en tu cuaderno{savedStage ? ` · ${savedStage}` : ""}
               </span>
               <button
                 type="button"
@@ -1064,7 +1064,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 onClick={handleSave}
                 disabled={saving}
               >
-                ★ Guardar en mi cuaderno
+                <Icon name="star" size={14} /> Guardar en mi cuaderno
               </button>
               <button
                 type="button"
@@ -1072,7 +1072,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 onClick={handleQuickKnown}
                 title="Marcar como ya conocida para ajustar tu nivel sin exámenes"
               >
-                ✓ Ya la sé
+                <Icon name="check" size={14} /> Ya la sé
               </button>
             </>
           )}
@@ -1223,7 +1223,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   }}
                   title="Desactivar recordatorio de personajes"
                 >
-                  ✕ Desactivar recordatorio de personajes
+                  <Icon name="close" size={14} /> Desactivar recordatorio de personajes
                 </button>
               </div>
             </div>

@@ -68,6 +68,15 @@ export function formatTrialDate(ms: number): string {
   return new Date(ms).toLocaleDateString("es-MX", { day: "numeric", month: "long" });
 }
 
+export function formatTrialDeadline(ms: number): string {
+  return new Date(ms).toLocaleString("es-MX", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function read(key: string): boolean {
   try {
     return localStorage.getItem(key) !== null;

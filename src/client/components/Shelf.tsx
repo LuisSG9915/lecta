@@ -8,31 +8,23 @@ import {
   type SavedBookPosition,
   type StoredBook,
 } from "../lib/idb";
-import { CALIBRATION_DONE_KEY } from "../lib/calibration";
+import { CALIBRATION_DONE_KEY } from "../lib/calibration-keys";
 import { triggerHaptic } from "../lib/haptics";
 import {
   displayTitle,
-  readBookMeta,
   isHashLikeIdentifier,
-  type BookMeta,
-} from "../lib/cover";
-import { repairRemoteBook } from "../lib/books";
-import { languageName } from "../lib/epub";
+  languageName,
+} from "../../shared/book-display";
+import type { BookMeta } from "../lib/cover";
 import { normalizeSearchText } from "../lib/search-text";
-import {
-  entriesByFormOf,
-  manifestBookForms,
-  type CatalogBook,
-} from "../lib/catalog";
+import type { CatalogBook } from "../lib/catalog";
 import {
   affinityBadgeLabel,
   affinityTierOf,
   coverageIsReliable,
-  coverageOfBook,
   COVERAGE_UNMEASURED_LABEL,
-  createCoverageInputsLoader,
   type BookCoverage,
-} from "../lib/coverage";
+} from "../lib/coverage-display";
 import { playCompanionSound } from "../lib/companion-audio";
 import { catMotionReduced } from "../lib/cat-motion";
 import { relativeDay } from "../lib/relative-time";
@@ -73,9 +65,9 @@ import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
 import type { NotificationPayload } from "../lib/companionNotification";
 import { useCompanion } from "./CompanionProvider";
-import CoatChoice, { needsCoatChoice } from "./CoatChoice";
-import { useUserPlan } from "../lib/account-plan";
-import Sheet from "./Sheet";
+const CoatChoice = lazy(() => import("./CoatChoice"));
+const Sheet = lazy(() => import("./Sheet"));
+import { needsCoatChoice, useUserPlan } from "../lib/account-plan";
 import { loadTtsLandingPosition } from "../lib/tts-landing";
 import { loadTtsSettings } from "../lib/ttsSettings";
 import { startSilentKeepAlive } from "../lib/ttsMediaSession";
@@ -201,6 +193,38 @@ export function takeShelfGreeting(): boolean {
 const SAMPLE_BOOK_URL = "/libros/azul-ruben-dario.epub";
 const SAMPLE_BOOK_NAME = "Azul… — Rubén Darío.epub";
 
+type StarterPick = CatalogBook & { tag: string };
+
+const STARTER_PICKS: StarterPick[] = [
+  {
+    id: "christmas-carol",
+    gutenbergId: 46,
+    title: "A Christmas Carol",
+    author: "Charles Dickens",
+    language: "en",
+    cover: true,
+    tag: "Relato en inglés",
+  },
+  {
+    id: "alice-wonderland",
+    gutenbergId: 11,
+    title: "Alice's Adventures in Wonderland",
+    author: "Lewis Carroll",
+    language: "en",
+    cover: true,
+    tag: "Novela en inglés",
+  },
+  {
+    id: "marianela",
+    gutenbergId: 17013,
+    title: "Marianela",
+    author: "Benito Pérez Galdós",
+    language: "es",
+    cover: true,
+    tag: "Clásico en español",
+  },
+];
+
 export function timeOfDayGreeting(): string {
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12) return "Buenos días";
@@ -271,6 +295,7 @@ export default function Shelf({
   const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
+  const [starterLoadingId, setStarterLoadingId] = useState<string | null>(null);
   const [calibrationDone, setCalibrationDone] = useState(false);
   const [calibrationDismissed, setCalibrationDismissed] = useState(() => {
     try {
@@ -308,6 +333,7 @@ export default function Shelf({
       (book.title === "Libro en la nube" || !book.title || isHashLikeIdentifier(book.title))
     ) {
       try {
+        const { repairRemoteBook } = await import("../lib/books");
         const repaired = await repairRemoteBook(book.hash);
         if (repaired?.title) {
           book.title = repaired.title;
@@ -328,13 +354,6 @@ export default function Shelf({
       onOpen(book);
     }
   };
-  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
-    try {
-      return localStorage.getItem("lecta_onboarding_dismissed") === "1";
-    } catch {
-      return false;
-    }
-  });
   // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
   // la próxima vez que la estantería se monta.
   const [activityHidden] = useState(() => loadActivityHidden());
@@ -349,6 +368,7 @@ export default function Shelf({
   // cuidado compartida — nada se carga aquí.
   const companion = useCompanion();
   const userPlan = useUserPlan();
+  const [pastDueHidden, setPastDueHidden] = useState(false);
   const showCompanion = companion.enabled === true && companion.state !== null;
   // Saludo una vez por sesión: la primera vez que la estantería
   // muestra al gato, saluda con la pata unos segundos. Marca en
@@ -449,6 +469,8 @@ export default function Shelf({
       const scope = captureDbScope();
       const stored = await listStoredBooks(scope).catch(() => []);
       const pending = stored.filter((book) => !book.metaVersion).slice(0, 5);
+      if (!pending.length || cancelled) return;
+      const { readBookMeta } = await import("../lib/cover");
       for (const book of pending) {
         const meta = await readBookMeta(book.data);
         if (cancelled) return;
@@ -493,6 +515,14 @@ export default function Shelf({
     let cancelled = false;
     void (async () => {
       const scope = captureDbScope();
+      const [
+        { createCoverageInputsLoader, coverageOfBook },
+        { manifestBookForms, entriesByFormOf },
+      ] = await Promise.all([
+        import("../lib/coverage"),
+        import("../lib/catalog"),
+      ]);
+      if (cancelled) return;
       // El perfil necesita el catálogo (zipfs de la evidencia): si no
       // hay red no se puede medir nada y el lote entero se omite. Se
       // lee una vez por idioma: cada libro se mide con el suyo.
@@ -803,6 +833,23 @@ export default function Shelf({
     }
   };
 
+  const openStarter = async (pick: StarterPick) => {
+    if (!onGetCatalogBook) {
+      await openSample();
+      return;
+    }
+    if (starterLoadingId) return;
+    setSampleState("idle");
+    setStarterLoadingId(pick.id);
+    try {
+      await onGetCatalogBook(pick);
+    } catch {
+      setSampleState("error");
+    } finally {
+      setStarterLoadingId(null);
+    }
+  };
+
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragging(false);
@@ -851,37 +898,6 @@ export default function Shelf({
           library[0].sectionCount,
         ) === 0));
 
-  const step1Done = calibrationDone;
-  const step2Done = positions.length > 0;
-  const step3Done = wordCounts.size > 0 || (companion.state && companion.state.xp > 0);
-  const onboardingAllDone = step1Done && step2Done && step3Done;
-  const isBrandNew = library.length <= 1 && positions.length === 0 && !calibrationDone;
-  // Solo se guía antes de la primera lectura o para celebrar que ya se
-  // completó. Un lector que ya avanzó no vuelve a ver la lista de pasos
-  // cada vez que entra a la estantería.
-  const showOnboarding =
-    !isFirstTimeReader &&
-    !onboardingDismissed &&
-    (isBrandNew || onboardingAllDone);
-
-  const skipOnboarding = () => {
-    try {
-      localStorage.setItem("lecta_onboarding_dismissed", "1");
-    } catch {
-      // ignore
-    }
-    setOnboardingDismissed(true);
-  };
-
-  const finishOnboarding = () => {
-    try {
-      localStorage.setItem("lecta_onboarding_dismissed", "1");
-    } catch {
-      // ignore
-    }
-    setOnboardingDismissed(true);
-  };
-
   return (
     <div className="shelf shelf-main shelf-enter" onDragOver={(e) => e.preventDefault()}>
       <input
@@ -902,47 +918,113 @@ export default function Shelf({
         <TrialStatusLine />
       </Suspense>
 
+      {userPlan?.pastDue === true && !pastDueHidden ? (
+        <div className="trial-note" role="status" data-testid="past-due-note">
+          <span className="trial-note__text">
+            No pudimos renovar tu pago de Lecta+. Actualiza tu tarjeta para conservar tu acceso.
+          </span>
+          <button
+            type="button"
+            className="btn trial-note__cta"
+            onClick={() => window.dispatchEvent(new CustomEvent("lecta:open-carne"))}
+          >
+            Actualizar tarjeta
+          </button>
+          <button
+            type="button"
+            className="btn--quiet trial-note__close"
+            aria-label="Cerrar aviso de pago"
+            onClick={() => setPastDueHidden(true)}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
       {isFirstTimeReader ? (
-        <section className="shelf-welcome-hero" aria-label="Primera lectura en 1 clic">
+        <section className="shelf-welcome-hero" aria-label="Primera lectura en 1 toque">
           <div className="shelf-welcome-hero-content">
-            <span className="shelf-welcome-hero-badge">Lectura inmediata</span>
+            {showCompanion && companion.state ? (
+              <div className="shelf-welcome-cat">
+                <CompanionButton
+                  stage={companion.stage}
+                  mood={companion.mood}
+                  accessories={companion.accessories}
+                  name={companion.name}
+                  label={`Ver a ${companion.name}`}
+                  onClick={() => companion.openPanel()}
+                />
+                <span className="shelf-welcome-hero-badge">
+                  {companion.name} te acompaña
+                </span>
+              </div>
+            ) : (
+              <span className="shelf-welcome-hero-badge">Primera lectura</span>
+            )}
             <h2 className="shelf-welcome-hero-title">
-              Vive cómo se siente leer sin interrupciones
+              ¿Con qué quieres empezar hoy?
             </h2>
             <p className="shelf-welcome-hero-subtitle">
-              Abre nuestra edición interactiva de muestra o elige una obra gratuita abajo. Lecta preparará las palabras difíciles antes de cada capítulo.
+              Toca un libro y entra directo a la página. Si una palabra se atraviesa, la entiendes en un toque sin perder el hilo.
             </p>
-            <ul className="shelf-welcome-gems" aria-label="Qué incluye tu lectura">
-              <li className="shelf-welcome-gem">Significado al instante en 1 toque</li>
-              <li className="shelf-welcome-gem">Memoria de personajes sin spoilers</li>
-              <li className="shelf-welcome-gem">Voz y enfoque adaptativo</li>
-            </ul>
-            <div className="shelf-welcome-hero-actions">
-              <button
-                type="button"
-                className="btn btn--primary shelf-welcome-hero-btn"
-                onClick={() => {
-                  triggerHaptic(12);
-                  if (library.length > 0) {
+            {library.length > 0 ? (
+              <div className="shelf-welcome-hero-actions">
+                <button
+                  type="button"
+                  className="btn btn--primary shelf-welcome-hero-btn"
+                  onClick={() => {
+                    triggerHaptic(12);
                     handleBookClick(library[0]);
-                  } else {
-                    void openSample();
-                  }
-                }}
-                disabled={sampleState === "loading"}
-              >
-                {sampleState === "loading"
-                  ? "Preparando el libro…"
-                  : "Empezar lectura de muestra ahora"}
-              </button>
-              <button
-                type="button"
-                className="btn btn--secondary shelf-welcome-hero-btn-secondary"
-                onClick={pickFile}
-              >
-                Elegir archivo EPUB
-              </button>
-            </div>
+                  }}
+                >
+                  Empezar «{displayTitle(library[0].name, library[0].title)}»
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--secondary shelf-welcome-hero-btn-secondary"
+                  onClick={pickFile}
+                >
+                  Traer mi archivo EPUB
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="shelf-welcome-picks">
+                  {STARTER_PICKS.map((pick, idx) => {
+                    const isBusy =
+                      starterLoadingId === pick.id ||
+                      (!onGetCatalogBook && sampleState === "loading");
+                    return (
+                      <button
+                        key={pick.id}
+                        type="button"
+                        className={`shelf-welcome-pick-btn${idx === 0 ? " btn btn--primary shelf-welcome-hero-btn" : " btn"}`}
+                        onClick={() => {
+                          triggerHaptic(12);
+                          void openStarter(pick);
+                        }}
+                        disabled={Boolean(starterLoadingId) || sampleState === "loading"}
+                      >
+                        <span className="shelf-welcome-pick-tag">{pick.tag}</span>
+                        <span className="shelf-welcome-pick-title">
+                          {isBusy ? "Preparando el libro…" : pick.title}
+                        </span>
+                        <span className="shelf-welcome-pick-author">{pick.author}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="shelf-welcome-hero-actions">
+                  <button
+                    type="button"
+                    className="btn btn--secondary shelf-welcome-hero-btn-secondary"
+                    onClick={pickFile}
+                  >
+                    Traer mi archivo EPUB
+                  </button>
+                </div>
+              </>
+            )}
             {sampleState === "error" ? (
               <p className="meta" role="alert">
                 No pude traer el libro. Revisa tu conexión e inténtalo de nuevo.
@@ -952,106 +1034,10 @@ export default function Shelf({
         </section>
       ) : null}
 
-      {needsCoatChoice(userPlan) ? <CoatChoice /> : null}
-
-      {showOnboarding ? (
-        <section className="shelf-onboarding-card" aria-label="Bienvenida a Lecta">
-          <div className="onboarding-header">
-            <div className="onboarding-title-group">
-              <span className="onboarding-badge">Primeros pasos</span>
-              <h2 className="onboarding-title">Prepara tu lectura en 3 pasos</h2>
-            </div>
-            <button
-              type="button"
-              className="btn--quiet onboarding-skip-btn"
-              onClick={skipOnboarding}
-            >
-              Saltar por ahora
-            </button>
-          </div>
-
-          {onboardingAllDone ? (
-            <div className="onboarding-celebration">
-              <p className="onboarding-celebration-title">¡Ritual de inicio completado!</p>
-              <p className="meta">
-                Has desbloqueado la <strong>Bufanda de Invierno</strong> en el clóset de tu compañero.
-              </p>
-              <button
-                type="button"
-                className="btn btn--primary onboarding-finish-btn"
-                onClick={finishOnboarding}
-              >
-                Comenzar a disfrutar Lecta →
-              </button>
-            </div>
-          ) : (
-            <ol className="onboarding-steps">
-              <li className={`onboarding-step ${step1Done ? "is-done" : ""}`}>
-                <span className="step-icon">{step1Done ? "✓" : "1"}</span>
-                <div className="step-content">
-                  <strong className="step-title">Afinar mi nivel en 45 seg</strong>
-                  <span className="step-desc">Ajusta la dificultad del vocabulario para tus lecturas.</span>
-                </div>
-                {!step1Done && onRequestCalibration ? (
-                  <button
-                    type="button"
-                    className="btn btn--sm btn--primary"
-                    onClick={onRequestCalibration}
-                  >
-                    Afinar nivel
-                  </button>
-                ) : null}
-              </li>
-
-              <li className={`onboarding-step ${step2Done ? "is-done" : ""}`}>
-                <span className="step-icon">{step2Done ? "✓" : "2"}</span>
-                <div className="step-content">
-                  <strong className="step-title">Abrir mi primer capítulo con una Estrategia</strong>
-                  <span className="step-desc">Elige Azul... de Rubén Darío o añade un EPUB propio.</span>
-                </div>
-                {!step2Done ? (
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    onClick={() => {
-                      if (current) handleBookClick(current);
-                      else if (library[0]) handleBookClick(library[0]);
-                      else if (onGetCatalogBook) {
-                        void onGetCatalogBook({
-                          id: "azul-ruben-dario",
-                          gutenbergId: 0,
-                          title: "Azul...",
-                          author: "Rubén Darío",
-                          cover: true,
-                          language: "es",
-                        });
-                      }
-                    }}
-                  >
-                    Abrir libro
-                  </button>
-                ) : null}
-              </li>
-
-              <li className={`onboarding-step ${step3Done ? "is-done" : ""}`}>
-                <span className="step-icon">{step3Done ? "✓" : "3"}</span>
-                <div className="step-content">
-                  <strong className="step-title">Tocar una palabra nueva y acariciar al gato</strong>
-                  <span className="step-desc">Descubre notas léxicas y comparte momentos con tu gato.</span>
-                </div>
-                {!step3Done && showCompanion ? (
-                  <button
-                    type="button"
-                    className="btn btn--sm btn--quiet"
-                    onClick={() => companion.openPanel()}
-                  >
-                    Acariciar al gato
-                  </button>
-                ) : null}
-              </li>
-            </ol>
-          )}
-        </section>
+      {needsCoatChoice(userPlan) ? (
+        <Suspense fallback={null}>
+          <CoatChoice />
+        </Suspense>
       ) : null}
 
       {/* Tarjeta compacta del compañero (fase 5): el gato con su
@@ -1707,8 +1693,9 @@ export default function Shelf({
           </section>
 
           {optionsBook ? (
-            <Sheet
-              label={`Opciones de ${displayTitle(optionsBook.name, optionsBook.title)}`}
+            <Suspense fallback={null}>
+              <Sheet
+                label={`Opciones de ${displayTitle(optionsBook.name, optionsBook.title)}`}
               onClose={() => {
                 setOptionsBook(null);
                 setConfirmDelete(null);
@@ -1874,7 +1861,7 @@ export default function Shelf({
                   {confirmDelete === optionsBook.hash ? (
                     <div className="shelf-options-confirm" role="alert">
                       <p className="meta">
-                        ¿Seguro que quieres quitar «{displayTitle(optionsBook.name, optionsBook.title)}»? Tus palabras guardadas en el Cuaderno se conservan.
+                        ¿Seguro que quieres quitar «{displayTitle(optionsBook.name, optionsBook.title)}»? Tus palabras guardadas en tu Herbario se conservan.
                       </p>
                       <div className="shelf-options-confirm-actions">
                         <button
@@ -1905,6 +1892,7 @@ export default function Shelf({
                 </div>
               </div>
             </Sheet>
+            </Suspense>
           ) : null}
 
           {activityHidden ? null : (
@@ -1935,7 +1923,7 @@ export default function Shelf({
                   className="btn--quiet"
                   onClick={onOpenJourney}
                 >
-                  Tu recorrido completo…
+                  Ver tu Camino completo…
                 </button>
               </div>
             ) : null}

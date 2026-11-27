@@ -9,6 +9,7 @@ import {
 } from "./error-signatures";
 import { purgeLandingEvents, purgePlanEvents } from "./landing-events";
 import { runReengage } from "./reengage";
+import { runTrialEndEmails } from "./trial-end-email";
 import { readCachedCoach } from "./coach";
 import { loadUserPlan } from "./plan-store";
 import { hasLectaPlus } from "../shared/plan";
@@ -68,6 +69,7 @@ const handler: ExportedHandler<WorkerEnv> = {
     ctx.waitUntil(
       (async () => {
         await runReengage(env).catch(() => undefined);
+        await runTrialEndEmails(env).catch(() => undefined);
         if (new Date().getUTCDay() !== 1) return;
         let users: { user_id: string; email: string; token: string | null }[];
         try {

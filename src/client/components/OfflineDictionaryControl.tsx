@@ -8,6 +8,7 @@ import {
 } from "../lib/offline-dictionary";
 import { captureDbScope } from "../lib/idb";
 import { triggerHaptic } from "../lib/haptics";
+import Icon from "./Icon";
 
 export interface OfflineDictionaryControlProps {
   bookHash: string;
@@ -137,7 +138,9 @@ export default function OfflineDictionaryControl({
       ) : status && status.cached > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-1)" }}>
           <p className="meta meta--offline">
-            <span className="offline-check" aria-hidden="true">✓</span>{" "}
+            <span className="offline-check" aria-hidden="true">
+              <Icon name="check" size={14} />
+            </span>{" "}
             Vocabulario listo sin conexión{chapterRangeText ? ` (Capítulos ${chapterRangeText})` : ` (${status.percent}% disponible)`}
           </p>
           <p className="meta" style={{ fontSize: "var(--fs-xs)" }}>

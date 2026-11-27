@@ -9,7 +9,13 @@ import { normalizeLandingSource, recordLandingEvent } from "./landing-events";
 import { readFreeAiRemaining } from "./free-courtesy";
 import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
 import { getSession } from "./session";
-import { hasLectaPlus, isStarterCoat, REVERSE_TRIAL_MS } from "../shared/plan";
+import {
+  hasLectaPlus,
+  isPlanPastDue,
+  isStarterCoat,
+  REVERSE_TRIAL_MS,
+  welcomeOfferEndsAt,
+} from "../shared/plan";
 import { USER_AI_SCOPES } from "./ai-units";
 
 export const account = new Hono<{ Bindings: WorkerEnv }>();
@@ -53,6 +59,16 @@ account.get("/api/account/state", async (context) => {
   }
 
   const snapshot = plan as UserPlanSnapshot | null;
+  const now = Date.now();
+  const couponConfigured = Boolean(context.env.STRIPE_COUPON_TRIAL_END_ID?.trim());
+  const welcomeEnds =
+    snapshot && !snapshot.degraded && snapshot.plan === "free" && couponConfigured
+      ? welcomeOfferEndsAt(snapshot.trialEndedAt, now)
+      : null;
+  const pastDue =
+    snapshot && !snapshot.degraded
+      ? isPlanPastDue(snapshot.plan, snapshot.expiresAt, snapshot.stripeSubscriptionId, now)
+      : false;
   return context.json({
     ok: true,
     resetAt,
@@ -67,6 +83,14 @@ account.get("/api/account/state", async (context) => {
           trialEndsAt: snapshot.trialEndsAt,
           // Fin de una prueba ya vencida (plan free); null si no tuvo o sigue en curso.
           trialEndedAt: snapshot.trialEndedAt ?? null,
+          // Oferta real de bienvenida (72 h) si hay cupón configurado y sigue vigente.
+          welcomeOfferEndsAt: welcomeEnds,
+          // Cobro vencido dentro de los 3 días de gracia (reintento de Stripe).
+          pastDue,
+          // Pase anual sin renovación (Tarjeta / SPEI / OXXO) configurado en env.
+          passYearlyAvailable: Boolean(context.env.STRIPE_PRICE_PASS_YEARLY_ID?.trim()),
+          // `false` en pases de pago único; `true` en suscripciones recurrentes.
+          hasSubscription: Boolean(snapshot.stripeSubscriptionId),
         }
       : {}),
   });

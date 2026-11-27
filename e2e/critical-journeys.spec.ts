@@ -27,7 +27,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await expect(welcomeHero).toBeVisible();
 
     const heroTitle = page.locator(".shelf-welcome-hero-title");
-    await expect(heroTitle).toHaveText("Vive cómo se siente leer sin interrupciones");
+    await expect(heroTitle).toHaveText("¿Con qué quieres empezar hoy?");
 
     // Verificar ausencia de emojis pictóricos en la interfaz inicial
     const pageText = await page.locator("body").innerText();
@@ -355,7 +355,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await accountTab.click();
     await expect(page.locator(".account-page")).toBeVisible({ timeout: 10_000 });
 
-    const advancedSummary = page.locator(".account-advanced-summary, summary:has-text('Avanzado y privacidad')");
+    const advancedSummary = page.locator(".account-advanced-summary, summary:has-text('Cuenta, respaldos y datos')");
     await advancedSummary.click();
 
     const downloadPromise = page.waitForEvent("download");
@@ -387,7 +387,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await accountTabAfterWipe.click();
     await expect(page.locator(".account-page")).toBeVisible({ timeout: 10_000 });
 
-    const advancedSummaryAfterWipe = page.locator(".account-advanced-summary, summary:has-text('Avanzado y privacidad')");
+    const advancedSummaryAfterWipe = page.locator(".account-advanced-summary, summary:has-text('Cuenta, respaldos y datos')");
     await advancedSummaryAfterWipe.click();
 
     const restoreInput = page.locator('input[type="file"][accept*="json"]').first();
@@ -433,7 +433,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // Las palabras restauradas aparecen en Vocabulario
     const vocabTab = page.locator('button.app-nav-item[data-dest="vocabulary"]');
     await vocabTab.click();
-    await expect(page.locator("h1:has-text('Cuaderno')")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("h1:has-text('Herbario')")).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("body")).toContainText("perenne");
 
     // Ningún componente muestra emojis en pantalla
@@ -465,7 +465,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await expect(page.locator(".account-page")).toBeVisible({ timeout: 10_000 });
 
     // Desplegar sección Avanzado y privacidad
-    const advancedSummary = page.locator(".account-advanced-summary, summary:has-text('Avanzado y privacidad')");
+    const advancedSummary = page.locator(".account-advanced-summary, summary:has-text('Cuenta, respaldos y datos')");
     await advancedSummary.click();
 
     // Abrir Centro de diagnóstico
@@ -571,7 +571,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await expect(page.locator(".account-page")).toBeVisible({ timeout: 10_000 });
 
     // 6. Abrir Centro de diagnóstico
-    const advancedSummary = page.locator(".account-advanced-summary, summary:has-text('Avanzado y privacidad')");
+    const advancedSummary = page.locator(".account-advanced-summary, summary:has-text('Cuenta, respaldos y datos')");
     await advancedSummary.click();
     await page.locator("button:has-text('Centro de diagnóstico')").click();
 

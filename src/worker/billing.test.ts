@@ -162,6 +162,7 @@ describe("POST /api/billing/checkout", () => {
     expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
     const form = new URLSearchParams(String(init.body));
     expect(form.get("line_items[0][price]")).toBe("price_y");
+    expect(form.get("adaptive_pricing[enabled]")).toBe("true");
     expect(form.get("client_reference_id")).toBe("u1");
     expect(form.get("subscription_data[metadata][user_id]")).toBe("u1");
     expect(form.get("customer")).toBe("cus_9");
@@ -170,6 +171,59 @@ describe("POST /api/billing/checkout", () => {
     expect(form.get("success_url")).toBe("http://localhost/?carne=gracias");
     expect(form.get("cancel_url")).toBe("http://localhost/?carne=cancelado");
     expect((init.headers as Record<string, string>)["stripe-version"]).toBe("2025-03-31.basil");
+  });
+
+  it("oferta de bienvenida 72h: aplica STRIPE_COUPON_TRIAL_END_ID solo en yearly vigente y nunca acepta coupon del cliente", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    const now = Date.now();
+    const envWithCoupon: WorkerEnv = { ...env, STRIPE_COUPON_TRIAL_END_ID: "coupon_399" };
+
+    // 1. Dentro de 72h + yearly → envía discounts[0][coupon]
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "free", trialEndedAt: now - 12 * 3_600_000 }));
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/welcome" }));
+    const yearlyRes = await app.request(
+      "/api/billing/checkout",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ period: "yearly", coupon: "hacker_free" }),
+      },
+      envWithCoupon,
+    );
+    expect(yearlyRes.status).toBe(200);
+    const yearlyForm = new URLSearchParams(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(yearlyForm.get("discounts[0][coupon]")).toBe("coupon_399");
+
+    // 2. Dentro de 72h + monthly → NO envía coupon
+    await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "monthly" }) },
+      envWithCoupon,
+    );
+    const monthlyForm = new URLSearchParams(String((fetchMock.mock.calls[1][1] as RequestInit).body));
+    expect(monthlyForm.has("discounts[0][coupon]")).toBe(false);
+
+    // 3. Pasadas 72h + yearly → NO envía coupon aunque el cliente mande uno
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "free", trialEndedAt: now - 73 * 3_600_000 }));
+    await app.request(
+      "/api/billing/checkout",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ period: "yearly", coupon: "coupon_399" }),
+      },
+      envWithCoupon,
+    );
+    const expiredForm = new URLSearchParams(String((fetchMock.mock.calls[2][1] as RequestInit).body));
+    expect(expiredForm.has("discounts[0][coupon]")).toBe(false);
+
+    // 4. Sin env STRIPE_COUPON_TRIAL_END_ID → NO envía coupon
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "free", trialEndedAt: now - 12 * 3_600_000 }));
+    await checkout({ period: "yearly", coupon: "coupon_399" });
+    const noEnvForm = new URLSearchParams(String((fetchMock.mock.calls[3][1] as RequestInit).body));
+    expect(noEnvForm.has("discounts[0][coupon]")).toBe(false);
   });
 });
 
@@ -569,5 +623,142 @@ describe("cancelación al borrar la cuenta", () => {
   it("otro error aborta el borrado", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ error: { code: "api_error" } }, 500));
     await expect(cancelSubscriptionForDeletion(env, "sub_1")).rejects.toThrow();
+  });
+});
+
+describe("Pase anual único (pass_yearly: Tarjeta / SPEI / OXXO)", () => {
+  const passEnv: WorkerEnv = { ...env, STRIPE_PRICE_PASS_YEARLY_ID: "price_pass_549" };
+
+  it("checkout pass_yearly exige env, usa mode=payment y omite trial_end/cupón", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(
+      plan({ plan: "free", trialEndedAt: Date.now() - 3600_000, stripeCustomerId: "cus_7" }),
+    );
+
+    // Sin STRIPE_PRICE_PASS_YEARLY_ID → 503
+    const missing = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "pass_yearly" }) },
+      env,
+    );
+    expect(missing.status).toBe(503);
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/pass" }));
+    const okRes = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "pass_yearly" }) },
+      { ...passEnv, STRIPE_COUPON_TRIAL_END_ID: "coupon_399" },
+    );
+    expect(okRes.status).toBe(200);
+    expect(await okRes.json()).toEqual({ url: "https://checkout.stripe.com/pass" });
+
+    const form = new URLSearchParams(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(form.get("mode")).toBe("payment");
+    expect(form.get("line_items[0][price]")).toBe("price_pass_549");
+    expect(form.get("adaptive_pricing[enabled]")).toBe("true");
+    expect(form.get("client_reference_id")).toBe("u1");
+    expect(form.get("metadata[kind]")).toBe("pass_yearly");
+    expect(form.get("payment_intent_data[metadata][user_id]")).toBe("u1");
+    expect(form.has("subscription_data[trial_end]")).toBe(false);
+    expect(form.has("discounts[0][coupon]")).toBe(false);
+  });
+
+  it("webhook payment_status=unpaid (OXXO/SPEI pendiente) NO activa el plan ni quema event_id", async () => {
+    const body = JSON.stringify({
+      id: "evt_oxxo_wait",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          mode: "payment",
+          payment_status: "unpaid",
+          client_reference_id: "u1",
+          metadata: { user_id: "u1", kind: "pass_yearly" },
+        },
+      },
+    });
+    const res = await app.request(
+      "/api/billing/webhook",
+      { method: "POST", headers: { "stripe-signature": await sign(body) }, body },
+      passEnv,
+    );
+    expect(res.status).toBe(200);
+    expect(withClientMock).not.toHaveBeenCalled();
+  });
+
+  it("webhook payment_status=paid y async_payment_succeeded activan lecta_plus por 365 días sin suscripción", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_pass" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{ "?column?": 1 }] };
+      if (sql.includes("INSERT INTO lecta_user_plan")) return { rows: [{ user_id: "u1" }] };
+      return { rows: [] };
+    });
+    const now = Date.now();
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "free", expiresAt: now + 10 * 86_400_000 }));
+
+    // 1. Pago inmediato (tarjeta)
+    const paidBody = JSON.stringify({
+      id: "evt_pass_paid",
+      type: "checkout.session.completed",
+      created: Math.floor(now / 1000),
+      data: {
+        object: {
+          mode: "payment",
+          payment_status: "paid",
+          customer: "cus_pass",
+          client_reference_id: "u1",
+          metadata: { user_id: "u1", kind: "pass_yearly" },
+        },
+      },
+    });
+    const paidRes = await app.request(
+      "/api/billing/webhook",
+      { method: "POST", headers: { "stripe-signature": await sign(paidBody) }, body: paidBody },
+      passEnv,
+    );
+    expect(paidRes.status).toBe(200);
+
+    const firstUpsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
+    expect(firstUpsert?.[1]?.[0]).toBe("u1");
+    expect(firstUpsert?.[1]?.[1]).toBe("cus_pass");
+    expect(firstUpsert?.[1]?.[2]).toBeNull();
+    const expectedMin = now + 375 * 86_400_000;
+    expect(Number(firstUpsert?.[1]?.[3])).toBeGreaterThanOrEqual(expectedMin - 5000);
+    await vi.waitFor(() =>
+      expect(
+        queryMock.mock.calls.some(
+          (c) => String(c[0]).includes("lecta_plan_events") && c[1]?.[2] === "app:checkout-complete:pass_yearly",
+        ),
+      ).toBe(true),
+    );
+
+    // 2. Pago diferido confirmado (OXXO/SPEI)
+    queryMock.mockClear();
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "free", expiresAt: null }));
+    const asyncBody = JSON.stringify({
+      id: "evt_pass_async",
+      type: "checkout.session.async_payment_succeeded",
+      created: Math.floor(now / 1000) + 60,
+      data: {
+        object: {
+          mode: "payment",
+          payment_status: "paid",
+          customer: "cus_oxxo",
+          client_reference_id: "u2",
+          metadata: { user_id: "u2", kind: "pass_yearly" },
+        },
+      },
+    });
+    const asyncRes = await app.request(
+      "/api/billing/webhook",
+      { method: "POST", headers: { "stripe-signature": await sign(asyncBody) }, body: asyncBody },
+      passEnv,
+    );
+    expect(asyncRes.status).toBe(200);
+    const asyncUpsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
+    expect(asyncUpsert?.[1]?.[0]).toBe("u2");
+    expect(asyncUpsert?.[1]?.[2]).toBeNull();
+    expect(Number(asyncUpsert?.[1]?.[3])).toBeGreaterThanOrEqual(now + 365 * 86_400_000 - 5000);
   });
 });

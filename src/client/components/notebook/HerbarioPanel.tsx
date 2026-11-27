@@ -23,6 +23,7 @@ import { languageName } from "../../lib/epub";
 import { speakWord } from "../../lib/speech";
 import Icon from "../Icon";
 import { WordRow } from "./WordRow";
+import type { QuoteCardRequest } from "./QuotesPanel";
 
 import type { UseHerbarioViewResult } from "../../hooks/useHerbarioView";
 
@@ -47,6 +48,8 @@ type HerbarioPanelProps = {
   startLearn: (first?: SavedWord) => void;
   remove: (word: SavedWord) => Promise<void>;
   setGlossaryBookHash: (hash: string | null) => void;
+  onQuoteCard?: (request: QuoteCardRequest) => void;
+  bookAuthor?: (hash: string | undefined) => string | undefined;
   exportCsv: () => void;
   exportAnkiCloze: () => void;
   exportMarkdownNotebook: () => void;
@@ -66,6 +69,8 @@ export function HerbarioPanel({
   startLearn,
   remove,
   setGlossaryBookHash,
+  onQuoteCard,
+  bookAuthor,
   exportCsv,
   exportAnkiCloze,
   exportMarkdownNotebook,
@@ -452,6 +457,20 @@ export function HerbarioPanel({
                               ? () => handleQuickGame(word)
                               : undefined
                           }
+                          onShareCard={
+                            onQuoteCard && word.context
+                              ? () => {
+                                  triggerHaptic("selection");
+                                  onQuoteCard({
+                                    text: word.context!,
+                                    highlightWord: word.form || word.lemma,
+                                    gloss: word.meaning || undefined,
+                                    bookTitle: wordBookTitle(word) ?? bookTitle(word.bookHash),
+                                    author: bookAuthor?.(word.bookHash),
+                                  });
+                                }
+                              : undefined
+                          }
                         />
                       ))}
                     </ul>
@@ -486,6 +505,20 @@ export function HerbarioPanel({
                     onQuickGame={
                       reviewKeys.has(word.key)
                         ? () => handleQuickGame(word)
+                        : undefined
+                    }
+                    onShareCard={
+                      onQuoteCard && word.context
+                        ? () => {
+                            triggerHaptic("selection");
+                            onQuoteCard({
+                              text: word.context!,
+                              highlightWord: word.form || word.lemma,
+                              gloss: word.meaning || undefined,
+                              bookTitle: wordBookTitle(word) ?? bookTitle(word.bookHash),
+                              author: bookAuthor?.(word.bookHash),
+                            });
+                          }
                         : undefined
                     }
                   />

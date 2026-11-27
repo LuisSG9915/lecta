@@ -37,6 +37,7 @@ export const LANDING_EVENTS = new Set([
   "app:carne-open",
   "app:trial-end-view",
   "app:trial-end-cta",
+  "app:trial-end-email",
   "app:recap-locked",
 ]);
 

@@ -8,12 +8,13 @@ import { trackPlanEvent } from "../lib/plan-events";
 import {
   fetchTrialSummary,
   formatTrialDate,
+  formatTrialDeadline,
   FREE_AFTER_TRIAL,
   markTrialEndSeen,
   trialFigures,
   type TrialSummary,
 } from "../lib/trial-notice";
-import { PRICES } from "./ReaderCard";
+import { PRICES, WELCOME_YEARLY } from "./ReaderCard";
 import Sheet from "./Sheet";
 
 export { trialFigures };
@@ -23,16 +24,20 @@ type Period = "monthly" | "yearly";
 
 export default function TrialEndSheet({
   endedAt,
+  welcomeOfferEndsAt,
   navigate = (url: string) => window.location.assign(url),
 }: {
   /** Fin de la prueba (ms) que manda el servidor. */
   endedAt?: number;
+  /** Fin de la oferta de bienvenida de 72 h (ms), solo si hay cupón real configurado. */
+  welcomeOfferEndsAt?: number | null;
   navigate?: (url: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [summary, setSummary] = useState<TrialSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [mountedAt] = useState(() => Date.now());
 
   useEffect(() => {
     trackPlanEvent("app:trial-end-view");
@@ -81,6 +86,10 @@ export default function TrialEndSheet({
 
   if (!open) return null;
   const figures = trialFigures(summary);
+  const welcomeDeadline =
+    typeof welcomeOfferEndsAt === "number" && welcomeOfferEndsAt > mountedAt
+      ? welcomeOfferEndsAt
+      : null;
   return (
     <Sheet label="Terminó tu prueba de Lecta+" onClose={close}>
       <div className="trial-end">
@@ -97,6 +106,12 @@ export default function TrialEndSheet({
         <p className="trial-end__detail">
           {endedAt ? `Desde el ${formatTrialDate(endedAt)} estás` : "Estás"} en Gratis: {FREE_AFTER_TRIAL}
         </p>
+        {welcomeDeadline !== null ? (
+          <p className="trial-end__detail">
+            Oferta de bienvenida por 72 h (hasta el {formatTrialDeadline(welcomeDeadline)}); después{" "}
+            {WELCOME_YEARLY.regular}.
+          </p>
+        ) : null}
         {error ? (
           <p role="alert" className="status">
             {error}
@@ -104,7 +119,9 @@ export default function TrialEndSheet({
         ) : null}
         <div className="trial-end__actions">
           <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void checkout("yearly")}>
-            {PRICES.yearly.label} · {PRICES.yearly.price} (≈{PRICES.yearly.perMonth} MXN al mes)
+            {welcomeDeadline !== null
+              ? `${PRICES.yearly.label} · ${WELCOME_YEARLY.price} (≈${WELCOME_YEARLY.perMonth} MXN al mes)`
+              : `${PRICES.yearly.label} · ${PRICES.yearly.price} (≈${PRICES.yearly.perMonth} MXN al mes)`}
           </button>
           <button type="button" className="btn" disabled={busy} onClick={() => void checkout("monthly")}>
             {PRICES.monthly.label} · {PRICES.monthly.price}

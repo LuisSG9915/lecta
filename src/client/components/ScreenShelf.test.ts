@@ -343,7 +343,7 @@ describe("ScreenShelf", () => {
     // 2 preseleccionado por la sugerencia.
     const eps = [...sheet()!.querySelectorAll<HTMLButtonElement>(".screen-ep")];
     const ep1 = eps.find((b) => b.getAttribute("aria-label")?.includes("Episodio 1"))!;
-    expect(ep1.textContent).toContain("✓");
+    expect(ep1.querySelector(".icon--check")).toBeTruthy();
     expect(ep1.getAttribute("aria-label")).toBe("Episodio 1, ya preparado");
     const ep2 = eps.find((b) => b.getAttribute("aria-label") === "Episodio 2")!;
     expect(ep2.getAttribute("aria-pressed")).toBe("true");

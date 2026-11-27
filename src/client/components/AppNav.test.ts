@@ -38,9 +38,9 @@ describe("AppNav", () => {
     const buttons = host.querySelectorAll("button");
     expect(buttons).toHaveLength(4);
     expect(buttons[0].textContent).toContain("Biblioteca");
-    expect(buttons[1].textContent).toContain("Cuaderno");
+    expect(buttons[1].textContent).toContain("Herbario");
     expect(buttons[2].textContent).toContain("Camino");
-    expect(buttons[3].textContent).toContain("Perfil");
+    expect(buttons[3].textContent).toContain("Tú");
   });
 
   it("coloca aria-current='page' en el destino activo", () => {

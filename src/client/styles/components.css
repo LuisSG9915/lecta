@@ -148,36 +148,6 @@
   border-color: var(--sage);
 }
 
-/* ---------- Elección de inicio de libro ---------- */
-
-.bookstart-options {
-  display: grid;
-  gap: var(--s-2);
-  margin-block: var(--s-3);
-}
-
-.bookstart-option {
-  display: flex;
-  gap: var(--s-2);
-  align-items: center;
-  min-height: 44px;
-}
-
-.bookstart-pick {
-  display: grid;
-  gap: var(--s-2);
-  margin-block: var(--s-2);
-}
-
-.bookstart-pick select {
-  min-height: 44px;
-  padding: var(--s-2) var(--s-3);
-  border: var(--border);
-  border-radius: var(--r-1);
-  background: var(--paper-sunken);
-  color: var(--ink);
-}
-
 /* ---------- Hoja inferior (móvil) y panel ---------- */
 
 /* Fondo de la hoja: tocarlo cierra, igual que el del diálogo. El
@@ -538,14 +508,12 @@
 
 /* Pistas visuales de scroll horizontal (Scroll Affordance Fade) */
 .shelf-filters,
-.shelf__filters,
 .discover-filters,
 .discover-rail__list,
 .discover-rail,
 .shelf-hero-strategies,
 .shelf__desk-strategies,
 .shelf-strategy-selector,
-.vocab__recent-strip,
 .nb-recent-track,
 .nb-recent-strip,
 .font-carousel,
@@ -2121,267 +2089,6 @@ mark.saved-word[data-level="settled"] {
   }
 }
 
-/* ---------- Calibración 2.0: Ritual de Afinación ---------- */
-
-.cal-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3, 1rem);
-  padding-block: var(--s-2, 0.5rem);
-}
-
-.cal-progress-bar {
-  inline-size: 100%;
-  block-size: 4px;
-  background: var(--paper-sunken);
-  border-radius: var(--r-pill);
-  overflow: hidden;
-  margin-block: var(--s-1, 0.25rem);
-}
-
-.cal-progress-fill {
-  block-size: 100%;
-  background: var(--accent-primary, var(--vermilion));
-  transition: inline-size 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.cal-stage-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--fs-xs, 0.75rem);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-soft);
-}
-
-.cal-editorial-card {
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-sheet);
-  padding: 1.5rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 0.75rem;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.cal-lemma {
-  font-family: var(--font-book, "Literata", Georgia, serif);
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.cal-context-box {
-  background: var(--paper-sunken);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-2);
-  padding: 0.875rem 1rem;
-  margin-block: 0.25rem;
-  max-inline-size: 480px;
-}
-
-.cal-context-text {
-  font-style: italic;
-  font-size: var(--fs-sm, 0.9375rem);
-  line-height: 1.5;
-  color: var(--ink-soft);
-  margin: 0;
-}
-
-.cal-context-highlight {
-  font-style: normal;
-  font-weight: 700;
-  color: var(--vermilion);
-}
-
-.cal-actions-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-  margin-block-start: 0.5rem;
-  width: 100%;
-}
-
-@media (max-width: 520px) {
-  .cal-actions-grid {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
-  }
-}
-
-.cal-action-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  min-height: 54px;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--rule-strong, var(--rule));
-  border-radius: var(--r-2);
-  background: var(--paper-raised);
-  color: var(--ink);
-  font-size: var(--fs-sm, 0.875rem);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .cal-action-btn:hover {
-    transform: translateY(-1px);
-    border-color: var(--vermilion);
-    background: var(--paper-sunken);
-  }
-}
-
-.cal-action-btn:active {
-  transform: translateY(0);
-}
-
-.cal-action-btn.is-selected {
-  background: var(--vermilion-wash);
-  border-color: var(--vermilion);
-  color: var(--vermilion);
-}
-
-.cal-btn-key {
-  font-size: 0.7rem;
-  font-weight: 700;
-  opacity: 0.8;
-  color: var(--ink-soft);
-  background: var(--paper-sunken);
-  border: 1px solid var(--rule);
-  padding: 1px 5px;
-  border-radius: var(--r-2);
-}
-
-.cal-companion-guide {
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  background: var(--paper-sunken);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-2);
-  padding: 0.75rem 1rem;
-  margin-block-start: 0.5rem;
-}
-
-.cal-bubble-text {
-  font-size: var(--fs-xs, 0.8125rem);
-  line-height: 1.4;
-  color: var(--ink-soft);
-  margin: 0;
-}
-
-/* Stage 2 & 3 */
-.cal-options-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  width: 100%;
-  margin-block: 0.75rem;
-}
-
-.cal-option-tile {
-  display: flex;
-  align-items: flex-start;
-  text-align: left;
-  padding: 0.875rem 1rem;
-  border: 1px solid var(--rule);
-  border-radius: var(--r-2);
-  background: var(--paper-raised);
-  color: var(--ink);
-  font-size: var(--fs-sm, 0.9375rem);
-  line-height: 1.4;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .cal-option-tile:hover {
-    border-color: var(--vermilion);
-    background: var(--paper-sunken);
-  }
-}
-
-.cal-option-tile.is-selected {
-  border-color: var(--vermilion);
-  background: var(--vermilion-wash);
-  color: var(--vermilion);
-  font-weight: 500;
-}
-
-.cal-lens-preview {
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-2);
-  padding: 1.25rem;
-  font-family: var(--font-book, "Literata", serif);
-  font-size: 1.05rem;
-  line-height: 1.7;
-  color: var(--ink);
-  margin-block: 0.75rem;
-}
-
-.cal-lens-preview .is-dimmed {
-  opacity: 0.35;
-  transition: opacity 0.25s ease;
-}
-
-.cal-lens-preview .is-focused {
-  opacity: 1;
-  font-weight: 500;
-}
-
-.cal-profile-card {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-  width: 100%;
-  margin-block: 1rem;
-}
-
-@media (max-width: 520px) {
-  .cal-profile-card {
-    grid-template-columns: 1fr;
-  }
-}
-
-.cal-profile-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 1rem 0.75rem;
-  background: var(--paper-sunken);
-  border-radius: var(--r-2);
-  border: 1px solid var(--rule);
-}
-
-.cal-profile-stat-value {
-  font-family: var(--font-book, serif);
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin-block-end: 0.25rem;
-}
-
-.cal-profile-stat-label {
-  font-size: 0.75rem;
-  color: var(--ink-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
 /* ---------- Calibración CAT 15-Segundos (Zero-Friction UX) ---------- */
 
 .cat-calibration-card {
@@ -2535,6 +2242,17 @@ mark.saved-word[data-level="settled"] {
 
 .cat-action-btn--primary:hover {
   filter: brightness(0.95);
+}
+
+.cal-btn-key {
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0.8;
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  padding: 1px 5px;
+  border-radius: var(--r-2);
 }
 
 .cat-action-btn--primary .cal-btn-key {

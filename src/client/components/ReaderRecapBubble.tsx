@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "./Icon";
 import {
   saveCharacterMemoryEnabled,
   type SceneReturnRecap,
@@ -47,7 +48,9 @@ export const ReaderRecapBubble: React.FC<ReaderRecapBubbleProps> = ({
   return (
     <div className="reader-recap-bubble" role="region" aria-label="Resumen de regreso">
       <div className="recap-bubble-header">
-        <span className="recap-cat-icon" aria-hidden="true">🐱</span>
+        <span className="recap-cat-icon" aria-hidden="true">
+          <Icon name="cat" size={16} />
+        </span>
         <button
           type="button"
           className="recap-title-btn"
@@ -70,7 +73,7 @@ export const ReaderRecapBubble: React.FC<ReaderRecapBubbleProps> = ({
           onClick={onDismiss}
           aria-label="Cerrar"
         >
-          ✕
+          <Icon name="close" size={15} />
         </button>
       </div>
 
@@ -161,7 +164,7 @@ export const ReaderRecapBubble: React.FC<ReaderRecapBubbleProps> = ({
                   textDecoration: "underline",
                 }}
               >
-                ✕ Desactivar recordatorio de personajes
+                <Icon name="close" size={14} /> Desactivar recordatorio de personajes
               </button>
             </div>
           </div>

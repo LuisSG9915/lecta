@@ -3,7 +3,13 @@
 // vía que escribe el plan. El cliente solo envía `period`: nunca montos ni
 // Price IDs.
 import { Hono } from "hono";
-import { hasLectaPlus, PLAN_GRACE_MS, planSource, type PlanSource } from "../shared/plan";
+import {
+  hasLectaPlus,
+  isWelcomeOfferActive,
+  PLAN_GRACE_MS,
+  planSource,
+  type PlanSource,
+} from "../shared/plan";
 import { runInBackground } from "./background";
 import { isMissingTableError, withClient, type WorkerEnv } from "./db";
 import { recordLandingEvent, recordPlanEvent } from "./landing-events";
@@ -15,6 +21,7 @@ export { STRIPE_VERSION };
 
 const SIGNATURE_TOLERANCE_S = 300;
 const TRIAL_END_MIN_MS = 48 * 3_600_000 + 5 * 60_000;
+const PASS_YEARLY_MS = 365 * 86_400_000;
 
 /** Embudo de compra: contador diario anónimo y por cuenta (F19); un fallo nunca rompe la respuesta. */
 function trackPlanEvent(
@@ -153,7 +160,7 @@ billing.post("/api/billing/checkout", async (c) => {
   if (!session?.user?.id) return c.json({ error: "No autorizado" }, 401);
   const body = (await c.req.json().catch(() => null)) as { period?: unknown } | null;
   const period = body?.period;
-  if (period !== "monthly" && period !== "yearly") {
+  if (period !== "monthly" && period !== "yearly" && period !== "pass_yearly") {
     return c.json({ error: "Periodo no válido" }, 400);
   }
   const plan = await loadUserPlan(c.env, session.user.id).catch(() => undefined);
@@ -164,27 +171,59 @@ billing.post("/api/billing/checkout", async (c) => {
   if (hasLectaPlus(plan.plan) && plan.trialEndsAt === null) {
     return c.json({ error: "Tu cuenta ya tiene Lecta+." }, 409);
   }
-  const price = period === "monthly" ? c.env.STRIPE_PRICE_MONTHLY_ID : c.env.STRIPE_PRICE_YEARLY_ID;
+  const price =
+    period === "pass_yearly"
+      ? c.env.STRIPE_PRICE_PASS_YEARLY_ID
+      : period === "monthly"
+        ? c.env.STRIPE_PRICE_MONTHLY_ID
+        : c.env.STRIPE_PRICE_YEARLY_ID;
   if (!price || !c.env.STRIPE_SECRET_KEY) {
     return c.json({ error: "El cobro no está configurado." }, 503);
   }
   const origin = new URL(c.req.url).origin;
-  const form: Record<string, string> = {
-    mode: "subscription",
-    "line_items[0][price]": price,
-    "line_items[0][quantity]": "1",
-    client_reference_id: session.user.id,
-    "subscription_data[metadata][user_id]": session.user.id,
-    success_url: `${origin}/?carne=gracias`,
-    cancel_url: `${origin}/?carne=cancelado`,
-  };
-  // Sin prueba de Stripe: toda cuenta ya tuvo 14 días de prueba inversa
-  // (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md). Pagar
-  // durante ella no regala ni pierde días: el cobro empieza al terminar la
-  // prueba (trial_end). Stripe exige trial_end ≥ 48 h en el futuro; con menos
-  // (margen de 5 min por la latencia) no se pasa y el cobro es inmediato.
-  if (plan.trialEndsAt !== null && plan.trialEndsAt > Date.now() + TRIAL_END_MIN_MS) {
-    form["subscription_data[trial_end]"] = String(Math.floor(plan.trialEndsAt / 1000));
+  const form: Record<string, string> =
+    period === "pass_yearly"
+      ? {
+          mode: "payment",
+          "line_items[0][price]": price,
+          "line_items[0][quantity]": "1",
+          "adaptive_pricing[enabled]": "true",
+          client_reference_id: session.user.id,
+          "metadata[user_id]": session.user.id,
+          "metadata[kind]": "pass_yearly",
+          "payment_intent_data[metadata][user_id]": session.user.id,
+          "payment_intent_data[metadata][kind]": "pass_yearly",
+          success_url: `${origin}/?carne=gracias`,
+          cancel_url: `${origin}/?carne=cancelado`,
+        }
+      : {
+          mode: "subscription",
+          "line_items[0][price]": price,
+          "line_items[0][quantity]": "1",
+          "adaptive_pricing[enabled]": "true",
+          client_reference_id: session.user.id,
+          "subscription_data[metadata][user_id]": session.user.id,
+          success_url: `${origin}/?carne=gracias`,
+          cancel_url: `${origin}/?carne=cancelado`,
+        };
+  if (period !== "pass_yearly") {
+    // Sin prueba de Stripe: toda cuenta ya tuvo 14 días de prueba inversa
+    // (docs/designs/2026-11-24-prueba-inversa-y-cortesia-diaria.md). Pagar
+    // durante ella no regala ni pierde días: el cobro empieza al terminar la
+    // prueba (trial_end). Stripe exige trial_end ≥ 48 h en el futuro; con menos
+    // (margen de 5 min por la latencia) no se pasa y el cobro es inmediato.
+    if (plan.trialEndsAt !== null && plan.trialEndsAt > Date.now() + TRIAL_END_MIN_MS) {
+      form["subscription_data[trial_end]"] = String(Math.floor(plan.trialEndsAt / 1000));
+    }
+    const welcomeCoupon = c.env.STRIPE_COUPON_TRIAL_END_ID?.trim();
+    if (
+      period === "yearly" &&
+      welcomeCoupon &&
+      plan.plan === "free" &&
+      isWelcomeOfferActive(plan.trialEndedAt, Date.now())
+    ) {
+      form["discounts[0][coupon]"] = welcomeCoupon;
+    }
   }
   if (plan.stripeCustomerId) form.customer = plan.stripeCustomerId;
   const result = await stripeRequest(c.env, "POST", "/checkout/sessions", form);
@@ -221,6 +260,7 @@ billing.post("/api/billing/portal", async (c) => {
 
 const HANDLED = new Set([
   "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
@@ -248,7 +288,46 @@ billing.post("/api/billing/webhook", async (c) => {
   let subscription: StripeSubscription = object as StripeSubscription;
   let referenceUser: string | null = null;
   let completeSource: PlanSource = "free";
-  if (type === "checkout.session.completed") {
+  let expiresAt: number | null | undefined;
+  let subscriptionId: string | null = null;
+  const isPaymentCheckout =
+    (type === "checkout.session.completed" || type === "checkout.session.async_payment_succeeded") &&
+    object.mode === "payment";
+
+  if (isPaymentCheckout) {
+    const meta = (object.metadata ?? {}) as Record<string, unknown>;
+    if (meta.kind !== "pass_yearly") return c.json({ received: true });
+    // OXXO / SPEI devuelven payment_status = "unpaid" en checkout.session.completed;
+    // el pase se activa únicamente cuando llega paid o async_payment_succeeded.
+    if (type === "checkout.session.completed" && object.payment_status !== "paid") {
+      return c.json({ received: true });
+    }
+    referenceUser =
+      typeof object.client_reference_id === "string"
+        ? object.client_reference_id
+        : typeof meta.user_id === "string"
+          ? meta.user_id
+          : null;
+    const nowMs = Date.now();
+    let currentExpires = 0;
+    if (referenceUser) {
+      try {
+        const before = await loadUserPlan(c.env, referenceUser);
+        if (before && !before.degraded) {
+          completeSource = planSource(before.plan, before.trialEndsAt);
+          if (before.expiresAt && Number.isFinite(before.expiresAt)) {
+            currentExpires = before.expiresAt;
+          }
+        }
+      } catch {
+        /* sin fuente: se cuenta como free */
+      }
+    }
+    expiresAt = (currentExpires > nowMs ? currentExpires : nowMs) + PASS_YEARLY_MS;
+    subscriptionId = null;
+  } else if (type === "checkout.session.async_payment_succeeded") {
+    return c.json({ received: true });
+  } else if (type === "checkout.session.completed") {
     if (object.status !== "complete" || typeof object.subscription !== "string") {
       return c.json({ received: true });
     }
@@ -265,6 +344,8 @@ billing.post("/api/billing/webhook", async (c) => {
         /* sin fuente: se cuenta como free */
       }
     }
+    expiresAt = expiresAtForSubscription(subscription, type);
+    subscriptionId = subscription.id ?? null;
   } else {
     referenceUser = subscription.metadata?.user_id ?? null;
     // Dos eventos subscription.* del mismo segundo pueden llegar en desorden
@@ -280,10 +361,15 @@ billing.post("/api/billing/webhook", async (c) => {
         return c.json({ error: "Stripe no respondió" }, 502);
       }
     }
+    expiresAt = expiresAtForSubscription(subscription, type);
+    subscriptionId = subscription.id ?? null;
   }
-  const expiresAt = expiresAtForSubscription(subscription, type);
-  const customer =
-    typeof subscription.customer === "string"
+
+  const customer = isPaymentCheckout
+    ? typeof object.customer === "string"
+      ? object.customer
+      : null
+    : typeof subscription.customer === "string"
       ? subscription.customer
       : typeof object.customer === "string"
         ? object.customer
@@ -312,7 +398,7 @@ billing.post("/api/billing/webhook", async (c) => {
       if (expiresAt !== undefined) {
         wrote = await upsertPlanFromStripe(client, userId, {
           stripeCustomerId: customer,
-          stripeSubscriptionId: subscription.id ?? null,
+          stripeSubscriptionId: subscriptionId,
           planExpiresAt: expiresAt,
           eventCreated: typeof event.created === "number" ? event.created * 1000 : undefined,
         });
@@ -332,7 +418,12 @@ billing.post("/api/billing/webhook", async (c) => {
   }
   if (outcome.status === "no-account") return c.json({ error: "Cuenta no encontrada" }, 500);
   // Solo la compra inicial: las renovaciones y cambios llegan como subscription.*.
-  if (outcome.status === "applied" && type === "checkout.session.completed") {
+  if (outcome.status === "applied" && isPaymentCheckout) {
+    runInBackground(
+      c,
+      trackPlanEvent(c.env, "app:checkout-complete:pass_yearly", completeSource, outcome.userId),
+    );
+  } else if (outcome.status === "applied" && type === "checkout.session.completed") {
     const interval = subscription.items?.data?.[0]?.price?.recurring?.interval;
     const period = interval === "year" ? "yearly" : interval === "month" ? "monthly" : null;
     if (period) {

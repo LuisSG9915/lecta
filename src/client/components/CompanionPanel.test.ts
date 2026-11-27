@@ -876,12 +876,16 @@ describe("CompanionPanel", () => {
       await flush();
 
       expect(host.querySelector(".cat-corner-sheet")).toBeTruthy();
-      expect(host.textContent).toContain("🐱 El Rincón de Pelusa");
+      expect(host.textContent).toContain("El Rincón de Pelusa");
+      expect(host.querySelector(".cat-corner-title .icon--cat")).toBeTruthy();
       expect(host.textContent).toContain("“¡Hoy leíste genial!”");
-      expect(host.textContent).toContain("🔥 5 d");
-      expect(host.textContent).toContain("⏱️ 15/20 m");
+      expect(host.textContent).toContain("5 d");
+      expect(host.querySelector(".cat-stat-value .icon--flame")).toBeTruthy();
+      expect(host.textContent).toContain("15/20 m");
+      expect(host.querySelector(".cat-stat-value .icon--clock")).toBeTruthy();
       expect(host.textContent).toContain("Meta de hoy (75%)");
-      expect(host.textContent).toContain("✨ 42");
+      expect(host.textContent).toContain("42");
+      expect(host.querySelector(".cat-stat-value .icon--sparkles")).toBeTruthy();
       expect(host.textContent).toContain("Palabras tuyas");
       expect(host.querySelector(".stage-preview-mock")).toBeTruthy();
     });
@@ -913,18 +917,20 @@ describe("CompanionPanel", () => {
       );
       await flush();
 
-      const whereBtn = button("✨ ¿En qué me quedé? (15s)");
+      const whereBtn = button("¿En qué me quedé? (15s)");
       expect(whereBtn).toBeTruthy();
+      expect(whereBtn?.querySelector(".icon--sparkles")).toBeTruthy();
       click(whereBtn!);
       expect(triggeredWhereWasI).toBe(true);
 
-      const whoBtn = button("👥 Personajes en esta página");
+      const whoBtn = button("Personajes en esta página");
       expect(whoBtn).toBeTruthy();
+      expect(whoBtn?.querySelector(".icon--users")).toBeTruthy();
       click(whoBtn!);
       expect(triggeredWhoIs).toBe(true);
     });
 
-    it("alterna entre '🌱 Mi Progreso' y '🎀 Personalizar Gato'", async () => {
+    it("alterna entre 'Mi Progreso' y 'Personalizar Gato'", async () => {
       act(() =>
         root.render(
           h(CompanionPanel, {

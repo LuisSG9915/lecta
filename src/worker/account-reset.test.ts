@@ -591,6 +591,95 @@ describe("trialEndedAt y GET /api/account/trial-summary", () => {
     body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
     expect(body.plan).toBe("free");
     expect(typeof body.trialEndedAt).toBe("number");
+    expect(body.welcomeOfferEndsAt).toBeNull();
+  });
+
+  it("GET /api/account/state expone welcomeOfferEndsAt dentro de 72h solo si STRIPE_COUPON_TRIAL_END_ID existe", async () => {
+    // Prueba dura 14 días → venció hace 24h hace 15 días de createdAt.
+    const created15d = Date.now() - 15 * DAY;
+    await setup(created15d);
+
+    // Sin cupón en env → null
+    const withoutCoupon = (await (
+      await app.request("/api/account/state", {}, env)
+    ).json()) as Record<string, unknown>;
+    expect(withoutCoupon.welcomeOfferEndsAt).toBeNull();
+
+    // Con cupón en env dentro de 72h → número > Date.now()
+    const envWithCoupon = { ...env, STRIPE_COUPON_TRIAL_END_ID: "coupon_399" };
+    const within72h = (await (
+      await app.request("/api/account/state", {}, envWithCoupon)
+    ).json()) as Record<string, unknown>;
+    expect(typeof within72h.welcomeOfferEndsAt).toBe("number");
+    expect(within72h.welcomeOfferEndsAt).toBe((within72h.trialEndedAt as number) + 72 * 3_600_000);
+
+    // Pasadas 72h (18 días desde creación) → null aunque haya cupón
+    vi.restoreAllMocks();
+    await setup(Date.now() - 18 * DAY);
+    const after72h = (await (
+      await app.request("/api/account/state", {}, envWithCoupon)
+    ).json()) as Record<string, unknown>;
+    expect(after72h.welcomeOfferEndsAt).toBeNull();
+  });
+
+  it("GET /api/account/state expone pastDue según ventana de gracia y suscripción", async () => {
+    const now = Date.now();
+    const sessionModule = await import("./session");
+    const dbModule = await import("./db");
+    const stubState = (row: Record<string, unknown>) => {
+      vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+        user: { id: "u_sub", email: "s@test.com" } as never,
+        session: {} as never,
+      });
+      vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+        run({
+          query: vi.fn(async (sql: string) => {
+            if (sql.includes("lecta_user_plan")) return { rows: [row] };
+            return { rows: [] };
+          }),
+        } as never),
+      );
+    };
+
+    // 1. Suscriptor vencido hace 1 día (dentro de 3 días de gracia) -> pastDue: true
+    stubState({
+      plan: "lecta_plus",
+      stripe_subscription_id: "sub_1",
+      plan_expires_at: now - DAY,
+      user_created_at: String(now - 60 * DAY),
+    });
+    let body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body.plan).toBe("lecta_plus");
+    expect(body.pastDue).toBe(true);
+    expect(body.hasSubscription).toBe(true);
+    expect(body.passYearlyAvailable).toBe(false);
+
+    // 2. Suscriptor al corriente + pase anual configurado en env -> hasSubscription: true, passYearlyAvailable: true
+    vi.restoreAllMocks();
+    stubState({
+      plan: "lecta_plus",
+      stripe_subscription_id: "sub_1",
+      plan_expires_at: now + 10 * DAY,
+      user_created_at: String(now - 60 * DAY),
+    });
+    body = (await (
+      await app.request("/api/account/state", {}, { ...env, STRIPE_PRICE_PASS_YEARLY_ID: "price_pass" })
+    ).json()) as Record<string, unknown>;
+    expect(body.pastDue).toBe(false);
+    expect(body.hasSubscription).toBe(true);
+    expect(body.passYearlyAvailable).toBe(true);
+
+    // 3. Sin suscripción (p. ej. pase anual o prueba) -> pastDue: false, hasSubscription: false
+    vi.restoreAllMocks();
+    stubState({
+      plan: "lecta_plus",
+      stripe_subscription_id: null,
+      plan_expires_at: now - DAY,
+      user_created_at: String(now - 60 * DAY),
+    });
+    body = (await (await app.request("/api/account/state", {}, env)).json()) as Record<string, unknown>;
+    expect(body.pastDue).toBe(false);
+    expect(body.hasSubscription).toBe(false);
   });
 
   it("trial-summary: kindleLinked sale de lecta_kindle_prefs cuando el código ya se consumió", async () => {

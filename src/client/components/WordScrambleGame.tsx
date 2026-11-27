@@ -11,6 +11,7 @@ import { PracticeContext } from "./PracticeContext";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
 import { speakWord } from "../lib/speech";
+import Icon from "./Icon";
 
 export interface WordScrambleGameProps {
   targetWord: string;
@@ -517,7 +518,7 @@ export function WordScrambleGame({
           <span
             className={`scramble-timer-badge${secondsLeft <= 3 ? " is-urgent" : ""}`}
           >
-            ⏱️ {secondsLeft}s
+            <Icon name="clock" size={14} /> {secondsLeft}s
           </span>
           <div className="scramble-timer-track">
             <div
@@ -621,7 +622,7 @@ export function WordScrambleGame({
           onClick={shufflePool}
           title="Mezclar fichas restantes"
         >
-          <span aria-hidden="true">🔀</span> Barajar
+          <Icon name="shuffle" size={14} /> Barajar
         </button>
 
         <button
@@ -654,7 +655,7 @@ export function WordScrambleGame({
           }}
           title="Colocar la siguiente letra correcta o pedir pista"
         >
-          <span aria-hidden="true">💡</span> Pista
+          <Icon name="bulb" size={14} /> Pista
         </button>
       </div>
 

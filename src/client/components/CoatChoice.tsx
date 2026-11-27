@@ -4,13 +4,14 @@
 import { useState } from "react";
 import { Companion } from "./Companion";
 import { COMPANION_COATS, COMPANION_COAT_IDS, type CompanionCoatId } from "../../shared/companion-data";
-import { claimStarterCoat, pendingStarterCoat, type PlanSnapshot } from "../lib/account-plan";
+import {
+  claimStarterCoat,
+  needsCoatChoice,
+  type PlanSnapshot,
+} from "../lib/account-plan";
 import { captureDbScope, getActiveUserId } from "../lib/idb";
 
-/** Solo cuentas free sin pelaje inicial ni pelaje pendiente del landing. */
-export function needsCoatChoice(plan: PlanSnapshot | null): boolean {
-  return plan?.plan === "free" && !plan.starterCoat && !pendingStarterCoat();
-}
+export { needsCoatChoice, type PlanSnapshot };
 
 export default function CoatChoice() {
   const [chosen, setChosen] = useState<CompanionCoatId | null>(null);

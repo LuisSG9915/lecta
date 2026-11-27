@@ -46,6 +46,11 @@ vi.mock("./CompanionProvider", () => ({
   useCompanionSafe: vi.fn(() => mockCompanionContext),
 }));
 
+let mockUserPlan: { plan: "free" | "plus" } | null = null;
+vi.mock("../lib/account-plan", () => ({
+  useUserPlan: vi.fn(() => mockUserPlan),
+}));
+
 describe("Journey (Tu recorrido)", () => {
   let root: Root | null = null;
   let container: HTMLDivElement | null = null;
@@ -102,6 +107,7 @@ describe("Journey (Tu recorrido)", () => {
     ];
     mockKnowledge = [];
     mockCompanionContext = null;
+    mockUserPlan = null;
     mockSessionKeys = [];
     mockSession = {};
   });
@@ -136,7 +142,8 @@ describe("Journey (Tu recorrido)", () => {
       await Promise.resolve();
     });
 
-    expect(container?.textContent).toContain("Tu recorrido");
+    expect(container?.textContent).toContain("Camino");
+    expect(container?.textContent).toContain("Lectura y palabras");
     expect(container?.textContent).toContain("Tiempo leído");
     expect(container?.textContent).toContain("Libro terminado");
     expect(container?.textContent).toContain("Palabras guardadas");
@@ -162,14 +169,14 @@ describe("Journey (Tu recorrido)", () => {
       root?.render(h(Journey, { onClose, books: sampleBooks }));
     });
 
-    expect(container?.textContent).toContain("Cargando tu recorrido");
+    expect(container?.textContent).toContain("Cargando tu camino");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(6_100);
     });
 
-    expect(container?.textContent).not.toContain("Cargando tu recorrido");
-    expect(container?.textContent).toContain("Tu recorrido");
+    expect(container?.textContent).not.toContain("Cargando tu camino");
+    expect(container?.textContent).toContain("Camino");
     expect(container?.textContent).toContain("Reintentar");
     vi.useRealTimers();
   });
@@ -183,7 +190,7 @@ describe("Journey (Tu recorrido)", () => {
       await Promise.resolve();
     });
 
-    const closeBtn = container?.querySelector("button[aria-label='Cerrar recorrido']");
+    const closeBtn = container?.querySelector("button[aria-label='Cerrar camino']");
     expect(closeBtn).toBeTruthy();
     await act(async () => {
       closeBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -378,7 +385,8 @@ describe("Journey (Tu recorrido)", () => {
       inboxBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(container?.textContent).toContain("Buzón de Tinta 💌");
+    expect(container?.textContent).toContain("Buzón de Tinta");
+    expect(container?.querySelector(".journey-inbox-title .icon--mail")).toBeTruthy();
     expect(container?.textContent).toContain("Correspondencia");
 
     // Cerrar buzón
@@ -414,7 +422,8 @@ describe("Journey (Tu recorrido)", () => {
       goalBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(container?.textContent).toContain("Meta de Lectura Diaria 🎯");
+    expect(container?.textContent).toContain("Meta de Lectura Diaria");
+    expect(container?.querySelector(".journey-goal-title .icon--target")).toBeTruthy();
     expect(container?.textContent).toContain("5");
     expect(container?.textContent).toContain("10");
     expect(container?.textContent).toContain("15");
@@ -660,9 +669,9 @@ describe("Journey (Tu recorrido)", () => {
     });
 
     // jsdom no tiene matchMedia → el hook lo trata como móvil:
-    // los tres pliegues existen y arrancan cerrados.
+    // los cuatro pliegues existen y arrancan cerrados.
     const folds = container?.querySelectorAll("details.journey-fold");
-    expect(folds?.length).toBe(3);
+    expect(folds?.length).toBe(4);
     folds?.forEach((f) => expect(f.hasAttribute("open")).toBe(false));
 
     // Plegadas, pero el contenido sigue en el DOM para lectores de
@@ -670,6 +679,7 @@ describe("Journey (Tu recorrido)", () => {
     expect(container?.textContent).toContain("Tu análisis");
     expect(container?.textContent).toContain("Récords personales");
     expect(container?.textContent).toContain("Tu horizonte de palabras");
+    expect(container?.textContent).toContain("Sendero de tinta y rango");
   });
 
   it("abre los pliegues de serie cuando matchMedia reporta escritorio (≥64rem)", async () => {
@@ -695,11 +705,125 @@ describe("Journey (Tu recorrido)", () => {
       });
 
       const folds = container?.querySelectorAll("details.journey-fold");
-      expect(folds?.length).toBe(3);
+      expect(folds?.length).toBe(4);
       folds?.forEach((f) => expect(f.hasAttribute("open")).toBe(true));
     } finally {
       window.matchMedia = originalMatchMedia;
     }
+  });
+
+  it("organiza el recorrido en 3 actos editoriales con el orden DOM esperado", async () => {
+    mockUserPlan = { plan: "free" };
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const acts = Array.from(container?.querySelectorAll("section.journey-act") ?? []);
+    expect(acts.map((el) => el.getAttribute("data-act"))).toEqual([
+      "today",
+      "evolution",
+      "collection",
+    ]);
+    expect(acts.map((el) => el.querySelector(".journey-act-title")?.textContent?.trim())).toEqual([
+      "Hoy",
+      "Tu evolución",
+      "Tu colección",
+    ]);
+
+    const todaySection = container?.querySelector(".journey-today");
+    const heroSection = container?.querySelector(".journey-hero-card");
+    const guidanceEl =
+      container?.querySelector(".journey-plus-note") ??
+      container?.querySelector(".journey-coach");
+    const activitySection = container?.querySelector("section[aria-label='Actividad de lectura']");
+    const horizonEl = container?.querySelector(".journey-lexical-section");
+    const finishedEl = container?.querySelector("section[aria-label='Libros concluidos']");
+    const trailFoldEl = container?.querySelector(".journey-trail-fold details.journey-fold");
+
+    expect(todaySection).toBeTruthy();
+    expect(heroSection).toBeTruthy();
+    expect(guidanceEl).toBeTruthy();
+    expect(activitySection).toBeTruthy();
+    expect(horizonEl).toBeTruthy();
+    expect(finishedEl).toBeTruthy();
+    expect(trailFoldEl).toBeTruthy();
+
+    expect(acts[0].contains(todaySection!)).toBe(true);
+    expect(acts[0].contains(heroSection!)).toBe(true);
+    expect(acts[0].contains(guidanceEl!)).toBe(true);
+    expect(acts[0].contains(activitySection!)).toBe(true);
+    expect(acts[1].contains(horizonEl!)).toBe(true);
+    expect(acts[2].contains(finishedEl!)).toBe(true);
+    expect(acts[2].contains(trailFoldEl!)).toBe(true);
+
+    // Orden en el DOM: Hoy / Guía -> Horizonte -> Libros concluidos -> Sendero plegado
+    expect(
+      todaySection!.compareDocumentPosition(horizonEl!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      guidanceEl!.compareDocumentPosition(horizonEl!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      horizonEl!.compareDocumentPosition(finishedEl!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      finishedEl!.compareDocumentPosition(trailFoldEl!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // Rango Literario y Sendero de Tinta viven dentro del pliegue de Colección
+    expect(trailFoldEl?.textContent).toContain("Rango Literario");
+    expect(trailFoldEl?.querySelector(".journey__trail-map")).toBeTruthy();
+  });
+
+  it("renderiza iconos SVG sin emojis ni símbolos Unicode de sistema en el DOM", async () => {
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container?.textContent ?? "").not.toMatch(
+      /[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|\uFE0F/u,
+    );
+  });
+
+  it("al pulsar 'Guardar Exlibris' en un libro concluido monta ExlibrisModal con título y datos reales", async () => {
+    mockWords = mockWords.map((w) => ({
+      ...w,
+      form: (w as unknown as { original?: string }).original ?? w.form ?? "casa",
+    }));
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const btn = [...(container?.querySelectorAll("button.exlibris-action-btn") ?? [])].find((b) =>
+      b.textContent?.includes("Guardar Exlibris"),
+    );
+    expect(btn).toBeTruthy();
+
+    await act(async () => {
+      (btn as HTMLButtonElement).click();
+    });
+    // Esperar a que cargue React.lazy(ExlibrisModal)
+    for (let i = 0; i < 6; i += 1) {
+      if (document.body.textContent?.includes("Descargar PNG")) break;
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
+
+    const dialog = document.body.querySelector("[role='dialog']");
+    expect(dialog).toBeTruthy();
+    expect(dialog?.textContent).toContain("Exlibris");
+    expect(dialog?.textContent).toContain("Don Quijote");
+    expect(dialog?.textContent).toContain("30 min");
+    expect(dialog?.textContent).toContain("2 palabras guardadas");
   });
 });
 

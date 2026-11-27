@@ -18,6 +18,14 @@ export type PlanSnapshot = {
   trialEndsAt?: number | null;
   /** Fin de una prueba ya vencida (plan free); ausente si no tuvo o sigue en curso. */
   trialEndedAt?: number;
+  /** Fin de la oferta real de bienvenida de 72 h tras la prueba; solo viene del servidor. */
+  welcomeOfferEndsAt?: number | null;
+  /** `true` cuando un pago falló y sigue dentro de los 3 días de gracia. */
+  pastDue?: boolean;
+  /** `true` si el servidor ofrece el pase anual de pago único ($549 MXN). */
+  passYearlyAvailable?: boolean;
+  /** `true` si la cuenta tiene suscripción recurrente en Stripe (`false` en pase único). */
+  hasSubscription?: boolean;
 };
 
 const planKey = (userId: string) => `account:plan:v1:${userId}`;
@@ -65,6 +73,10 @@ export function planFromAccountState(body: unknown, now = Date.now()): PlanSnaps
     freeAiRemaining?: unknown;
     trialEndsAt?: unknown;
     trialEndedAt?: unknown;
+    welcomeOfferEndsAt?: unknown;
+    pastDue?: unknown;
+    passYearlyAvailable?: unknown;
+    hasSubscription?: unknown;
   };
   if (typeof data.plan !== "string") return null;
   const expires = Number(data.planExpiresAt);
@@ -86,6 +98,21 @@ export function planFromAccountState(body: unknown, now = Date.now()): PlanSnaps
       ? { trialEndedAt: data.trialEndedAt }
       : {}),
     ...("trialEndsAt" in data ? { trialEndsAt: trialOver ? null : trialEnd } : {}),
+    ...("welcomeOfferEndsAt" in data
+      ? {
+          welcomeOfferEndsAt:
+            typeof data.welcomeOfferEndsAt === "number" &&
+            Number.isFinite(data.welcomeOfferEndsAt) &&
+            data.welcomeOfferEndsAt > now
+              ? data.welcomeOfferEndsAt
+              : null,
+        }
+      : {}),
+    ...("pastDue" in data ? { pastDue: data.pastDue === true } : {}),
+    ...("passYearlyAvailable" in data
+      ? { passYearlyAvailable: data.passYearlyAvailable === true }
+      : {}),
+    ...("hasSubscription" in data ? { hasSubscription: data.hasSubscription === true } : {}),
   };
 }
 
@@ -259,6 +286,11 @@ export function setFreeAiRemaining(n: number | null): void {
   const next = n === null ? Math.max(0, snap.freeAiRemaining - 1) : Math.max(0, n);
   if (next === snap.freeAiRemaining) return;
   planStore.set(current.userId, { ...snap, freeAiRemaining: next });
+}
+
+/** Solo cuentas free sin pelaje inicial ni pelaje pendiente del landing. */
+export function needsCoatChoice(plan: PlanSnapshot | null): boolean {
+  return plan?.plan === "free" && !plan.starterCoat && !pendingStarterCoat();
 }
 
 /** Solo para pruebas. */

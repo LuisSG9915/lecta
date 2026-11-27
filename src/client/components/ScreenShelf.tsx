@@ -45,7 +45,7 @@ type Props = {
     guide: ScreenGuideObject;
     title: string;
   }) => Promise<boolean>;
-  /** Capítulos preparados de una obra (para ✓ y «Ver palabras»). */
+  /** Capítulos preparados de una obra (para marca de listo y «Ver palabras»). */
   loadPreparedChapters?: (hash: string) => Promise<string[]>;
   /** Inyectables para pruebas (la hoja los recibe por ScreenShelf). */
   fetchSearch?: typeof searchScreen;

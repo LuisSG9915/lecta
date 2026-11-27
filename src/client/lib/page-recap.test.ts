@@ -259,7 +259,8 @@ describe("page-recap", () => {
 
       const disableBtn = host.querySelector<HTMLButtonElement>(".btn--disable-character-memory");
       expect(disableBtn).not.toBeNull();
-      expect(disableBtn?.textContent).toContain("✕ Desactivar recordatorio de personajes");
+      expect(disableBtn?.textContent).toContain("Desactivar recordatorio de personajes");
+      expect(disableBtn?.querySelector(".icon--close")).toBeTruthy();
 
       await act(async () => {
         click(disableBtn!);

@@ -320,8 +320,8 @@ export function GamePanel(props: GamePanelProps) {
         : evalResult
           ? evalResult.feedback
           : workshopTab === "challenge"
-            ? `¡Bienvenido al Reto del Escritor! Escribe una oración con «${currentWord.word}» y la revisamos juntos 🐾`
-            : "Selecciona el tono e hilvanemos un microrrelato con las palabras de tu cuaderno 🐾";
+            ? `¡Bienvenido al Reto del Escritor! Escribe una oración con «${currentWord.word}» y la revisamos juntos`
+            : "Selecciona el tono e hilvanemos un microrrelato con las palabras de tu cuaderno";
 
     return (
       <section
@@ -349,7 +349,7 @@ export function GamePanel(props: GamePanelProps) {
               onClick={props.onClose}
               aria-label="Cerrar taller"
             >
-              ✕
+              <Icon name="close" size={16} />
             </button>
           ) : null}
         </div>
@@ -365,7 +365,7 @@ export function GamePanel(props: GamePanelProps) {
               setWorkshopTab("challenge");
             }}
           >
-            ✍️ El Reto del Escritor
+            <Icon name="edit" size={15} /> El Reto del Escritor
           </button>
           <button
             type="button"
@@ -377,7 +377,7 @@ export function GamePanel(props: GamePanelProps) {
               setWorkshopTab("story");
             }}
           >
-            📜 Cuento de Tinta
+            <Icon name="scroll" size={15} /> Cuento de Tinta
           </button>
         </div>
 
@@ -386,9 +386,10 @@ export function GamePanel(props: GamePanelProps) {
             <div className="ai-word-banner">
               <div className="game-book-eco-row">
                 <span className="game-book-eco-pill">
+                  <Icon name="book" size={14} />{" "}
                   {currentWord.bookTitle
-                    ? `📖 Eco de: ${currentWord.bookTitle}`
-                    : "📖 De tus lecturas recientes"}
+                    ? `Eco de: ${currentWord.bookTitle}`
+                    : "De tus lecturas recientes"}
                 </span>
               </div>
               <h3 className="ai-word-title">{currentWord.word}</h3>
@@ -498,11 +499,12 @@ export function GamePanel(props: GamePanelProps) {
                     {evalResult.score} / 100
                   </span>
                   <span className="ai-reaction-pill">
+                    <Icon name="cat" size={15} />{" "}
                     {evalResult.catReaction === "purring"
-                      ? "😻 Ronroneo"
+                      ? "Ronroneo"
                       : evalResult.catReaction === "curious"
-                        ? "😺 Curioso"
-                        : "🤔 Pensativo"}
+                        ? "Curioso"
+                        : "Pensativo"}
                   </span>
                 </div>
                 <p className="ai-feedback">{evalResult.feedback}</p>
@@ -601,13 +603,15 @@ export function GamePanel(props: GamePanelProps) {
         <div className="game-round-finished" role="status">
           <PracticeCompanionHeader
             pose="celebrate"
-            speech={`¡Excelente ronda! Afianzaste ${wordsReviewedCount ?? 5} palabras para tu próximo capítulo 🐾`}
+            speech={`¡Excelente ronda! Afianzaste ${wordsReviewedCount ?? 5} palabras para tu próximo capítulo`}
             combo={0}
             mode="animated"
             onModeChange={() => {}}
           />
           <div className="game-round-finished-content">
-            <h3 className="game-round-finished-title">🌱 Ecos de tus lecturas afianzados</h3>
+            <h3 className="game-round-finished-title">
+              <Icon name="sprout" size={18} /> Ecos de tus lecturas afianzados
+            </h3>
             <p className="game-round-finished-text">
               Afianzaste {wordsReviewedCount ?? 5} palabras para tu próximo capítulo. {name} celebra tu avance y que tu próxima lectura sea aún más fluida.
             </p>
@@ -628,7 +632,7 @@ export function GamePanel(props: GamePanelProps) {
       {emptyReview || mode === "empty_review" || ((mode === "adaptive_flow" || mode === "quick_review") && words && words.length === 0) ? (
         <div className="game-empty-review" role="status">
           <p className="game-empty-review-text">
-            ✨ Tu memoria está al día. Sigue disfrutando tu libro; Lecta guardará aquí los momentos y palabras que quieras conservar.
+            <Icon name="sparkles" size={15} /> Tu memoria está al día. Sigue disfrutando tu libro; Lecta guardará aquí los momentos y palabras que quieras conservar.
           </p>
           <div className="game-empty-actions">
             <button
@@ -672,9 +676,10 @@ export function GamePanel(props: GamePanelProps) {
         <div className="game-adaptive-flow-cta">
           <div className="game-book-eco-row">
             <span className="game-book-eco-pill">
+              <Icon name="book" size={14} />{" "}
               {currentBookTitle || (words && words[0]?.bookTitle)
-                ? `📖 Eco de: ${currentBookTitle ?? words?.[0]?.bookTitle}`
-                : "📖 De tus lecturas recientes"}
+                ? `Eco de: ${currentBookTitle ?? words?.[0]?.bookTitle}`
+                : "De tus lecturas recientes"}
             </span>
           </div>
           <button
@@ -693,9 +698,10 @@ export function GamePanel(props: GamePanelProps) {
         <div className="consolidation-card game-post-chapter-consolidation">
           <div className="game-book-eco-row">
             <span className="game-book-eco-pill">
+              <Icon name="book" size={14} />{" "}
               {currentBookTitle || (consolidationQueue[0]?.item?.bookTitle)
-                ? `📖 Eco de: ${currentBookTitle ?? consolidationQueue[0]?.item?.bookTitle}`
-                : "📖 De tus lecturas recientes"}
+                ? `Eco de: ${currentBookTitle ?? consolidationQueue[0]?.item?.bookTitle}`
+                : "De tus lecturas recientes"}
             </span>
           </div>
           <div className="consolidation-card-header">
@@ -724,7 +730,7 @@ export function GamePanel(props: GamePanelProps) {
                         setShowConsolidationOptions(false);
                       }}
                     >
-                      ✕ Ocultar en este libro
+                      <Icon name="close" size={14} /> Ocultar en este libro
                     </button>
                   ) : null}
                   <button
@@ -737,7 +743,7 @@ export function GamePanel(props: GamePanelProps) {
                       setShowConsolidationOptions(false);
                     }}
                   >
-                    🚫 Desactivar consolidación al final de capítulo siempre
+                    <Icon name="ban" size={14} /> Desactivar consolidación al final de capítulo siempre
                   </button>
                 </div>
               ) : null}

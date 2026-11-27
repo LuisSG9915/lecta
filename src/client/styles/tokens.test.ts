@@ -330,6 +330,40 @@ describe("tokens.css", () => {
     expect(ctaRule, "no se encontró la regla del CTA de guardado").toBeTruthy();
     expect(ctaRule).toContain("var(--on-accent");
   });
+
+  it("ninguna hoja de estilos fuera de tokens.css contiene literales hexadecimales", () => {
+    const cssFiles = [
+      "app.css",
+      "base.css",
+      "components.css",
+      "game.css",
+      "notebook.css",
+      "reader.css",
+      "shelf.css",
+      "admin-insights.css",
+    ];
+    for (const name of cssFiles) {
+      const stripped = readFileSync(resolve(__dirname, name), "utf-8").replace(
+        /\/\*[\s\S]*?\*\//g,
+        "",
+      );
+      expect(stripped, `${name} contiene hex fuera de tokens.css`).not.toMatch(
+        /#[0-9a-fA-F]{3,8}\b/,
+      );
+    }
+  });
+
+  it("no reaparecen las clases huérfanas podadas en E8", () => {
+    const shelf = readFileSync(resolve(__dirname, "shelf.css"), "utf-8");
+    const components = readFileSync(resolve(__dirname, "components.css"), "utf-8");
+    const game = readFileSync(resolve(__dirname, "game.css"), "utf-8");
+
+    expect(shelf).not.toContain(".shelf-onboarding-card");
+    expect(shelf).not.toContain(".bookstart-l2-section");
+    expect(shelf).not.toContain(".shelf-invitation");
+    expect(components).not.toContain(".cal-editorial-card");
+    expect(game).not.toContain(".companion-stamps-grid");
+  });
 });
 
 describe("Enfoque y Ritmo: contraste efectivo", () => {

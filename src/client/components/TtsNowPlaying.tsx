@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { KITTEN_VOICES, type KittenVoiceId, type TtsSnapshot } from "../lib/ttsTypes";
 import { unlockAudioContext } from "../lib/kittenTtsEngine";
+import Icon from "./Icon";
 
 // Chip de sesión «Leer en voz alta»: pastilla flotante ergonómica con
 // controles táctiles ampliados (44x44px mín.), selector de voz KittenTTS,
@@ -186,7 +187,15 @@ export default function TtsNowPlaying({
               aria-label="Capturar joya léxica de la frase al Cuaderno"
               title="Guardar palabra clave de la frase"
             >
-              {captured ? "✓ Guardada" : <>★ <span className="dock-action-label-collapsible">Capturar palabra</span></>}
+              {captured ? (
+                <>
+                  <Icon name="check" size={14} /> Guardada
+                </>
+              ) : (
+                <>
+                  <Icon name="star" size={14} /> <span className="dock-action-label-collapsible">Capturar palabra</span>
+                </>
+              )}
             </button>
           ) : null}
 
@@ -197,7 +206,7 @@ export default function TtsNowPlaying({
             aria-label="Detener lectura"
             title="Detener lectura"
           >
-            ✕ <span className="dock-action-label-collapsible">Detener</span>
+            <Icon name="close" size={14} /> <span className="dock-action-label-collapsible">Detener</span>
           </button>
         </div>
       )}

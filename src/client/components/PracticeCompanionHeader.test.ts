@@ -238,7 +238,8 @@ describe("PracticeCompanionHeader", () => {
     // Debe mostrar el mensaje dinámico cálido
     expect(host.textContent).toContain("Cada palabra que recuerdas hace tu próxima página más fluida");
     // Debe mostrar la píldora de eco literario
-    expect(host.textContent).toContain("📖 Eco de: Cien años de soledad");
+    expect(host.textContent).toContain("Eco de: Cien años de soledad");
+    expect(host.querySelector(".practice-header-book-pill .icon--book")).toBeTruthy();
   });
 
   describe("con onCatTap (repaso y Aprender)", () => {

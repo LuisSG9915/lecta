@@ -3,6 +3,7 @@ import { useCompanionSafe } from "./CompanionProvider";
 import type { PracticeCompanionMode } from "../lib/settings";
 import { triggerHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
+import Icon from "./Icon";
 
 export interface PracticeCompanionHeaderProps {
   pose: CompanionPose;
@@ -16,7 +17,7 @@ export interface PracticeCompanionHeaderProps {
    *  anunciarse (el resultado lo anuncia la tarjeta). */
   onCatTap?: () => void;
   hintBusy?: boolean;
-  /** El reto actual ya pidió su pista: se oculta «💡 Pista». */
+  /** El reto actual ya pidió su pista: se oculta «Pista». */
   hintUsed?: boolean;
   hintText?: string | null;
   progress?: { current: number; total: number };
@@ -25,12 +26,12 @@ export interface PracticeCompanionHeaderProps {
 }
 
 export function getProgressEncouragement(current: number, total: number): string {
-  if (total <= 1) return "Cada palabra que recuerdas hace tu próxima página más fluida 🐾";
-  if (current === 1) return "Cada palabra que recuerdas hace tu próxima página más fluida 🐾";
-  if (current === total) return "¡Última palabra de la ronda! Tu lectura será mucho más fluida ✨";
+  if (total <= 1) return "Cada palabra que recuerdas hace tu próxima página más fluida";
+  if (current === 1) return "Cada palabra que recuerdas hace tu próxima página más fluida";
+  if (current === total) return "¡Última palabra de la ronda! Tu lectura será mucho más fluida";
   const ratio = current / total;
-  if (ratio >= 0.5) return "¡Gran avance! Estas palabras resonarán en tu próxima lectura 📖";
-  return "Sumando ecos de tus libros a tu memoria activa 🐾";
+  if (ratio >= 0.5) return "¡Gran avance! Estas palabras resonarán en tu próxima lectura";
+  return "Sumando ecos de tus libros a tu memoria activa";
 }
 
 export function PracticeCompanionHeader({
@@ -63,7 +64,7 @@ export function PracticeCompanionHeader({
           onClick={() => onModeChange("animated")}
           title={`Activar a ${name} en el juego`}
         >
-          <span aria-hidden="true">🐾</span> Mostrar a {name}
+          <Icon name="paw" size={14} /> Mostrar a {name}
         </button>
       </div>
     );
@@ -95,7 +96,7 @@ export function PracticeCompanionHeader({
         : "Oculto";
 
   const getDisplayText = () => {
-    if (hintText) return `💡 ${hintText}`;
+    if (hintText) return hintText;
     if (instruction) return instruction;
     // Sin frase propia manda el ánimo por progreso; una frase real (¡Exacto!,
     // pista) siempre gana.
@@ -174,7 +175,7 @@ export function PracticeCompanionHeader({
               <strong className="practice-cat-name">{name}</strong>
               {bookTitle ? (
                 <span className="practice-header-book-pill" title={`De tu libro: ${bookTitle}`}>
-                  📖 Eco de: {bookTitle}
+                  <Icon name="book" size={14} /> Eco de: {bookTitle}
                 </span>
               ) : null}
               {combo >= 2 && mode === "animated" ? (
@@ -182,7 +183,7 @@ export function PracticeCompanionHeader({
                   className={`practice-cat-combo ${combo >= 3 ? "is-blazing pulse-combo" : ""}`}
                   aria-label={`Racha de ${combo} aciertos`}
                 >
-                  <span aria-hidden="true">🔥</span> x{combo} racha
+                  <Icon name="flame" size={14} /> x{combo} racha
                 </span>
               ) : null}
             </div>
@@ -200,7 +201,7 @@ export function PracticeCompanionHeader({
               aria-label="Pedir una pista"
               title={`Pedir una pista a ${name}`}
             >
-              <span aria-hidden="true">💡</span>
+              <Icon name="bulb" size={15} />
               <span className="practice-cat-action-label">
                 {hintBusy ? "Pensando…" : "Pista"}
               </span>
@@ -214,7 +215,9 @@ export function PracticeCompanionHeader({
             title={`Carácter del gato: ${modeLabel}. Toca para cambiar.`}
             aria-label={`Carácter del gato: ${modeLabel}`}
           >
-            <span aria-hidden="true" className="practice-cat-mode-icon">🐾</span>
+            <span aria-hidden="true" className="practice-cat-mode-icon">
+              <Icon name="paw" size={14} />
+            </span>
             <span className="practice-cat-action-label">{modeLabel}</span>
           </button>
         </div>

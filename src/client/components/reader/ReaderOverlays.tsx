@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import type { WordHit } from "../../lib/words";
 import type { SavedWord, KnownWord } from "../../lib/idb";
 import type { SearchSection } from "../../lib/book-search";
@@ -22,6 +23,7 @@ import TtsVoiceSelector, { type NeuralVoiceChoice } from "../TtsVoiceSelector";
 import ReaderMoreMenu from "../ReaderMoreMenu";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+const ExlibrisModal = lazy(() => import("../ExlibrisModal"));
 import { useUserPlan } from "../../lib/account-plan";
 import { hasLectaPlus } from "../../../shared/plan";
 
@@ -136,6 +138,10 @@ export interface ReaderOverlaysProps {
   postChapterQueue?: Array<{ item: EpisodicWordItem; modality: ConsolidationModality }>;
   featuredQuote?: string;
   onShareDeepSummaryQuote?: (quote?: string) => void;
+  bookCompleted?: boolean;
+  onOpenDeepSummaryExlibris?: () => void;
+  exlibrisModal?: { words: string[]; readingMinutes: number } | null;
+  onCloseExlibris?: () => void;
   onContinueDeepSummary?: () => void;
   onCloseDeepSummary?: () => void;
   onWordConsolidated?: (word: SavedWord) => void;
@@ -239,6 +245,10 @@ export function ReaderOverlays({
   postChapterQueue = [],
   featuredQuote,
   onShareDeepSummaryQuote,
+  bookCompleted = false,
+  onOpenDeepSummaryExlibris,
+  exlibrisModal = null,
+  onCloseExlibris,
   onContinueDeepSummary,
   onCloseDeepSummary,
   onWordConsolidated,
@@ -554,11 +564,25 @@ export function ReaderOverlays({
           chapterTitle={currentChapterTitle}
           chapterId={currentChapterId}
           onShareQuote={onShareDeepSummaryQuote}
+          bookCompleted={bookCompleted}
+          onOpenExlibris={onOpenDeepSummaryExlibris}
           onContinue={onContinueDeepSummary}
           onClose={onCloseDeepSummary}
           onWordConsolidated={onWordConsolidated}
           aiCourtesyExhausted={planLocked && userPlan?.freeAiRemaining === 0}
         />
+      ) : null}
+
+      {exlibrisModal && onCloseExlibris ? (
+        <Suspense fallback={null}>
+          <ExlibrisModal
+            bookTitle={bookTitle}
+            author={author}
+            words={exlibrisModal.words}
+            readingMinutes={exlibrisModal.readingMinutes}
+            onClose={onCloseExlibris}
+          />
+        </Suspense>
       ) : null}
 
       {glossaryOpen && onCloseGlossary && onSelectGlossaryTerm ? (

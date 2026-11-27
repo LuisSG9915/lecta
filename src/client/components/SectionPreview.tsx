@@ -15,6 +15,7 @@ import { useCompanionSafe } from "./CompanionProvider";
 import { Companion } from "./Companion";
 import { ProgressInk } from "./ProgressInk";
 import type { ReadingStrategyPreset } from "../lib/settings";
+import Icon from "./Icon";
 
 // Una fila de la preparación: la SuggestionRow que construye el
 // controlador, con razón y medición opcionales en la vista (las usa
@@ -257,7 +258,7 @@ function PrimingCardView({
       <header className="lecta-chapter-priming__header">
         <div className="lecta-chapter-priming__meta">
           <span className="lecta-chapter-priming__badge">
-            ✨ Lectura sin tropiezos · 20 seg
+            <Icon name="sparkles" size={15} /> Lectura sin tropiezos · 20 seg
           </span>
           {isForeignLang ? (
             <span className="lecta-chapter-priming__badge">
@@ -340,7 +341,7 @@ function PrimingCardView({
                     onClick={() => handlePronounce(item.surfaceForm)}
                     aria-label={`Escuchar pronunciación de ${item.surfaceForm}`}
                   >
-                    🔊
+                    <Icon name="speaker" size={15} />
                   </button>
                 </div>
 
@@ -351,7 +352,7 @@ function PrimingCardView({
                     onClick={() => handleKnown(item)}
                     title="El modelo aprenderá que ya dominas esta palabra"
                   >
-                    ✓ Ya la conozco
+                    <Icon name="check" size={14} /> Ya la conozco
                   </button>
                   <button
                     type="button"
@@ -425,7 +426,7 @@ export default function SectionPreview(props: SectionPreviewProps) {
         className="reader-section-preview-pill"
         onClick={onExpand}
       >
-        ✨ {count} {count === 1 ? "palabra clave" : "palabras clave"} en este capítulo · Ver
+        <Icon name="sparkles" size={14} /> {count} {count === 1 ? "palabra clave" : "palabras clave"} en este capítulo · Ver
       </button>
     );
   }
@@ -625,7 +626,9 @@ function FullSectionPreview(props: SectionPreviewProps) {
               pose={analysis === "loading" ? "idle" : "greet"}
             />
           ) : (
-            <div className="portico-cat-fallback" aria-hidden="true">🐱</div>
+            <div className="portico-cat-fallback" aria-hidden="true">
+              <Icon name="cat" size={24} />
+            </div>
           )}
         </div>
         <div className="portico-speech-bubble" role="status">
@@ -677,7 +680,7 @@ function FullSectionPreview(props: SectionPreviewProps) {
             <div className="portico-flash-header">
               <h3 className="portico-subtitle">Desbloqueo rápido de joyas léxicas</h3>
               <span className="portico-ink-badge" title="Gotas de tinta obtenidas">
-                +{bonusInk} gotas de tinta 💧
+                +{bonusInk} gotas de tinta <Icon name="droplet" size={14} />
               </span>
             </div>
             <div className="portico-flash-grid">
@@ -700,7 +703,9 @@ function FullSectionPreview(props: SectionPreviewProps) {
                   >
                     <div className="portico-card-inner section-preview__flash-inner">
                       <div className="portico-card-front section-preview__flash-face section-preview__flash-face--front">
-                        <span className="portico-card-sparkle">✦</span>
+                        <span className="portico-card-sparkle" aria-hidden="true">
+                          <Icon name="sparkle" size={13} />
+                        </span>
                         <strong className="portico-card-form">{row.form}</strong>
                         <span className="portico-card-hint">Toca para descubrir</span>
                       </div>

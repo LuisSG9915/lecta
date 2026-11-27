@@ -1,7 +1,7 @@
 {
-  "name": "Lecta — tu cuaderno de lectura",
+  "name": "Lecta — tu biblioteca y herbario de lectura",
   "short_name": "Lecta",
-  "description": "Lee EPUB, toca palabras y repásalas cuando toque.",
+  "description": "Lee EPUB en calma, guarda palabras en tu Herbario y repásalas en tu Camino.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

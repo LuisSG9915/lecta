@@ -56,16 +56,16 @@
       "checks": [
         {
           "type": "code-anchor",
-          "file": "src/client/lib/coverage.ts",
-          "line": 256,
+          "file": "src/client/lib/coverage-display.ts",
+          "line": 38,
           "window": 1,
           "expect": "COVERAGE_FLUID_MIN = 94",
           "why": "umbral único de lectura fluida"
         },
         {
           "type": "code-anchor",
-          "file": "src/client/lib/coverage.ts",
-          "line": 257,
+          "file": "src/client/lib/coverage-display.ts",
+          "line": 39,
           "window": 1,
           "expect": "COVERAGE_IDEAL_MIN = 86",
           "why": "umbral único de reto ideal"
@@ -73,7 +73,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 214,
+          "line": 222,
           "window": 1,
           "expect": "reencuentrosCount: reencounterLemmas\\.size",
           "why": "la cobertura cuenta lemas distintos del Cuaderno que reaparecen en el libro"
@@ -224,7 +224,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/calibration.ts",
-          "line": 596,
+          "line": 595,
           "window": 0,
           "expect": "saveUserLanguageProfile\\(updatedProfile\\)",
           "why": "el CAT persiste θ en el perfil, la única llave"

@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import type { SceneReturnRecap } from "../lib/page-recap";
 import { requestCharacterRecap } from "../lib/lexicon";
 import { trackPlanEvent } from "../lib/plan-events";
+import Icon from "./Icon";
 import PlanNote from "./PlanNote";
 
 export interface ResumeSessionOverlayProps {
@@ -109,7 +110,7 @@ export default function ResumeSessionOverlay({
     >
       <div className="resume-session-header">
         <span aria-hidden="true" className="resume-session-icon">
-          📖
+          <Icon name="book" size={20} />
         </span>
         <span className="resume-session-kicker">
           Bienvenido de vuelta

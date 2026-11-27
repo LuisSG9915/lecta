@@ -1,4 +1,5 @@
 import { memo } from "react";
+import Icon from "../Icon";
 // Barras flotantes del lector: aviso de palabra capturada por TTS y párrafo
 // bilingüe traducido. El marcapasos vive en el popover de la luna (un solo dock).
 //
@@ -33,7 +34,7 @@ function ReaderFloatingBarsImpl(props: ReaderFloatingBarsProps) {
     <>
   {ttsCapturedToast ? (
     <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
-      ★ Guardada en Cuaderno: <strong>{ttsCapturedToast}</strong>
+      <Icon name="star" size={14} /> Guardada en Herbario: <strong>{ttsCapturedToast}</strong>
     </div>
   ) : null}
 

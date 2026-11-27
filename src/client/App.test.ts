@@ -195,6 +195,7 @@ vi.mock("./lib/books", () => ({
 
 vi.mock("./lib/book-queue", () => ({
   queueBookDelete: vi.fn(async () => undefined),
+  queueBookSync: vi.fn(async () => undefined),
   queueBookUpload: vi.fn(async () => undefined),
   runBookQueue: vi.fn(async () => undefined),
 }));
@@ -278,6 +279,7 @@ const CONFLICT = {
 };
 
 beforeEach(() => {
+  sessionStorage.removeItem("lecta:resume-trial-book");
   window.history.replaceState({}, "", "/");
   window.scrollTo = vi.fn();
   host = document.createElement("div");
@@ -305,6 +307,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  sessionStorage.removeItem("lecta:resume-trial-book");
   act(() => {
     history.replaceState({}, "", "/");
     window.dispatchEvent(new Event("popstate"));
@@ -552,12 +555,25 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
     expect(window.location.search).toBe("");
 
     // Cerrar el libro («atrás») termina la prueba: vuelve la bienvenida
-    // con el aviso de crear cuenta.
+    // con el aviso de crear cuenta y recuerda el libro para reabrirlo al entrar.
     await act(async () => window.history.back());
     await waitWelcome();
+    expect(sessionStorage.getItem("lecta:resume-trial-book")).toBe("marianela");
     expect(host.querySelector(".welcome")?.textContent).toContain(
       "seguir leyendo «Marianela»",
     );
+  });
+
+  it("tras crear cuenta desde ?probar=, reabre el libro probado en vez de dejar en la estantería", async () => {
+    vi.mocked(downloadCatalogEpub).mockClear();
+    sessionStorage.setItem("lecta:resume-trial-book", "marianela");
+    renderRoot();
+    for (let i = 0; i < 100 && !host.querySelector(".reader-stub"); i += 1) await flush();
+    expect(vi.mocked(downloadCatalogEpub)).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "marianela" }),
+    );
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
+    expect(sessionStorage.getItem("lecta:resume-trial-book")).toBeNull();
   });
 
   it("?probar= con un id que no está en el índice del catálogo muestra la bienvenida", async () => {
@@ -762,6 +778,34 @@ describe("App · navegación principal (Fase 2)", () => {
     const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
     expect(accountBtn?.getAttribute("aria-current")).toBe("page");
     expect(host.querySelector(".account-page")).toBeTruthy();
+  });
+
+  it("cada rótulo de AppNav (Biblioteca · Herbario · Camino · Tú) coincide con la vista que abre", async () => {
+    renderRoot();
+    await flush();
+    const nav = host.querySelector("nav.app-nav")!;
+    const labels = [...nav.querySelectorAll(".app-nav-label")].map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(labels).toEqual(["Biblioteca", "Herbario", "Camino", "Tú"]);
+
+    const vocabBtn = nav.querySelector<HTMLButtonElement>('[data-dest="vocabulary"]')!;
+    await import("./components/Vocabulary");
+    await act(async () => vocabBtn.click());
+    await flush();
+    expect(host.querySelector(".notebook-title")?.textContent?.trim()).toBe("Herbario");
+
+    const journeyBtn = nav.querySelector<HTMLButtonElement>('[data-dest="journey"]')!;
+    await import("./components/Journey");
+    await act(async () => journeyBtn.click());
+    await flush();
+    expect(host.querySelector(".journey-title")?.textContent?.trim()).toBe("Camino");
+
+    const accountBtn = nav.querySelector<HTMLButtonElement>('[data-dest="account"]')!;
+    await import("./components/Account");
+    await act(async () => accountBtn.click());
+    await flush();
+    expect(host.querySelector(".account-page-title")?.textContent?.trim()).toBe("Tú");
   });
 
   it("Cuaderno se preserva con Activity al alternar a Biblioteca y de vuelta", async () => {

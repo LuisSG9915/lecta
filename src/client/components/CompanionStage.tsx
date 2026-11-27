@@ -35,7 +35,7 @@ interface PetParticle {
   id: number;
   x: number;
   y: number;
-  symbol: string;
+  symbol: "heart" | "sparkle";
   delay: number;
 }
 
@@ -261,7 +261,7 @@ export function CompanionStage({
         id: Date.now() + i,
         x: 35 + Math.random() * 30,
         y: 15 + Math.random() * 35,
-        symbol: Math.random() > 0.35 ? "♥" : "✦",
+        symbol: Math.random() > 0.35 ? "heart" : "sparkle",
         delay: i * 120,
       });
     }
@@ -429,7 +429,7 @@ export function CompanionStage({
             }}
             aria-hidden="true"
           >
-            {p.symbol}
+            <Icon name={p.symbol} size={12} />
           </span>
         ))}
 
@@ -477,7 +477,7 @@ export function CompanionStage({
             />
             {activeCare === "pet" ? (
               <span className="companion-pet-hearts" aria-hidden="true">
-                ♥
+                <Icon name="heart" size={14} />
               </span>
             ) : null}
           </button>
@@ -491,7 +491,7 @@ export function CompanionStage({
           {hasReadToday ? (
             <p className="companion-goal-badge" role="status">
               <span className="companion-goal-icon" aria-hidden="true">
-                🥣
+                <Icon name="bowl" size={15} />
               </span>
               Plato lleno hoy · Racha de {streakDays}{" "}
               {streakDays === 1 ? "día" : "días"}
@@ -500,14 +500,14 @@ export function CompanionStage({
                   className="companion-shield-hint"
                   title="Marcapáginas protector activo: si un día no lees, tu gato cuidará tu racha"
                 >
-                  {" "}· 🔖 Activo
+                  {" "}· <Icon name="bookmark" size={13} /> Activo
                 </span>
               ) : null}
             </p>
           ) : (
             <p className="companion-goal-badge companion-goal-badge--pending">
               <span className="companion-goal-icon" aria-hidden="true">
-                📖
+                <Icon name="book" size={15} />
               </span>
               Lectura pendiente hoy
               {streakDays >= 3 ? (
@@ -515,7 +515,7 @@ export function CompanionStage({
                   className="companion-shield-hint"
                   title="Marcapáginas protector activo: si un día no lees, tu gato cuidará tu racha"
                 >
-                  {" "}· 🔖 Activo
+                  {" "}· <Icon name="bookmark" size={13} /> Activo
                 </span>
               ) : null}
             </p>

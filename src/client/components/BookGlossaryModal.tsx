@@ -20,6 +20,7 @@ import { lookupWord, type LexiconEntry } from "../lib/lexicon";
 import { getBookConsultedWords } from "../lib/book-glossary";
 import { award, localDayKey } from "../lib/game";
 import { triggerHaptic } from "../lib/haptics";
+import Icon from "./Icon";
 
 const PAGE_SIZE_OPTIONS = [50, 100, 200];
 const SPANISH_ALPHABET = [
@@ -385,22 +386,30 @@ export default function BookGlossaryModal({
             {totalForms > 0 ? (
               <div className="glossary-stats-bar" aria-label="Estadísticas léxicas">
                 <div className="glossary-stat-chip">
-                  <span className="glossary-stat-icon" aria-hidden="true">📖</span>
+                  <span className="glossary-stat-icon" aria-hidden="true">
+                    <Icon name="book" size={16} />
+                  </span>
                   <span className="glossary-stat-value">{totalForms.toLocaleString("es")}</span>
                   <span className="glossary-stat-label">formas</span>
                 </div>
                 <div className="glossary-stat-chip">
-                  <span className="glossary-stat-icon" aria-hidden="true">📑</span>
+                  <span className="glossary-stat-icon" aria-hidden="true">
+                    <Icon name="notebook" size={16} />
+                  </span>
                   <span className="glossary-stat-value">{totalWordCount.toLocaleString("es")}</span>
                   <span className="glossary-stat-label">palabras</span>
                 </div>
                 <div className="glossary-stat-chip glossary-stat-chip--cultisms">
-                  <span className="glossary-stat-icon" aria-hidden="true">✦</span>
+                  <span className="glossary-stat-icon" aria-hidden="true">
+                    <Icon name="sparkle" size={16} />
+                  </span>
                   <span className="glossary-stat-value">{cultismsCount.toLocaleString("es")}</span>
                   <span className="glossary-stat-label">cultismos</span>
                 </div>
                 <div className="glossary-stat-chip glossary-stat-chip--saved">
-                  <span className="glossary-stat-icon" aria-hidden="true">🔖</span>
+                  <span className="glossary-stat-icon" aria-hidden="true">
+                    <Icon name="bookmark" size={16} />
+                  </span>
                   <span className="glossary-stat-value">{savedCount.toLocaleString("es")}</span>
                   <span className="glossary-stat-label">en cuaderno</span>
                 </div>
@@ -409,7 +418,9 @@ export default function BookGlossaryModal({
 
             {/* Buscador */}
             <div className="glossary-search-wrap">
-              <span className="glossary-search-icon" aria-hidden="true">🔍</span>
+              <span className="glossary-search-icon" aria-hidden="true">
+                <Icon name="search" size={15} />
+              </span>
               <input
                 type="search"
                 className="glossary-search-input"
@@ -435,7 +446,7 @@ export default function BookGlossaryModal({
                   }}
                   aria-label="Limpiar búsqueda"
                 >
-                  ✕
+                  <Icon name="close" size={16} />
                 </button>
               ) : null}
             </div>
@@ -459,7 +470,7 @@ export default function BookGlossaryModal({
                     setPage(1);
                   }}
                 >
-                  ✦ Cultismos ({cultismsCount.toLocaleString("es")})
+                  <Icon name="sparkle" size={13} /> Cultismos ({cultismsCount.toLocaleString("es")})
                 </button>
                 <button
                   type="button"
@@ -576,10 +587,10 @@ export default function BookGlossaryModal({
                     }}
                     aria-label="Criterio de ordenación"
                   >
-                    <option value="rarity">⚡ Mayor rareza (Zipf)</option>
-                    <option value="alpha">🔤 Alfabético (A–Z)</option>
-                    <option value="alpha-desc">🔤 Inverso (Z–A)</option>
-                    <option value="frequency">📊 Más frecuentes</option>
+                    <option value="rarity">Mayor rareza (Zipf)</option>
+                    <option value="alpha">Alfabético (A–Z)</option>
+                    <option value="alpha-desc">Inverso (Z–A)</option>
+                    <option value="frequency">Más frecuentes</option>
                   </select>
                 </label>
 
@@ -712,12 +723,16 @@ export default function BookGlossaryModal({
                                   : "Sin frecuencia en el catálogo general"
                               }
                             >
-                              {term.isCultism ? "✦ " : ""}
+                              {term.isCultism ? (
+                                <>
+                                  <Icon name="sparkle" size={12} />{" "}
+                                </>
+                              ) : null}
                               {formatZipfLabel(term.zipf)}
                             </span>
                             {term.isSaved ? (
                               <span className="glossary-status-pill glossary-status-pill--saved">
-                                ✓ En cuaderno
+                                <Icon name="check" size={13} /> En cuaderno
                               </span>
                             ) : term.isKnown ? (
                               <span className="glossary-status-pill glossary-status-pill--known">
@@ -782,7 +797,7 @@ export default function BookGlossaryModal({
                                 </button>
                               ) : (
                                 <span className="meta glossary-saved-notice">
-                                  ✓ Guardada en tu Cuaderno
+                                  <Icon name="check" size={14} /> Guardada en tu Cuaderno
                                 </span>
                               )}
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { AchievementFamily } from "../../shared/gamification";
 import { triggerHaptic } from "../lib/haptics";
 
@@ -30,7 +30,7 @@ export interface SealProps {
   className?: string;
   category?: SealCategory;
   progressText?: string;
-  rewardIcon?: string;
+  rewardIcon?: ReactNode;
   earnedDate?: string | number;
   onClick?: () => void;
 }

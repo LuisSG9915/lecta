@@ -26,7 +26,7 @@ import {
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
-import QuoteCardModal from "./QuoteCardModal";
+const QuoteCardModal = lazy(() => import("./QuoteCardModal"));
 import BookGlossaryModal from "./BookGlossaryModal";
 import Notice from "./Notice";
 import {
@@ -54,7 +54,7 @@ import { FreeModes } from "./notebook/FreeModes";
 import { HerbarioPanel } from "./notebook/HerbarioPanel";
 import { LearnSessionView } from "./notebook/LearnSessionView";
 import { NotebookHero } from "./notebook/NotebookHero";
-import { QuotesPanel } from "./notebook/QuotesPanel";
+import { QuotesPanel, type QuoteCardRequest } from "./notebook/QuotesPanel";
 import { ReviewDone } from "./notebook/ReviewDone";
 
 
@@ -140,12 +140,7 @@ export function Vocabulary({
   } = useNotebookData({ vocabVersion, onVocabChange });
   const [tab, setTab] = useState<"words" | "quotes" | "activity">("words");
   const [quotes, setQuotes] = useState<SavedAnnotation[] | null>(null);
-  const [quoteModal, setQuoteModal] = useState<{
-    text: string;
-    bookTitle?: string;
-    author?: string;
-    chapterTitle?: string;
-  } | null>(null);
+  const [quoteModal, setQuoteModal] = useState<QuoteCardRequest | null>(null);
   const [glossaryBookHash, setGlossaryBookHash] = useState<string | null>(null);
   const [saveError, setSaveError] = useState("");
   const [undo, setUndo] = useState<{ word: SavedWord } | null>(null);
@@ -593,7 +588,7 @@ export function Vocabulary({
       className={`notebook ${isOverlay ? "notebook--overlay" : "notebook--page"} vocab`}
       role={isOverlay ? "dialog" : undefined}
       aria-modal={isOverlay ? "true" : undefined}
-      aria-label="Cuaderno"
+      aria-label="Herbario"
       // La sesión solo cuenta mientras hay ejercicios o fichas por
       // resolver: en la pantalla de cierre la barra de navegación
       // ya debe estar disponible para irse a otra sección.
@@ -640,7 +635,7 @@ export function Vocabulary({
           </button>
         ) : null}
         <h1 className="notebook-title">
-          {learn ? "Aprender" : queue ? "Repaso" : "Cuaderno"}
+          {learn ? "Aprender" : queue ? "Repaso" : "Herbario"}
         </h1>
         <span className="notebook-count">
           {learn
@@ -845,6 +840,8 @@ export function Vocabulary({
             startLearn={startLearn}
             remove={remove}
             setGlossaryBookHash={setGlossaryBookHash}
+            onQuoteCard={setQuoteModal}
+            bookAuthor={bookAuthor}
             exportCsv={exportCsv}
             exportAnkiCloze={exportAnkiCloze}
             exportMarkdownNotebook={exportMarkdownNotebook}
@@ -890,14 +887,18 @@ export function Vocabulary({
       </div>
 
       {quoteModal ? (
-        <QuoteCardModal
-          text={quoteModal.text}
-          bookTitle={quoteModal.bookTitle}
-          author={quoteModal.author}
-          chapterTitle={quoteModal.chapterTitle}
-          alreadySaved={true}
-          onClose={() => setQuoteModal(null)}
-        />
+        <Suspense fallback={null}>
+          <QuoteCardModal
+            text={quoteModal.text}
+            bookTitle={quoteModal.bookTitle}
+            author={quoteModal.author}
+            chapterTitle={quoteModal.chapterTitle}
+            highlightWord={quoteModal.highlightWord}
+            gloss={quoteModal.gloss}
+            alreadySaved={true}
+            onClose={() => setQuoteModal(null)}
+          />
+        </Suspense>
       ) : null}
       {glossaryBookHash ? (
         <BookGlossaryModal

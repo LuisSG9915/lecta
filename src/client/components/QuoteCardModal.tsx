@@ -13,12 +13,15 @@ import {
 import { triggerHaptic } from "../lib/haptics";
 import { useCompanionSafe } from "./CompanionProvider";
 import { resolveCoatId } from "../../shared/companion-data";
+import Icon from "./Icon";
 
 type QuoteCardModalProps = {
   text: string;
   bookTitle?: string;
   author?: string;
   chapterTitle?: string;
+  highlightWord?: string;
+  gloss?: string;
   onClose: () => void;
   onSavePassage?: () => void;
   alreadySaved?: boolean;
@@ -29,6 +32,8 @@ export default function QuoteCardModal({
   bookTitle,
   author,
   chapterTitle,
+  highlightWord,
+  gloss,
   onClose,
   onSavePassage,
   alreadySaved = false,
@@ -42,6 +47,7 @@ export default function QuoteCardModal({
   const [showAuthor, setShowAuthor] = useState(Boolean(author));
   const [showBookTitle, setShowBookTitle] = useState(Boolean(bookTitle));
   const [showChapter, setShowChapter] = useState(Boolean(chapterTitle));
+  const [showGloss, setShowGloss] = useState(Boolean(gloss));
   const [showBranding, setShowBranding] = useState(true);
   const [includeCompanion, setIncludeCompanion] = useState(companionAvailable);
   const [busy, setBusy] = useState(false);
@@ -50,6 +56,7 @@ export default function QuoteCardModal({
   );
   const [savedLocal, setSavedLocal] = useState(false);
   const isSaved = alreadySaved || savedLocal;
+  const modalTitle = highlightWord ? "Postal de palabra" : "Tarjeta de cita";
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -67,6 +74,8 @@ export default function QuoteCardModal({
       showBranding,
       includeCompanion: includeCompanion && companionAvailable,
       coatId: companionCoat,
+      highlightWord,
+      gloss: showGloss ? gloss : undefined,
     }),
     [
       text,
@@ -78,10 +87,13 @@ export default function QuoteCardModal({
       showAuthor,
       showBookTitle,
       showChapter,
+      showGloss,
       showBranding,
       includeCompanion,
       companionAvailable,
       companionCoat,
+      highlightWord,
+      gloss,
     ],
   );
 
@@ -165,10 +177,10 @@ export default function QuoteCardModal({
   };
 
   return (
-    <Dialog label="Tarjeta de cita" onClose={onClose}>
+    <Dialog label={modalTitle} onClose={onClose}>
       <div className="quote-modal">
         <div className="sheet-head">
-          <strong className="sheet-title">Tarjeta de cita</strong>
+          <strong className="sheet-title">{modalTitle}</strong>
           <button
             type="button"
             className="btn--quiet"
@@ -294,6 +306,17 @@ export default function QuoteCardModal({
                   </label>
                 ) : null}
 
+                {gloss ? (
+                  <label className="quote-toggle-item">
+                    <input
+                      type="checkbox"
+                      checked={showGloss}
+                      onChange={(e) => setShowGloss(e.target.checked)}
+                    />
+                    <span>Significado</span>
+                  </label>
+                ) : null}
+
                 {companionAvailable ? (
                   <label className="quote-toggle-item">
                     <input
@@ -301,7 +324,9 @@ export default function QuoteCardModal({
                       checked={includeCompanion}
                       onChange={(e) => setIncludeCompanion(e.target.checked)}
                     />
-                    <span>🐱 Incluir a mi gato compañero en la postal</span>
+                    <span>
+                      <Icon name="cat" size={15} /> Incluir a mi gato compañero en la postal
+                    </span>
                   </label>
                 ) : null}
 
@@ -365,7 +390,7 @@ export default function QuoteCardModal({
                   disabled
                   aria-disabled="true"
                 >
-                  ✓ Guardado en tu Cuaderno
+                  <Icon name="check" size={14} /> Guardado en tu Cuaderno
                 </button>
               ) : null}
             </div>

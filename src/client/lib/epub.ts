@@ -3,6 +3,9 @@
 import type { FileEntry } from "@zip.js/zip.js";
 import type { EPUB } from "foliate-js/epub.js";
 import type { ReaderSettings } from "./settings";
+import { languageName } from "../../shared/book-display";
+
+export { languageName };
 
 export type EpubBook = Awaited<ReturnType<EPUB["init"]>>;
 export type EpubTocItem = NonNullable<EpubBook["toc"]>[number];
@@ -184,32 +187,6 @@ export const normalizeLanguage = (raw: unknown): string => {
   if (primary === "por") return "pt";
   if (/^[a-z]{2,3}$/.test(primary)) return primary;
   return "es";
-};
-
-export const languageName = (code: string): string => {
-  const norm = code.trim().toLowerCase();
-  switch (norm) {
-    case "es":
-      return "Español";
-    case "en":
-      return "Inglés";
-    case "fr":
-      return "Francés";
-    case "de":
-      return "Alemán";
-    case "it":
-      return "Italiano";
-    case "pt":
-      return "Portugués";
-    case "ca":
-      return "Catalán";
-    case "gl":
-      return "Gallego";
-    case "eu":
-      return "Euskera";
-    default:
-      return norm.toUpperCase();
-  }
 };
 
 // Detección heurística rápida de idioma (inglés vs español) analizando

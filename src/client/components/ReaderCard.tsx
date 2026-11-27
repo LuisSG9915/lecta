@@ -4,15 +4,22 @@
 // son redirecciones). Se importa de forma estática desde Account, que ya es
 // un chunk lazy.
 import { useEffect, useState } from "react";
+import { PLAN_GRACE_MS } from "../../shared/plan";
 import { accountFetch } from "../lib/account-fetch";
 import { captureDbScope } from "../lib/idb";
 import type { PlanSnapshot } from "../lib/account-plan";
 import { trackPlanEvent } from "../lib/plan-events";
-import { formatTrialDate, FREE_AFTER_TRIAL } from "../lib/trial-notice";
+import { formatTrialDate, formatTrialDeadline, FREE_AFTER_TRIAL } from "../lib/trial-notice";
 
 type Period = "monthly" | "yearly";
 
 const PERIOD_ORDER: readonly Period[] = ["yearly", "monthly"];
+
+export const WELCOME_YEARLY = {
+  price: "$399 MXN el primer año",
+  perMonth: "$33",
+  regular: "$499 MXN al año",
+} as const;
 
 export const PRICES: Record<
   Period,
@@ -91,6 +98,12 @@ export default function ReaderCard({
   const paid = plan.plan === "lecta_plus" && trialEndsAt === null;
   const daysLeft = trialEndsAt === null ? 0 : Math.max(1, Math.ceil((trialEndsAt - mountedAt) / DAY_MS));
   const defersCharge = trialEndsAt !== null && trialEndsAt > mountedAt + TRIAL_END_MIN_MS;
+  const welcomeDeadline =
+    plan.plan === "free" &&
+    typeof plan.welcomeOfferEndsAt === "number" &&
+    plan.welcomeOfferEndsAt > mountedAt
+      ? plan.welcomeOfferEndsAt
+      : null;
 
   return (
     <section className="reader-card" aria-label="Carné de Lector">
@@ -116,17 +129,48 @@ export default function ReaderCard({
           </p>
         </>
       ) : paid ? (
-        <>
-          <strong className="reader-card__state">
-            {notice === "gracias" ? "Lecta+ ya está activo" : "Suscriptor Lecta+"}
-          </strong>
-          {plan.expiresAt ? (
-            <p className="reader-card__detail">Se renueva el {dateLabel(plan.expiresAt)}.</p>
-          ) : null}
-          <button type="button" className="btn" disabled={busy} onClick={() => void go("/api/billing/portal")}>
-            Administrar suscripción
-          </button>
-        </>
+        (() => {
+          const isPassOnly = plan.hasSubscription === false;
+          if (isPassOnly) {
+            return (
+              <>
+                <strong className="reader-card__state">
+                  {notice === "gracias" ? "Lecta+ ya está activo" : "Pase anual Lecta+"}
+                </strong>
+                {plan.expiresAt ? (
+                  <p className="reader-card__detail">
+                    Vigente hasta el {dateLabel(plan.expiresAt)} (sin renovación automática).
+                  </p>
+                ) : null}
+              </>
+            );
+          }
+          const isPastDue = plan.pastDue === true;
+          const graceEndsAt = plan.expiresAt !== null ? plan.expiresAt + PLAN_GRACE_MS : null;
+          return (
+            <>
+              <strong className="reader-card__state">
+                {notice === "gracias" ? "Lecta+ ya está activo" : "Suscriptor Lecta+"}
+              </strong>
+              {isPastDue ? (
+                <p role="alert" className="status">
+                  No pudimos renovar tu pago. Actualiza tu método de pago
+                  {graceEndsAt ? ` antes del ${dateLabel(graceEndsAt)}` : ""} para conservar Lecta+.
+                </p>
+              ) : plan.expiresAt ? (
+                <p className="reader-card__detail">Se renueva el {dateLabel(plan.expiresAt)}.</p>
+              ) : null}
+              <button
+                type="button"
+                className={isPastDue ? "btn btn--primary" : "btn"}
+                disabled={busy}
+                onClick={() => void go("/api/billing/portal")}
+              >
+                {isPastDue ? "Actualizar tarjeta" : "Administrar suscripción"}
+              </button>
+            </>
+          );
+        })()
       ) : (
         <>
           {trialEndsAt !== null ? (
@@ -154,20 +198,31 @@ export default function ReaderCard({
             </>
           )}
           <div className="reader-card__periods" role="group" aria-label="Periodo de pago">
-            {PERIOD_ORDER.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className="reader-card__period"
-                aria-pressed={period === key}
-                onClick={() => setPeriod(key)}
-              >
-                <span>{PRICES[key].label}</span>
-                <span className="reader-card__price">{PRICES[key].price}</span>
-              </button>
-            ))}
+            {PERIOD_ORDER.map((key) => {
+              const displayPrice =
+                key === "yearly" && welcomeDeadline !== null ? WELCOME_YEARLY.price : PRICES[key].price;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className="reader-card__period"
+                  aria-pressed={period === key}
+                  onClick={() => setPeriod(key)}
+                >
+                  <span>{PRICES[key].label}</span>
+                  <span className="reader-card__price">{displayPrice}</span>
+                </button>
+              );
+            })}
           </div>
-          {PRICES[period].note ? <p className="reader-card__detail">{PRICES[period].note}</p> : null}
+          {period === "yearly" && welcomeDeadline !== null ? (
+            <p className="reader-card__detail">
+              Oferta de bienvenida (72 h): {WELCOME_YEARLY.price} (≈{WELCOME_YEARLY.perMonth} al mes; luego{" "}
+              {WELCOME_YEARLY.regular}). Disponible hasta el {formatTrialDeadline(welcomeDeadline)}.
+            </p>
+          ) : PRICES[period].note ? (
+            <p className="reader-card__detail">{PRICES[period].note}</p>
+          ) : null}
           {defersCharge && trialEndsAt !== null ? (
             <p className="reader-card__detail">
               Conservas tus días gratis: hoy pagas $0. Tu primer cobro ({PRICES[period].price}) será el{" "}
@@ -182,6 +237,16 @@ export default function ReaderCard({
           >
             {defersCharge ? "Hacerme Lecta+ ($0 hoy)" : "Hacerme Lecta+"}
           </button>
+          {plan.passYearlyAvailable === true ? (
+            <button
+              type="button"
+              className="btn--quiet reader-card__pass"
+              disabled={busy}
+              onClick={() => void go("/api/billing/checkout", { period: "pass_yearly" })}
+            >
+              ¿Prefieres pago único sin renovación? Pase de 1 año ($549 MXN)
+            </button>
+          ) : null}
         </>
       )}
       {error ? (

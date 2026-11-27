@@ -282,8 +282,9 @@ describe("ReaderOverlays: Integración flujo postal y unicidad de capas (FASE 3)
     // Estado visual actualizado a guardado
     expect(container.textContent).toContain("Pasaje guardado en tu Cuaderno.");
     const savedBtn = [...container.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("✓ Guardado en tu Cuaderno"),
+      b.textContent?.includes("Guardado en tu Cuaderno"),
     )!;
+    expect(savedBtn.querySelector(".icon--check")).toBeTruthy();
     expect(savedBtn).toBeTruthy();
     expect(savedBtn.disabled).toBe(true);
 

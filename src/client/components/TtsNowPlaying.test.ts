@@ -120,10 +120,12 @@ describe("TtsNowPlaying", () => {
 
     // Capturar palabra
     const captureBtn = container.querySelector(".tts-chip-capture") as HTMLButtonElement;
-    expect(captureBtn.textContent).toContain("★ Capturar palabra");
+    expect(captureBtn.textContent).toContain("Capturar palabra");
+    expect(captureBtn.querySelector(".icon--star")).toBeTruthy();
     act(() => captureBtn.click());
     expect(onCaptureWord).toHaveBeenCalledTimes(1);
-    expect(captureBtn.textContent).toContain("✓ Guardada");
+    expect(captureBtn.textContent).toContain("Guardada");
+    expect(captureBtn.querySelector(".icon--check")).toBeTruthy();
 
     // Detener
     const stopBtn = container.querySelector(".tts-chip-stop") as HTMLButtonElement;

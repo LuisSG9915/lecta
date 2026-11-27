@@ -28,7 +28,39 @@ export type QuoteCardConfig = {
   includeCompanion?: boolean;
   coatId?: CompanionCoatId;
   readingDate?: string;
+  highlightWord?: string;
+  gloss?: string;
 };
+
+export type HighlightSegment = {
+  text: string;
+  highlighted: boolean;
+};
+
+/**
+ * Divide una línea en tramos normales y tramos coincidentes con `highlightWord`
+ * (sin distinguir mayúsculas ni falsos positivos dentro de otras palabras).
+ */
+export function splitHighlightedLine(
+  line: string,
+  highlightWord?: string,
+): HighlightSegment[] {
+  const clean = highlightWord?.trim();
+  if (!clean) return [{ text: line, highlighted: false }];
+  const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_])(${escaped})(?![\\p{L}\\p{N}_])`, "giu");
+  const out: HighlightSegment[] = [];
+  let lastIndex = 0;
+  for (const match of line.matchAll(re)) {
+    const idx = match.index ?? 0;
+    if (idx > lastIndex) out.push({ text: line.slice(lastIndex, idx), highlighted: false });
+    out.push({ text: match[0], highlighted: true });
+    lastIndex = idx + match[0].length;
+  }
+  if (lastIndex === 0) return [{ text: line, highlighted: false }];
+  if (lastIndex < line.length) out.push({ text: line.slice(lastIndex), highlighted: false });
+  return out;
+}
 
 export const THEME_PALETTES: Record<
   QuoteCardTheme,
@@ -203,6 +235,19 @@ export async function renderQuoteCardToCanvas(
   const lines = wrapCanvasText(ctx, config.text, contentWidth);
   const textBlockHeight = lines.length * quoteLineHeight;
 
+  const glossText = config.gloss?.trim()
+    ? config.highlightWord?.trim()
+      ? `${config.highlightWord.trim()} — ${config.gloss.trim()}`
+      : config.gloss.trim()
+    : "";
+  let glossLines: string[] = [];
+  if (glossText) {
+    ctx.font = `italic 400 26px ${quoteFontFamily}`;
+    glossLines = wrapCanvasText(ctx, glossText, contentWidth).slice(0, 3);
+  }
+  const glossLineHeight = 36;
+  const glossBlockHeight = glossLines.length > 0 ? 18 + glossLines.length * glossLineHeight : 0;
+
   // Medición de metadatos inferiores
   const metaFontSize = 26;
   const metaFontFamily = '"Alegreya Sans", system-ui, sans-serif';
@@ -215,7 +260,8 @@ export async function renderQuoteCardToCanvas(
   const quoteSymbolHeight = 80;
   const metaBlockHeight = metaParts.length > 0 ? 90 : 0;
   const brandingHeight = config.showBranding ? 50 : 0;
-  const totalOccupied = quoteSymbolHeight + textBlockHeight + metaBlockHeight + brandingHeight;
+  const totalOccupied =
+    quoteSymbolHeight + textBlockHeight + glossBlockHeight + metaBlockHeight + brandingHeight;
 
   const startY = Math.max(
     innerInset + 80,
@@ -228,15 +274,58 @@ export async function renderQuoteCardToCanvas(
   ctx.textAlign = "center";
   ctx.fillText("“", width / 2, startY - 20);
 
-  // Cuerpo de la cita
-  ctx.font = `normal 400 ${quoteFontSize}px ${quoteFontFamily}`;
+  // Cuerpo de la cita (con palabra destacada si aplica)
+  const baseFont = `normal 400 ${quoteFontSize}px ${quoteFontFamily}`;
+  const highlightFont = `normal 600 ${quoteFontSize}px ${quoteFontFamily}`;
+  const highlightTarget = config.highlightWord?.trim();
+  ctx.font = baseFont;
   ctx.fillStyle = palette.text;
   ctx.textAlign = "center";
 
   let curY = startY + quoteFontSize * 0.4;
   for (const line of lines) {
-    ctx.fillText(line, width / 2, curY);
+    const segments = highlightTarget ? splitHighlightedLine(line, highlightTarget) : null;
+    if (segments && segments.some((s) => s.highlighted)) {
+      const measured = segments.map((seg) => {
+        ctx.font = seg.highlighted ? highlightFont : baseFont;
+        return { ...seg, width: ctx.measureText(seg.text).width };
+      });
+      const totalWidth = measured.reduce((sum, s) => sum + s.width, 0);
+      let x = width / 2 - totalWidth / 2;
+      ctx.textAlign = "left";
+      for (const seg of measured) {
+        ctx.font = seg.highlighted ? highlightFont : baseFont;
+        ctx.fillStyle = seg.highlighted ? palette.brand : palette.text;
+        ctx.fillText(seg.text, x, curY);
+        if (seg.highlighted) {
+          ctx.strokeStyle = palette.brand;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x, curY + 6);
+          ctx.lineTo(x + seg.width, curY + 6);
+          ctx.stroke();
+        }
+        x += seg.width;
+      }
+      ctx.textAlign = "center";
+      ctx.font = baseFont;
+      ctx.fillStyle = palette.text;
+    } else {
+      ctx.fillText(line, width / 2, curY);
+    }
     curY += quoteLineHeight;
+  }
+
+  // Glosa editorial al pie de la cita
+  if (glossLines.length > 0) {
+    curY += 18;
+    ctx.font = `italic 400 26px ${quoteFontFamily}`;
+    ctx.fillStyle = palette.meta;
+    ctx.textAlign = "center";
+    for (const gLine of glossLines) {
+      ctx.fillText(gLine, width / 2, curY);
+      curY += glossLineHeight;
+    }
   }
 
   // Divisor sutil si hay metadatos o marca
@@ -298,7 +387,7 @@ export async function renderQuoteCardToCanvas(
     ctx.font = `normal 500 22px ${metaFontFamily}`;
     ctx.fillStyle = palette.brand;
     ctx.textAlign = "center";
-    ctx.fillText("Lecta · Cuaderno de lector", width / 2, bottomBrandY);
+    ctx.fillText("Lecta · lectal.app", width / 2, bottomBrandY);
   }
 
   return canvas;

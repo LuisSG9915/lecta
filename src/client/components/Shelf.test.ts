@@ -433,23 +433,30 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
     const hero = host.querySelector(".shelf-welcome-hero");
     expect(hero).toBeTruthy();
     expect(hero?.querySelector(".shelf-welcome-hero-title")?.textContent).toBe(
-      "Vive cómo se siente leer sin interrupciones",
+      "¿Con qué quieres empezar hoy?",
     );
     expect(hero?.querySelector(".shelf-welcome-hero-subtitle")?.textContent).toContain(
-      "Abre nuestra edición interactiva de muestra o elige una obra gratuita abajo",
+      "Toca un libro y entra directo a la página",
     );
+
+    const picks = [...(hero?.querySelectorAll(".shelf-welcome-pick-btn") ?? [])];
+    expect(picks.length).toBe(3);
+    expect(hero?.textContent).toContain("A Christmas Carol");
+    expect(hero?.textContent).toContain("Alice's Adventures in Wonderland");
+    expect(hero?.textContent).toContain("Marianela");
 
     const btn = hero?.querySelector(".shelf-welcome-hero-btn") as HTMLButtonElement;
     expect(btn).toBeTruthy();
-    expect(btn.textContent).toContain("Empezar lectura de muestra ahora");
+    expect(btn.textContent).toContain("A Christmas Carol");
 
     const secondaryBtn = hero?.querySelector(".shelf-welcome-hero-btn-secondary") as HTMLButtonElement;
     expect(secondaryBtn).toBeTruthy();
-    expect(secondaryBtn.textContent).toContain("Elegir archivo EPUB");
+    expect(secondaryBtn.textContent).toContain("Traer mi archivo EPUB");
 
-    // Zero-Friction: No ritual de 3 pasos ni tarjeta de gato en la primera apertura
+    // Zero-Friction: sin checklist escolar ni tarjeta separada de gato ni jerga
     expect(host.querySelector(".shelf-onboarding-card")).toBeNull();
     expect(host.querySelector(".shelf__desk-companion")).toBeNull();
+    expect(host.textContent).not.toMatch(/Estrategia|notas léxicas|45 seg/);
 
     await act(async () => {
       btn.click();
@@ -458,6 +465,64 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
 
     expect(onAdd).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
+  });
+
+  it("en la mesa inicial, tocar una recomendación dispara onGetCatalogBook si está disponible", async () => {
+    const onGetCatalogBook = vi.fn(async () => "h-carol");
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [],
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onGetCatalogBook,
+          onLibraryChange: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    const btn = host.querySelector(".shelf-welcome-hero-btn") as HTMLButtonElement;
+    await act(async () => {
+      btn.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    expect(onGetCatalogBook).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "christmas-carol", language: "en" }),
+    );
+  });
+
+  it("incluso con lectura iniciada no muestra checklist de 3 pasos ni jerga de onboarding", async () => {
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [
+            {
+              hash: "h-test-1",
+              name: "Azul…",
+              title: "Azul…",
+              author: "Rubén Darío",
+              addedAt: 1,
+              sectionCount: 10,
+              language: "es",
+            },
+          ],
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    expect(host.querySelector(".shelf-onboarding-card")).toBeNull();
+    expect(host.textContent).not.toContain("Prepara tu lectura en 3 pasos");
+    expect(host.textContent).not.toMatch(/Estrategia|45 seg/);
   });
 
   it("con 1 libro sin abrir, el Banner de 1 Clic lo abre directamente (Fase 1)", async () => {
@@ -791,5 +856,34 @@ describe("Shelf - Continuar escuchando", () => {
     consentTts();
     await mount(vi.fn());
     expect(host.querySelector(".btn--resume-audio")).toBeNull();
+  });
+
+  it("muestra el aviso descartable de past_due en la estantería y abre el Carné al pulsar Actualizar tarjeta", async () => {
+    const { planStore } = await import("../lib/account-plan");
+    const spy = vi.spyOn(planStore, "get").mockReturnValue({
+      plan: "lecta_plus",
+      starterCoat: null,
+      expiresAt: Date.now() - 86_400_000,
+      pastDue: true,
+    });
+    const openCarneSpy = vi.fn();
+    window.addEventListener("lecta:open-carne", openCarneSpy);
+    try {
+      await mount(vi.fn());
+      const note = host.querySelector('[data-testid="past-due-note"]');
+      expect(note).toBeTruthy();
+      expect(note?.textContent).toContain("No pudimos renovar tu pago de Lecta+");
+      await act(async () => {
+        note?.querySelector<HTMLButtonElement>(".trial-note__cta")?.click();
+      });
+      expect(openCarneSpy).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        note?.querySelector<HTMLButtonElement>(".trial-note__close")?.click();
+      });
+      expect(host.querySelector('[data-testid="past-due-note"]')).toBeNull();
+    } finally {
+      window.removeEventListener("lecta:open-carne", openCarneSpy);
+      spy.mockRestore();
+    }
   });
 });

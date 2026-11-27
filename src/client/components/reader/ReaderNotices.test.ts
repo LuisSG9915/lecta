@@ -151,7 +151,8 @@ describe("ReaderNotices: píldora de transición ante fatiga (Fase 3)", () => {
 
     const audioBtn = container.querySelector(".reader-fatigue-btn-audio") as HTMLButtonElement;
     expect(audioBtn).not.toBeNull();
-    expect(audioBtn.textContent).toContain("Escuchar los próximos 5 min 🎧");
+    expect(audioBtn.textContent).toContain("Escuchar los próximos 5 min");
+    expect(audioBtn.querySelector(".icon--headphones")).toBeTruthy();
 
     act(() => {
       focusBtn.click();

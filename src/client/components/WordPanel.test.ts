@@ -147,11 +147,13 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const knownBtn = host.querySelector<HTMLButtonElement>(".btn--quick-known");
     expect(knownBtn).not.toBeNull();
-    expect(knownBtn?.textContent).toContain("✓ Ya la sé");
+    expect(knownBtn?.textContent).toContain("Ya la sé");
+    expect(knownBtn?.querySelector(".icon--check")).toBeTruthy();
 
     const pinBtn = host.querySelector<HTMLButtonElement>(".btn--pin-notebook");
     expect(pinBtn).not.toBeNull();
-    expect(pinBtn?.textContent).toContain("★ Guardar en mi cuaderno");
+    expect(pinBtn?.textContent).toContain("Guardar en mi cuaderno");
+    expect(pinBtn?.querySelector(".icon--star")).toBeTruthy();
   });
 
   it("cuando la palabra ya está guardada muestra badge, Quitar y Ver en cuaderno", async () => {
@@ -181,7 +183,8 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const badge = host.querySelector(".word-panel-saved-badge");
     expect(badge).not.toBeNull();
-    expect(badge?.textContent).toContain("★ Guardada en tu cuaderno");
+    expect(badge?.textContent).toContain("Guardada en tu cuaderno");
+    expect(badge?.querySelector(".icon--star")).toBeTruthy();
 
     const removeBtn = host.querySelector<HTMLButtonElement>(".btn--remove-word");
     expect(removeBtn).not.toBeNull();
@@ -228,7 +231,8 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     });
 
     const badge = host.querySelector(".word-panel-saved-badge");
-    expect(badge?.textContent).toBe("★ Guardada en tu cuaderno · Asentada");
+    expect(badge?.textContent?.trim()).toBe("Guardada en tu cuaderno · Asentada");
+    expect(badge?.querySelector(".icon--star")).toBeTruthy();
   });
 
   it("al tocar '✓ Ya la sé' muestra aviso de recalibración de perfil y llama a onClose", async () => {

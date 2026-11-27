@@ -69,4 +69,24 @@ describe("TrialEndSheet", () => {
     expect(navigate).toHaveBeenCalledWith("https://stripe.test/c");
     await act(async () => root.unmount());
   });
+
+  it("con oferta de bienvenida vigente muestra $399 MXN y la fecha límite real", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const deadline = Date.now() + 48 * 3_600_000;
+    await act(async () =>
+      root.render(
+        h(TrialEndSheet, {
+          endedAt: Date.now() - 24 * 3_600_000,
+          welcomeOfferEndsAt: deadline,
+        }),
+      ),
+    );
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Anual · $399 MXN el primer año (≈$33 MXN al mes)");
+    expect(text).toContain("Oferta de bienvenida por 72 h");
+    expect(text).toContain("después $499 MXN al año");
+    await act(async () => root.unmount());
+  });
 });

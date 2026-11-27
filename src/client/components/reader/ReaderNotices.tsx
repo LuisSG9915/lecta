@@ -13,6 +13,7 @@ import { markSectionPreviewed } from "../../lib/chapter-analysis";
 import PlanNote from "../PlanNote";
 import TrialWarningNote from "../TrialWarningNote";
 import { memo } from "react";
+import Icon from "../Icon";
 
 const RICH_CHAPTER_KEY_WORDS = 12;
 
@@ -191,7 +192,7 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
           }}
           aria-label="Descartar sugerencia del capítulo"
         >
-          ✕
+          <Icon name="close" size={15} />
         </button>
       </div>
     </div>
@@ -300,7 +301,7 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
             setFatigueNotice(false);
           }}
         >
-          Escuchar los próximos 5 min 🎧
+          Escuchar los próximos 5 min <Icon name="headphones" size={15} />
         </button>
         <button
           type="button"

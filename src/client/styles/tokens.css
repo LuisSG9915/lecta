@@ -8,7 +8,7 @@
   /* Familias */
   --font-book: "Literata Variable", Literata, Georgia, "Times New Roman", serif;
   --font-ui: "Alegreya Sans", "Gill Sans", "Segoe UI", "Trebuchet MS", sans-serif;
-  --font-sans-alt: "Alegreya Sans", "Gill Sans", "Segoe UI", sans-serif;
+  --font-sans-alt: var(--font-ui);
   /* Letras opcionales del lector: se descargan solo al elegirlas. */
   --font-source-serif: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
   --font-atkinson: "Atkinson Hyperlegible Next", "Alegreya Sans", "Gill Sans", sans-serif;
@@ -46,25 +46,22 @@
   --r-2: 4px;
   --r-pill: 999px;
   --r-sheet: 14px;
-  --radius-xs: 4px;
+  --radius-xs: var(--r-2);
   --radius-s: 8px;
   --radius-m: 12px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-lg: var(--r-sheet);
+
+  /* Alias semánticos y de compatibilidad apuntando a tokens canónicos */
   --border: 1px solid var(--rule);
   --border-strong: 1px solid var(--rule-strong);
   --border-color: var(--rule);
   --line: var(--rule);
   --surface: var(--paper-raised);
   --surface-raised: var(--paper-raised);
-  --surface-sunken: var(--paper-sunken);
   --surface-elevated: var(--paper-raised);
-  /* Texto semántico. Faltaba: los componentes que escriben
-     `var(--text-primary, #f5f2eb)` caían al fallback pensado para el tema
-     noche y, sobre `--surface-elevated` (blanco en papel/blanco), dejaban
-     texto crema sobre blanco a 1.12:1 — la tarjeta de palabra se veía vacía.
-     La indirección por `--ink` sí cambia con cada tema. */
+  /* Texto semántico: la indirección por --ink acompaña cada tema. */
   --text-primary: var(--ink);
   --text-secondary: var(--ink-soft);
   --bg: var(--paper);
@@ -108,33 +105,12 @@
   --read-measure: 65ch;
 
   /* Superficies semánticas y andamiaje cognitivo (Track 13) */
-  --surface-priming: color-mix(
-    in srgb,
-    var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 92%,
-    var(--accent-primary, var(--vermilion, #8c5a32)) 8%
-  );
-  --border-priming: color-mix(
-    in srgb,
-    var(--border-color, var(--rule, #dcd6cc)) 80%,
-    var(--accent-primary, var(--vermilion, #8c5a32)) 20%
-  );
-  --surface-spoiler-safe: color-mix(
-    in srgb,
-    var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 90%,
-    #2e6b4e 10%
-  );
+  --surface-priming: color-mix(in srgb, var(--paper-sunken) 92%, var(--accent-primary) 8%);
+  --border-priming: color-mix(in srgb, var(--rule) 80%, var(--accent-primary) 20%);
+  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken) 90%, #2e6b4e 10%);
   --text-spoiler-safe: #25583f;
-  --surface-bilingue-clause: color-mix(
-    in srgb,
-    var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 94%,
-    #3b5998 6%
-  );
+  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken) 94%, #3b5998 6%);
   --paragraph-dim-opacity: 0.32;
-  --priming-anchor-underline: color-mix(
-    in srgb,
-    var(--accent-primary, var(--vermilion, #8c5a32)) 55%,
-    transparent
-  );
 
   /* Fichas seleccionadas (filtros, modos, pestañas): tono translúcido
      de vermilion para no competir con el color sólido de .btn--primary,
@@ -165,7 +141,6 @@
   --ink-faint: #70655a;
   --rule: rgba(120, 95, 70, 0.14);
   --rule-strong: #c9beaa;
-  --border-warm: 1px solid rgba(120, 95, 70, 0.12);
   --vermilion: #9e3a23;
   --vermilion-bright: #a24317;
   --vermilion-wash: #f3ddd5;
@@ -286,7 +261,6 @@
   --ink-faint: #9aa0a6;
   --rule: rgba(255, 245, 230, 0.08);
   --rule-strong: #4b4f56;
-  --border-warm: 1px solid rgba(255, 245, 230, 0.08);
   --vermilion: #e08a58;
   --vermilion-bright: #e8886e;
   --vermilion-wash: rgba(224, 122, 95, 0.18);
@@ -412,7 +386,6 @@
     --ink-faint: #9aa0a6;
     --rule: rgba(255, 245, 230, 0.08);
     --rule-strong: #4b4f56;
-    --border-warm: 1px solid rgba(255, 245, 230, 0.08);
     --vermilion: #e08a58;
     --vermilion-bright: #e8886e;
     --vermilion-wash: rgba(224, 122, 95, 0.18);
@@ -597,103 +570,27 @@
 
 /* =====================================================================
    Soporte Multitema para Superficies Semánticas (Track 13)
+   Los temas claros (papel, blanco) heredan las fórmulas de :root.
    ===================================================================== */
-:root[data-theme="blanco"],
-[data-theme="light"],
-.theme-light {
-  --surface-priming: color-mix(
-    in srgb,
-    var(--paper-sunken, #f2f0ea) 92%,
-    var(--accent-primary, #8c5a32) 8%
-  );
-  --border-priming: color-mix(
-    in srgb,
-    var(--rule, #e3ded3) 80%,
-    var(--accent-primary, #8c5a32) 20%
-  );
-  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, #f2f0ea) 90%, #2e6b4e 10%);
-  --text-spoiler-safe: #25583f;
-  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, #f2f0ea) 94%, #3b5998 6%);
-  --paragraph-dim-opacity: 0.32;
-  --priming-anchor-underline: color-mix(in srgb, var(--accent-primary, #8c5a32) 55%, transparent);
-}
-
-:root[data-theme="papel"],
-[data-theme="sepia"],
-.theme-sepia {
-  --surface-priming: color-mix(
-    in srgb,
-    var(--paper-sunken, #f0e7d5) 92%,
-    var(--accent-primary, #8c5a32) 8%
-  );
-  --border-priming: color-mix(
-    in srgb,
-    var(--rule, rgba(120, 95, 70, 0.12)) 80%,
-    var(--accent-primary, #8c5a32) 20%
-  );
-  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, #f0e7d5) 90%, #2e6b4e 10%);
-  --text-spoiler-safe: #25583f;
-  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, #f0e7d5) 94%, #3b5998 6%);
-  --paragraph-dim-opacity: 0.32;
-  --priming-anchor-underline: color-mix(in srgb, var(--accent-primary, #8c5a32) 55%, transparent);
-}
-
 :root[data-theme="noche"],
 :root[data-theme="oled"],
-:root[data-theme="night"],
-[data-theme="dark"],
-.theme-dark {
-  --surface-priming: color-mix(
-    in srgb,
-    var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%,
-    var(--accent-primary, #d4a373) 10%
-  );
-  --border-priming: color-mix(
-    in srgb,
-    var(--rule-strong, var(--border-color, #333333)) 75%,
-    var(--accent-primary, #d4a373) 25%
-  );
-  --surface-spoiler-safe: color-mix(
-    in srgb,
-    var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 88%,
-    #4da87a 12%
-  );
+:root[data-theme="night"] {
+  --surface-priming: color-mix(in srgb, var(--paper-sunken) 90%, var(--accent-primary) 10%);
+  --border-priming: color-mix(in srgb, var(--rule-strong) 75%, var(--accent-primary) 25%);
+  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken) 88%, #4da87a 12%);
   --text-spoiler-safe: #7ce0ad;
-  --surface-bilingue-clause: color-mix(
-    in srgb,
-    var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%,
-    #6d9dc5 10%
-  );
+  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken) 90%, #6d9dc5 10%);
   --paragraph-dim-opacity: 0.26;
-  --priming-anchor-underline: color-mix(in srgb, var(--vermilion, #e08a58) 55%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]),
-  [data-theme="auto"] {
-    --surface-priming: color-mix(
-      in srgb,
-      var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%,
-      var(--accent-primary, #d4a373) 10%
-    );
-    --border-priming: color-mix(
-      in srgb,
-      var(--rule-strong, var(--border-color, #333333)) 75%,
-      var(--accent-primary, #d4a373) 25%
-    );
-    --surface-spoiler-safe: color-mix(
-      in srgb,
-      var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 88%,
-      #4da87a 12%
-    );
+  :root:not([data-theme]) {
+    --surface-priming: color-mix(in srgb, var(--paper-sunken) 90%, var(--accent-primary) 10%);
+    --border-priming: color-mix(in srgb, var(--rule-strong) 75%, var(--accent-primary) 25%);
+    --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken) 88%, #4da87a 12%);
     --text-spoiler-safe: #7ce0ad;
-    --surface-bilingue-clause: color-mix(
-      in srgb,
-      var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%,
-      #6d9dc5 10%
-    );
+    --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken) 90%, #6d9dc5 10%);
     --paragraph-dim-opacity: 0.26;
-    --priming-anchor-underline: color-mix(in srgb, var(--vermilion, #e08a58) 55%, transparent);
   }
 }
 

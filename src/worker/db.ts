@@ -20,6 +20,8 @@ export type WorkerEnv = {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_MONTHLY_ID?: string;
   STRIPE_PRICE_YEARLY_ID?: string;
+  STRIPE_PRICE_PASS_YEARLY_ID?: string;
+  STRIPE_COUPON_TRIAL_END_ID?: string;
   BOOKS?: R2Bucket;
   /** Turnstile: con él, sign-up/email y sign-in/magic-link exigen captcha (auth.ts). */
   TURNSTILE_SECRET_KEY?: string;

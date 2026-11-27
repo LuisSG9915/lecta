@@ -755,4 +755,50 @@ describe("DeepReadingSummaryModal: cortesía de IA agotada", () => {
     host.remove();
     vi.unstubAllGlobals();
   });
+
+  it("muestra 'Ver tu Exlibris' solo cuando bookCompleted es true y delega sin anidar modales", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const summary = { source: "chapter", durationMinutes: 12, sectionsRead: 1 } as unknown as DeepReadingSummary;
+    const onOpenExlibris = vi.fn();
+
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary,
+          bookCompleted: false,
+          onOpenExlibris,
+          onClose: vi.fn(),
+        }),
+      );
+    });
+    expect(host.textContent).not.toContain("Ver tu Exlibris");
+
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary,
+          bookCompleted: true,
+          onOpenExlibris,
+          onClose: vi.fn(),
+        }),
+      );
+    });
+
+    const exlibrisBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Ver tu Exlibris"),
+    );
+    expect(exlibrisBtn).toBeTruthy();
+
+    act(() => {
+      exlibrisBtn!.click();
+    });
+
+    expect(onOpenExlibris).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll(".dialog-scrim").length).toBe(1);
+
+    act(() => root.unmount());
+    host.remove();
+  });
 });
