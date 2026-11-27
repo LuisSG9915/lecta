@@ -327,6 +327,15 @@ export function CompanionProvider({
     setOpen(false);
   }, []);
 
+  // Al abrir el Carné desde una PlanNote del armario (pelaje bloqueado),
+  // cerramos la hoja del compañero para no dejar el Carné oculto detrás.
+  useEffect(() => {
+    if (!open) return;
+    const onOpenCarne = () => closePanel();
+    window.addEventListener("lecta:open-carne", onOpenCarne);
+    return () => window.removeEventListener("lecta:open-carne", onOpenCarne);
+  }, [open, closePanel]);
+
   const [panelTab, setPanelTab] = useState<CompanionTab>("care");
 
   const openPanel = useCallback(

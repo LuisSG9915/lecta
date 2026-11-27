@@ -81,16 +81,29 @@ describe("ReaderCard (Carné de Lector)", () => {
     expect(host.querySelector(".reader-card")).toBeNull();
   });
 
-  it("en prueba inversa: días que quedan, fecha de fin y botón de pago, sin portal", () => {
+  it("anual aparece primero y muestra el ahorro de $209", () => {
+    render({ plan: "free", starterCoat: null, expiresAt: null });
+    const periods = Array.from(host.querySelectorAll<HTMLButtonElement>(".reader-card__period"));
+    expect(periods[0]?.textContent).toContain("Anual");
+    expect(periods[1]?.textContent).toContain("Mensual");
+    expect(host.textContent).toContain("$209");
+  });
+
+  it("en prueba inversa: con >48 h avisa $0 hoy y cobro diferido; con <48 h botón normal", () => {
     vi.useFakeTimers({ now: Date.UTC(2026, 11, 1, 12) });
     try {
-      render({ plan: "lecta_plus", starterCoat: null, expiresAt: null, trialEndsAt: Date.UTC(2026, 11, 4, 12) });
+      render({ plan: "lecta_plus", starterCoat: null, expiresAt: null, trialEndsAt: Date.now() + 3 * 86_400_000 });
       expect(host.textContent).toContain("Prueba de Lecta+ · quedan 3 días");
       expect(host.textContent).toContain("estarás en Gratis: 3 explicaciones con IA al día, sin nube ni Kindle. Tus palabras y tu gato se quedan.");
       expect(host.querySelector(".reader-card__periods")).not.toBeNull();
-      expect(host.textContent).toContain("Hacerme Lecta+");
+      expect(host.textContent).toContain("Hacerme Lecta+ ($0 hoy)");
+      expect(host.textContent).toContain("Conservas tus días gratis: hoy pagas $0");
       expect(host.textContent).not.toContain("Administrar suscripción");
       expect(host.textContent).not.toContain("7 días gratis");
+
+      render({ plan: "lecta_plus", starterCoat: null, expiresAt: null, trialEndsAt: Date.now() + 24 * 3_600_000 });
+      expect(host.textContent).toContain("Hacerme Lecta+");
+      expect(host.textContent).not.toContain("$0 hoy");
     } finally {
       vi.useRealTimers();
     }

@@ -735,16 +735,24 @@ describe("DeepReadingSummaryModal", () => {
 });
 
 describe("DeepReadingSummaryModal: cortesía de IA agotada", () => {
-  it("solo avisa con la bandera y en cierre de capítulo", () => {
+  it("solo avisa con la bandera y en cierre de capítulo, y emite app:paywall:chapter-summary al pulsar", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
+    const beacon = vi.fn(() => true);
+    vi.stubGlobal("navigator", { sendBeacon: beacon });
     const summary = { source: "chapter", durationMinutes: 5, sectionsRead: 1 } as unknown as DeepReadingSummary;
     act(() => root.render(h(DeepReadingSummaryModal, { summary, onClose: vi.fn(), aiCourtesyExhausted: true })));
     expect(document.body.textContent).toContain("Hoy ya usaste tus explicaciones con IA");
+    const link = document.body.querySelector<HTMLAnchorElement>(".deep-summary-ai-link")!;
+    act(() => {
+      link.click();
+    });
+    expect(beacon.mock.calls.some((c) => String((c as unknown[])[1]).includes("app:paywall:chapter-summary"))).toBe(true);
     act(() => root.render(h(DeepReadingSummaryModal, { summary, onClose: vi.fn() })));
     expect(document.body.textContent).not.toContain("Hoy ya usaste");
     act(() => root.unmount());
     host.remove();
+    vi.unstubAllGlobals();
   });
 });

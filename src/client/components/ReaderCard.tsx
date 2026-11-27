@@ -12,15 +12,24 @@ import { formatTrialDate, FREE_AFTER_TRIAL } from "../lib/trial-notice";
 
 type Period = "monthly" | "yearly";
 
+const PERIOD_ORDER: readonly Period[] = ["yearly", "monthly"];
+
 export const PRICES: Record<
   Period,
   { label: string; price: string; short: string; perMonth: string; note: string }
 > = {
   monthly: { label: "Mensual", price: "$59 MXN al mes", short: "$59", perMonth: "$59", note: "" },
-  yearly: { label: "Anual", price: "$499 MXN al año", short: "$499", perMonth: "$42", note: "Son $42 al mes." },
+  yearly: {
+    label: "Anual",
+    price: "$499 MXN al año",
+    short: "$499",
+    perMonth: "$42",
+    note: "Son $42 al mes · ahorras $209 (4 meses gratis).",
+  },
 };
 
 const DAY_MS = 86_400_000;
+const TRIAL_END_MIN_MS = 48 * 3_600_000 + 5 * 60_000;
 
 const dateLabel = (ms: number) =>
   new Date(ms).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
@@ -81,6 +90,7 @@ export default function ReaderCard({
   const trialEndsAt = plan.plan === "lecta_plus" && plan.trialEndsAt ? plan.trialEndsAt : null;
   const paid = plan.plan === "lecta_plus" && trialEndsAt === null;
   const daysLeft = trialEndsAt === null ? 0 : Math.max(1, Math.ceil((trialEndsAt - mountedAt) / DAY_MS));
+  const defersCharge = trialEndsAt !== null && trialEndsAt > mountedAt + TRIAL_END_MIN_MS;
 
   return (
     <section className="reader-card" aria-label="Carné de Lector">
@@ -132,19 +142,19 @@ export default function ReaderCard({
             <>
               <strong className="reader-card__state">Plan Gratis · 3 explicaciones con IA al día</strong>
               <p className="reader-card__detail">
-                Lecta+ suma Kindle, más explicaciones con IA, palabras previstas y Biblioteca en la nube.
+                Lecta+ suma Kindle, más explicaciones con IA, palabras previstas, coach semanal y Biblioteca en la nube.
               </p>
             </>
           ) : (
             <>
               <strong className="reader-card__state">Lector de Cuaderno Abierto</strong>
               <p className="reader-card__detail">
-                Lecta+ suma Kindle, explicaciones con IA, palabras previstas y Biblioteca en la nube.
+                Lecta+ suma Kindle, explicaciones con IA, palabras previstas, coach semanal y Biblioteca en la nube.
               </p>
             </>
           )}
           <div className="reader-card__periods" role="group" aria-label="Periodo de pago">
-            {(Object.keys(PRICES) as Period[]).map((key) => (
+            {PERIOD_ORDER.map((key) => (
               <button
                 key={key}
                 type="button"
@@ -158,13 +168,19 @@ export default function ReaderCard({
             ))}
           </div>
           {PRICES[period].note ? <p className="reader-card__detail">{PRICES[period].note}</p> : null}
+          {defersCharge && trialEndsAt !== null ? (
+            <p className="reader-card__detail">
+              Conservas tus días gratis: hoy pagas $0. Tu primer cobro ({PRICES[period].price}) será el{" "}
+              {formatTrialDate(trialEndsAt)}.
+            </p>
+          ) : null}
           <button
             type="button"
             className="btn btn--primary"
             disabled={busy}
             onClick={() => void go("/api/billing/checkout", { period })}
           >
-            Hacerme Lecta+
+            {defersCharge ? "Hacerme Lecta+ ($0 hoy)" : "Hacerme Lecta+"}
           </button>
         </>
       )}

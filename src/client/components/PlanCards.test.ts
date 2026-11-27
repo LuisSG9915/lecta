@@ -47,17 +47,28 @@ describe("tarjetas de Lecta+ del recorrido", () => {
     expect(host.querySelector("[data-testid=coach-card]")?.getAttribute("aria-label")).toBe("Tu coach");
   });
 
-  it("plan: «Hoy» una vez, días capitalizados y sin días en 0", async () => {
+  it("plan: «Hoy» una vez, días capitalizados, limpia nombre del libro y sin días en 0", async () => {
     const days = Array.from({ length: 7 }, (_, i) => ({ offset: i, reviews: i === 0 ? 4 : i === 1 ? 2 : i === 3 ? 1 : 0 }));
     reply = {
       status: 200,
-      body: { empty: false, days, backlog: 0, readingMinutes: 15, minutesToday: 18, habit: "default", habitSamples: [], next: null },
+      body: {
+        empty: false,
+        days,
+        backlog: 0,
+        readingMinutes: 15,
+        minutesToday: 18,
+        habit: "default",
+        habitSamples: [],
+        next: { bookHash: "h1", sectionIndex: 2 },
+      },
     };
-    await mount(h(StudyPlanCard, { books: [] }));
+    await mount(h(StudyPlanCard, { books: [{ hash: "h1", name: "a3f9c2d1e4b8901234567890abcdef12.epub" }] }));
     const text = host.textContent ?? "";
     expect(text.match(/Hoy/g)?.length).toBe(1);
     expect(text).toContain("4 repasos");
     expect(text).toContain("Mañana 2");
+    expect(text).toContain("Próximo capítulo: 3");
+    expect(text).not.toContain("a3f9c2d1");
     expect(text).not.toContain("0 repasos");
     expect(text).not.toContain("hora tranquila");
     expect(host.querySelectorAll("li").length).toBe(0);

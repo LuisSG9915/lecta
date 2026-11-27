@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { StudyPlan } from "../../shared/study-plan";
 import { accountFetch } from "../lib/account-fetch";
+import { bookDisplayName } from "../lib/cover";
 
 type State = { kind: "loading" } | { kind: "plan"; plan: StudyPlan } | { kind: "none" };
 
@@ -57,7 +58,7 @@ export default function StudyPlanCard({
 function PlanBody({ plan, books }: { plan: StudyPlan; books: { hash: string; name?: string; title?: string }[] }) {
   const now = new Date();
   const book = plan.next ? books.find((b) => b.hash === plan.next?.bookHash) : undefined;
-  const bookName = book?.title || book?.name;
+  const bookName = book ? bookDisplayName({ name: book.name ?? "", title: book.title }) : "";
   const today = plan.days[0]?.reviews ?? 0;
   const upcoming = plan.days.filter((d) => d.offset >= 1 && d.reviews > 0);
   return (
@@ -67,7 +68,7 @@ function PlanBody({ plan, books }: { plan: StudyPlan; books: { hash: string; nam
         {today > 0 ? ` y ${today} ${today === 1 ? "repaso" : "repasos"}` : ""}).
       </p>
       {plan.next && bookName ? (
-        <p className="meta">Sigue con el capítulo {plan.next.sectionIndex + 1} de «{bookName}».</p>
+        <p className="meta">Próximo capítulo: {plan.next.sectionIndex + 1} de «{bookName}».</p>
       ) : null}
       {upcoming.length > 0 ? (
         <p className="meta" aria-label="Repasos de los próximos días">

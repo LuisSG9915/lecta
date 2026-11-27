@@ -616,13 +616,28 @@ describe("trialEndedAt y GET /api/account/trial-summary", () => {
     expect(res.status).toBe(404);
   });
 
-  it("trial-summary: cuenta vencida, scopes sin free-courtesy y ventana en horas", async () => {
+  it("trial-summary: cuenta vencida, scopes sin free-courtesy, ventana en horas y solo has_file = true", async () => {
     let params: unknown[] | undefined;
+    let summarySql = "";
     await setup(Date.now() - 30 * DAY, (p) => (params = p));
+    const dbModule = await import("./db");
+    const spy = vi.spyOn(dbModule, "withClient");
+    const orig = spy.getMockImplementation()!;
+    spy.mockImplementation(async (e, run) =>
+      orig(e, async (c) =>
+        run({
+          query: vi.fn(async (sql: string, p?: unknown[]) => {
+            if (sql.includes("ai_uses")) summarySql = sql;
+            return (c as { query: (s: string, a?: unknown[]) => Promise<unknown> }).query(sql, p);
+          }),
+        } as never),
+      ),
+    );
     const res = await app.request("/api/account/trial-summary", {}, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({ aiUses: 7, wordsSaved: 3, cloudBooks: 2, kindleLinked: true });
+    expect(summarySql).toContain("has_file = true");
     expect(params?.[1]).toEqual(["explain", "page-recap", "translate", "evaluate", "story", "companion-note"]);
     expect(params?.[1]).not.toContain("free-courtesy");
     const end = body.trialEndsAt as number;

@@ -117,7 +117,7 @@ export function summarizeActive(users, now) {
 /** Familias de aviso de lecta_plan_events (F19) que mide el reporte. */
 export const PLAN_EVENT_FAMILIES = [
   ["trialEnd", (e) => e === "app:trial-end-view"],
-  ["paywall", (e) => e.startsWith("app:paywall:")],
+  ["paywall", (e) => e === "app:paywall" || e.startsWith("app:paywall:")],
   ["checkout", (e) => e.startsWith("app:checkout-start:")],
 ];
 

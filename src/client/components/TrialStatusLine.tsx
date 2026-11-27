@@ -2,6 +2,7 @@
 // fin visible desde el día 1. Sin modal; los días 3/2/1 la cubre TrialWarningNote.
 import { useState } from "react";
 import { useUserPlan } from "../lib/account-plan";
+import { trackPlanEvent } from "../lib/plan-events";
 import { formatTrialDate, trialNoticeDay } from "../lib/trial-notice";
 
 export default function TrialStatusLine() {
@@ -16,7 +17,10 @@ export default function TrialStatusLine() {
       <button
         type="button"
         className="trial-status__link"
-        onClick={() => window.dispatchEvent(new CustomEvent("lecta:open-carne"))}
+        onClick={() => {
+          trackPlanEvent("app:paywall:trial-status");
+          window.dispatchEvent(new CustomEvent("lecta:open-carne"));
+        }}
       >
         Ver qué incluye
       </button>

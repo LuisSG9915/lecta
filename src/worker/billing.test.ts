@@ -89,12 +89,22 @@ describe("verifyStripeSignature", () => {
 
 describe("expiresAtForSubscription", () => {
   const now = 1_000_000_000_000;
-  it("activa, en prueba, vencida y sin pagar toman el fin del periodo del item", () => {
-    for (const status of ["active", "trialing", "past_due", "unpaid"]) {
+  it("activa y en prueba toman el fin del periodo del item", () => {
+    for (const status of ["active", "trialing"]) {
       expect(
         expiresAtForSubscription({ status, items: { data: [{ current_period_end: 50 }] } }, "x", now),
       ).toBe(50_000);
     }
+  });
+  it("past_due no adelanta el vencimiento sobre el periodo impago", () => {
+    expect(
+      expiresAtForSubscription({ status: "past_due", items: { data: [{ current_period_end: 50 }] } }, "x", now),
+    ).toBeUndefined();
+  });
+  it("unpaid usa ended_at o vence fuera de gracia sin regalar 3 días más", () => {
+    expect(expiresAtForSubscription({ status: "unpaid", ended_at: 7 }, "x", now)).toBe(7000);
+    const expired = expiresAtForSubscription({ status: "unpaid" }, "x", now) as number;
+    expect(expired).toBeLessThan(now - 3 * 86_400_000);
   });
   it("cancelada, expirada y pausada toman ended_at (o ahora)", () => {
     expect(expiresAtForSubscription({ status: "canceled", ended_at: 7 }, "x", now)).toBe(7000);
@@ -162,7 +172,7 @@ describe("embudo: app:checkout-start", () => {
       .filter((call) => String(call[0]).includes("lecta_landing_daily"))
       .map((call) => (call[1] as unknown[]).slice(1));
 
-  it("registra el periodo y la fuente trial/free tras crear el Checkout", async () => {
+  it("registra el periodo y la fuente trial/free tras crear el Checkout (anónimo y por cuenta)", async () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     loadUserPlanMock.mockResolvedValue(plan({ plan: "lecta_plus", trialEndsAt: Date.now() + 1000 }));
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
@@ -173,6 +183,10 @@ describe("embudo: app:checkout-start", () => {
     );
     expect(res.status).toBe(200);
     await vi.waitFor(() => expect(landingWrites()).toEqual([["app:checkout-start:monthly", "trial"]]));
+    const planWrites = queryMock.mock.calls
+      .filter((call) => String(call[0]).includes("lecta_plan_events"))
+      .map((call) => call[1] as unknown[]);
+    await vi.waitFor(() => expect(planWrites).toEqual([["u1", expect.any(String), "app:checkout-start:monthly"]]));
   });
 
   it("un fallo al escribir el evento no rompe la respuesta", async () => {
@@ -290,7 +304,7 @@ describe("POST /api/billing/webhook", () => {
     expect(sqlCalls().some((sql) => sql.includes("INSERT INTO lecta_user_plan"))).toBe(false);
   });
 
-  it("resuelve por metadata.user_id y escribe el vencimiento del item", async () => {
+  it("resuelve por metadata.user_id y escribe el vencimiento del item en active", async () => {
     queryMock.mockImplementation(async (sql: string) => {
       if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_sub" }] };
       if (sql.includes('FROM "user"')) return { rows: [{ "?column?": 1 }] };
@@ -298,7 +312,7 @@ describe("POST /api/billing/webhook", () => {
     });
     const res = await deliver(
       subEvent("customer.subscription.updated", {
-        status: "past_due",
+        status: "active",
         metadata: { user_id: "u1" },
         items: { data: [{ current_period_end: 100 }] },
       }),
@@ -307,6 +321,24 @@ describe("POST /api/billing/webhook", () => {
     const upsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
     expect(upsert?.[1]).toEqual(["u1", "cus_1", "sub_1", 100_000, expect.any(Number)]);
     expect(sqlCalls()).toContain("COMMIT");
+  });
+
+  it("past_due registra el evento sin adelantar plan_expires_at", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_past" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{ "?column?": 1 }] };
+      return { rows: [] };
+    });
+    const pastRes = await deliver({
+      ...subEvent("customer.subscription.updated", {
+        status: "past_due",
+        metadata: { user_id: "u1" },
+        items: { data: [{ current_period_end: 999 }] },
+      }),
+      id: "evt_past",
+    });
+    expect(pastRes.status).toBe(200);
+    expect(sqlCalls().some((sql) => sql.includes("INSERT INTO lecta_user_plan"))).toBe(false);
   });
 
   it("evento en desorden sin cuenta: ROLLBACK y 500 para que Stripe reintente", async () => {
@@ -362,6 +394,13 @@ describe("POST /api/billing/webhook", () => {
       data: { object: { status: "complete", subscription: "sub_2", customer: "cus_2", client_reference_id: "u2" } },
     });
     await vi.waitFor(() => expect(landing()).toEqual([["app:checkout-complete:yearly", "trial"]]));
+    const planEvents = () =>
+      queryMock.mock.calls
+        .filter((call) => String(call[0]).includes("lecta_plan_events"))
+        .map((call) => call[1] as unknown[]);
+    await vi.waitFor(() =>
+      expect(planEvents()).toEqual([["u2", expect.any(String), "app:checkout-complete:yearly"]]),
+    );
     // Renovación: subscription.updated activa, sin evento nuevo.
     await deliver(subEvent("customer.subscription.updated", { ...sub, metadata: { user_id: "u2" } }));
     await new Promise((resolve) => setTimeout(resolve, 10));

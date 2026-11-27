@@ -122,7 +122,7 @@ describe("retention:stats avisos (F19)", () => {
     ];
     const events = new Map([
       ["a", ["app:paywall:ai", "app:checkout-start:monthly"]],
-      ["b", ["app:paywall:ai", "app:paywall:kindle", "app:trial-end-view"]],
+      ["b", ["app:paywall", "app:trial-end-view"]],
     ]);
     const [c] = buildPlanEventCohorts(users, events);
     expect(c).toMatchObject({ signups: 3, paywall: 2, paywallPaid: 1, trialEnd: 1, trialEndPaid: 0, checkout: 1, checkoutPaid: 1 });

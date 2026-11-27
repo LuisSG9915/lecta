@@ -19,6 +19,7 @@ const Journey = lazy(() => import("./components/Journey"));
 const PaperReading = lazy(() => import("./components/PaperReading"));
 const CommunityShelf = lazy(() => import("./components/CommunityShelf"));
 const TrialEndSheet = lazy(() => import("./components/TrialEndSheet"));
+const CarneSheet = lazy(() => import("./components/CarneSheet"));
 const SubtitleShelf = lazy(() => import("./components/SubtitleShelf"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
@@ -242,6 +243,7 @@ export default function App() {
   const [showAccount, setShowAccount] = useState(
     Boolean(authLink.token || authLink.urlError || authLink.deleted || authLink.carne),
   );
+  const [showCarneOverlay, setShowCarneOverlay] = useState(false);
   const [hasVisitedVocab, setHasVisitedVocab] = useState(false);
   const scrollPositions = useRef<Partial<Record<NavDestination, number>>>({});
   const journeyOrigin = useRef<"shelf" | "vocab" | "account">("shelf");
@@ -408,6 +410,7 @@ export default function App() {
         panelRelease.current = null;
         setShowVocabulary(false);
         setShowAccount(false);
+        setShowCarneOverlay(false);
         setShowJourney(false);
         releaseBook();
         setBook(null);
@@ -591,6 +594,7 @@ export default function App() {
     setReaderInitialWord(undefined);
     setShowVocabulary(false);
     setShowAccount(false);
+    setShowCarneOverlay(false);
     setShowJourney(false);
     setShowDiagnostics(false);
     setShowLegal(null);
@@ -664,16 +668,24 @@ export default function App() {
     };
   }, [library, lastReadBook, sessionUserId, dbUserId]);
 
-  // «Ver Lecta+» de PlanNote: abre Cuenta (Carné) sin desmontar el lector.
+  // «Ver Lecta+» de PlanNote: abre el Carné sobre el lector (sin desmontarlo)
+  // o navega a Cuenta («Tú») cuando está en la estantería.
   useEffect(() => {
     const open = () => {
       setShowVocabulary(false);
       setShowJourney(false);
-      setShowAccount(true);
+      setAttachFor(null);
+      setPaperBook(null);
+      if (book !== null) {
+        setShowCarneOverlay(true);
+      } else {
+        setShowCarneOverlay(false);
+        setShowAccount(true);
+      }
     };
     window.addEventListener("lecta:open-carne", open);
     return () => window.removeEventListener("lecta:open-carne", open);
-  }, []);
+  }, [book]);
 
   const activeNav: NavDestination = showJourney
     ? "journey"
@@ -2278,7 +2290,7 @@ export default function App() {
               onOpenNotebook={openNotebookOverlay}
               statusText={message}
               errorText={error}
-              panelsOpen={showVocabulary || showAccount}
+              panelsOpen={showVocabulary || showAccount || showCarneOverlay}
               theme={theme}
               onThemeChange={changeTheme}
               vocabVersion={vocabVersion}
@@ -2307,6 +2319,12 @@ export default function App() {
                 onVocabChange={() => setVocabVersion((v) => v + 1)}
                 onOpenJourney={() => openJourneyFrom("vocab")}
               />
+            </Suspense>
+          ) : null}
+
+          {showCarneOverlay ? (
+            <Suspense fallback={null}>
+              <CarneSheet plan={userPlan} onClose={() => setShowCarneOverlay(false)} />
             </Suspense>
           ) : null}
         </>

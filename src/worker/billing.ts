@@ -3,10 +3,10 @@
 // vía que escribe el plan. El cliente solo envía `period`: nunca montos ni
 // Price IDs.
 import { Hono } from "hono";
-import { hasLectaPlus, planSource, type PlanSource } from "../shared/plan";
+import { hasLectaPlus, PLAN_GRACE_MS, planSource, type PlanSource } from "../shared/plan";
 import { runInBackground } from "./background";
 import { isMissingTableError, withClient, type WorkerEnv } from "./db";
-import { recordLandingEvent } from "./landing-events";
+import { recordLandingEvent, recordPlanEvent } from "./landing-events";
 import { loadUserPlan, upsertPlanFromStripe } from "./plan-store";
 import { getSession } from "./session";
 import { STRIPE_VERSION, stripeRequest } from "./stripe";
@@ -16,9 +16,18 @@ export { STRIPE_VERSION };
 const SIGNATURE_TOLERANCE_S = 300;
 const TRIAL_END_MIN_MS = 48 * 3_600_000 + 5 * 60_000;
 
-/** Embudo de compra: contador diario anónimo; un fallo nunca rompe la respuesta. */
-function trackPlanEvent(env: WorkerEnv, event: string, source: PlanSource): Promise<unknown> {
-  return recordLandingEvent(env, { event, source }).catch(() => false);
+/** Embudo de compra: contador diario anónimo y por cuenta (F19); un fallo nunca rompe la respuesta. */
+function trackPlanEvent(
+  env: WorkerEnv,
+  event: string,
+  source: PlanSource,
+  userId?: string,
+): Promise<unknown> {
+  const tasks: Promise<unknown>[] = [
+    recordLandingEvent(env, { event, source }).catch(() => false),
+  ];
+  if (userId) tasks.push(recordPlanEvent(env, userId, event).catch(() => false));
+  return Promise.all(tasks);
 }
 
 type QueryClient = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
@@ -92,12 +101,16 @@ export function expiresAtForSubscription(
   if (event === "customer.subscription.deleted") return ended;
   switch (sub.status) {
     case "active":
-    case "trialing":
-    case "past_due":
-    case "unpaid": {
+    case "trialing": {
       const end = sub.items?.data?.[0]?.current_period_end;
       return typeof end === "number" ? end * 1000 : null;
     }
+    case "past_due":
+      // Fallo de cobro mientras Stripe reintenta: no adelantar el vencimiento
+      // sobre el periodo impago para respetar los 3 días reales de gracia.
+      return undefined;
+    case "unpaid":
+      return typeof sub.ended_at === "number" ? sub.ended_at * 1000 : nowMs - PLAN_GRACE_MS - 1;
     case "canceled":
     case "incomplete_expired":
     case "paused":
@@ -173,7 +186,12 @@ billing.post("/api/billing/checkout", async (c) => {
   }
   runInBackground(
     c,
-    trackPlanEvent(c.env, `app:checkout-start:${period}`, planSource(plan.plan, plan.trialEndsAt)),
+    trackPlanEvent(
+      c.env,
+      `app:checkout-start:${period}`,
+      planSource(plan.plan, plan.trialEndsAt),
+      session.user.id,
+    ),
   );
   return c.json({ url });
 });
@@ -272,7 +290,7 @@ billing.post("/api/billing/webhook", async (c) => {
       )) as { rows?: unknown[] };
       if ((inserted.rows?.length ?? 0) === 0) {
         await client.query("COMMIT");
-        return "duplicate" as const;
+        return { status: "duplicate" as const };
       }
       let userId = referenceUser && (await userExists(client, referenceUser)) ? referenceUser : null;
       if (!userId && customer) userId = await userByCustomer(client, customer);
@@ -280,7 +298,7 @@ billing.post("/api/billing/webhook", async (c) => {
         // Sin cuenta: ROLLBACK (el evento no queda registrado) y 500 para
         // que Stripe reintente — p. ej. eventos que llegan en desorden.
         await client.query("ROLLBACK");
-        return "no-account" as const;
+        return { status: "no-account" as const };
       }
       let wrote = false;
       if (expiresAt !== undefined) {
@@ -293,23 +311,28 @@ billing.post("/api/billing/webhook", async (c) => {
       }
       await client.query("COMMIT");
       // Un evento descartado por viejo no cuenta como compra.
-      return wrote ? ("applied" as const) : ("skipped" as const);
+      return wrote ? ({ status: "applied" as const, userId }) : ({ status: "skipped" as const });
     } catch (err) {
       await client.query("ROLLBACK").catch(() => undefined);
-      if (isMissingTableError(err)) return "unavailable" as const;
+      if (isMissingTableError(err)) return { status: "unavailable" as const };
       throw err;
     }
   });
 
-  if (outcome === undefined || outcome === "unavailable") {
+  if (outcome === undefined || outcome.status === "unavailable") {
     return c.json({ error: "Servicio temporalmente no disponible" }, 503);
   }
-  if (outcome === "no-account") return c.json({ error: "Cuenta no encontrada" }, 500);
+  if (outcome.status === "no-account") return c.json({ error: "Cuenta no encontrada" }, 500);
   // Solo la compra inicial: las renovaciones y cambios llegan como subscription.*.
-  if (outcome === "applied" && type === "checkout.session.completed") {
+  if (outcome.status === "applied" && type === "checkout.session.completed") {
     const interval = subscription.items?.data?.[0]?.price?.recurring?.interval;
     const period = interval === "year" ? "yearly" : interval === "month" ? "monthly" : null;
-    if (period) runInBackground(c, trackPlanEvent(c.env, `app:checkout-complete:${period}`, completeSource));
+    if (period) {
+      runInBackground(
+        c,
+        trackPlanEvent(c.env, `app:checkout-complete:${period}`, completeSource, outcome.userId),
+      );
+    }
   }
   return c.json({ received: true });
 });

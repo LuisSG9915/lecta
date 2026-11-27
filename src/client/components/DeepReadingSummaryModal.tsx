@@ -15,6 +15,7 @@ import { WordScrambleGame } from "./WordScrambleGame";
 import { consolidateEpisodicWord, type EpisodicOutcome } from "../lib/reviews";
 import type { SavedWord } from "../lib/idb";
 import Icon from "./Icon";
+import { trackPlanEvent } from "../lib/plan-events";
 import { isFeatureFlagEnabled } from "../lib/settings";
 import {
   CHAPTER_FOLLOW_OPTIONS,
@@ -329,6 +330,7 @@ export default function DeepReadingSummaryModal({
             href="/?carne=1"
             onClick={(e) => {
               e.preventDefault();
+              trackPlanEvent("app:paywall:chapter-summary");
               window.dispatchEvent(new CustomEvent("lecta:open-carne"));
             }}
           >

@@ -36,13 +36,16 @@ const show = (plan: "free" | "lecta_plus" | "founder_lifetime", trialEndsAt?: nu
 };
 
 describe("TrialStatusLine", () => {
-  it("sale en prueba activa a más de 3 días y abre el Carné", () => {
+  it("sale en prueba activa a más de 3 días, emite app:paywall:trial-status y abre el Carné", () => {
+    const beacon = vi.fn(() => true);
+    vi.stubGlobal("navigator", { sendBeacon: beacon });
     show("lecta_plus", Date.now() + 10 * DAY);
     expect(host.textContent).toContain("Estás probando Lecta+ hasta el");
     const open = vi.fn();
     window.addEventListener("lecta:open-carne", open);
     act(() => host.querySelector("button")!.click());
     expect(open).toHaveBeenCalledTimes(1);
+    expect(beacon.mock.calls.some((c) => String((c as unknown[])[1]).includes("app:paywall:trial-status"))).toBe(true);
     window.removeEventListener("lecta:open-carne", open);
   });
   it("no sale a 3 días o menos", () => {

@@ -2,7 +2,10 @@
 // pide desde Cuenta o lo recibe si tiene el opt-in activo. Agrega la
 // última semana por usuario y envía por Resend.
 import { Hono } from "hono";
+import { hasLectaPlus } from "../shared/plan";
+import { readCachedCoach } from "./coach";
 import { withClient, type WorkerEnv } from "./db";
+import { loadUserPlan } from "./plan-store";
 import { getSession } from "./session";
 import { escapeHtml } from "./kindle/views";
 
@@ -223,9 +226,21 @@ weeklyDigest.post("/api/digest/weekly", async (context) => {
   } catch {
     token = crypto.randomUUID();
   }
+  let coachText: string | null = null;
+  try {
+    const snap = await loadUserPlan(context.env, userId);
+    if (snap && hasLectaPlus(snap.plan)) {
+      const cached =
+        (await readCachedCoach(context.env, userId)) ??
+        (await readCachedCoach(context.env, userId, Date.now() - WEEK_MS));
+      coachText = cached?.text ?? null;
+    }
+  } catch {
+    coachText = null;
+  }
   const base = "https://lectal.app";
   const unsubUrl = `${base}/api/digest/unsubscribe?token=${encodeURIComponent(token ?? "")}`;
-  const html = buildDigestHtml(data, unsubUrl);
+  const html = buildDigestHtml(data, unsubUrl, coachText);
   const sent = await sendDigestEmail(context.env, email, html, "Tu semana en Lecta");
   if (!sent) return context.json({ ok: false, reason: "email_not_configured" }, 503);
   return context.json({ ok: true, ...data });

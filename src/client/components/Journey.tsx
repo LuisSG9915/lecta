@@ -880,6 +880,22 @@ export default function Journey({ onClose, books }: JourneyProps) {
               )}
             </section>
 
+            {isFreePlan ? (
+              <section className="journey-coach journey-plus-note" aria-label="Lecta+ en tu recorrido" data-testid="journey-plus-note">
+                <h3 className="journey-insight-title">Coach, plan de estudio y predicción</h3>
+                <PlanNote
+                  feature="coach"
+                  title="Hazlo con Lecta+"
+                  detail="Una nota semanal, qué repasar cada día y cuándo llegarías a entender casi todo un libro, según tu ritmo real."
+                />
+              </section>
+            ) : (
+              <Suspense fallback={null}>
+                <CoachCard />
+                <StudyPlanCard books={books} />
+              </Suspense>
+            )}
+
             {/* 2. Vocabulario por etapas FSRS */}
             <section
               className="journey-section"
@@ -1176,21 +1192,6 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 «Últimas 8 semanas» viaja como primer bloque del análisis
                 para que las gráficas queden emparejadas en la misma
                 cuadrícula de dos columnas en escritorio. */}
-            {isFreePlan ? (
-              <section className="journey-coach journey-plus-note" aria-label="Lecta+ en tu recorrido" data-testid="journey-plus-note">
-                <h3 className="journey-insight-title">Coach, plan de estudio y predicción</h3>
-                <PlanNote
-                  feature="coach"
-                  title="Hazlo con Lecta+"
-                  detail="Una nota semanal, qué repasar cada día y cuándo llegarías a entender casi todo un libro, según tu ritmo real."
-                />
-              </section>
-            ) : (
-              <Suspense fallback={null}>
-                <CoachCard />
-                <StudyPlanCard books={books} />
-              </Suspense>
-            )}
             <JourneyInsights
               intervals={intervals}
               positions={positions}

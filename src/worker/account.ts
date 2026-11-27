@@ -98,7 +98,7 @@ account.get("/api/account/trial-summary", async (context) => {
              WHERE user_id = $1 AND deleted = false
                AND saved_at >= $5 AND saved_at <= $6)::INT8 AS words_saved,
            (SELECT count(*) FROM user_books
-             WHERE user_id = $1 AND paper_only = false)::INT8 AS cloud_books,
+             WHERE user_id = $1 AND paper_only = false AND has_file = true)::INT8 AS cloud_books,
            EXISTS (SELECT 1 FROM kindle_link_codes
              WHERE user_id = $1 AND status = 'linked') AS kindle_linked`,
         [userId, [...USER_AI_SCOPES], Math.floor(start / 3_600_000), Math.floor(end / 3_600_000), start, end],
