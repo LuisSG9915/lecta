@@ -82,7 +82,7 @@ import { SUBTITLE_ZONE_ENABLED } from "../lib/screen-zone";
 // marca los que aún tienen una subida encolada.
 export type ShelfItem = Pick<
   StoredBook,
-  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind" | "imdbId" | "localOnly"
+  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind" | "imdbId" | "localOnly" | "estimatedMinutes"
 > & {
   remoteOnly?: boolean;
   pendingUpload?: boolean;
@@ -746,8 +746,14 @@ export default function Shelf({
 
   const [heroStrategy, setHeroStrategy] = useState<StrategyPreset | null>(null);
   const [catPetQuote, setCatPetQuote] = useState<string | null>(null);
-  type ShelfFilter = "all" | "reading" | "unread" | "finished";
+  type ShelfFilter = "all" | "reading" | "unread" | "finished" | "articles";
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
+  const articleCount = useMemo(
+    () => library.filter((book) => Boolean(book.localOnly)).length,
+    [library],
+  );
+  const effectiveFilter: ShelfFilter =
+    shelfFilter === "articles" && articleCount === 0 ? "all" : shelfFilter;
   const [searchQuery, setSearchQuery] = useState("");
   // Buscador único de «Libros gratuitos»: `freeQuery` es el texto en
   // vivo que filtra el riel curado; `catalogQuery` es el texto ya
@@ -778,18 +784,21 @@ export default function Shelf({
 
   const filteredLibrary = useMemo(() => {
     let result = library;
-    if (shelfFilter !== "all") {
+    if (effectiveFilter !== "all") {
       result = result.filter((book) => {
+        if (effectiveFilter === "articles") {
+          return Boolean(book.localOnly);
+        }
         const pos = positionByHash.get(book.hash);
         const total = book.sectionCount ?? 0;
         const progress = progressOf(pos, total);
-        if (shelfFilter === "reading") {
+        if (effectiveFilter === "reading") {
           return pos && progress > 0 && progress < 0.99;
         }
-        if (shelfFilter === "unread") {
+        if (effectiveFilter === "unread") {
           return !pos || progress === 0;
         }
-        if (shelfFilter === "finished") {
+        if (effectiveFilter === "finished") {
           return progress >= 0.99;
         }
         return true;
@@ -831,7 +840,7 @@ export default function Shelf({
     }
 
     return sorted;
-  }, [library, shelfFilter, searchQuery, sortBy, positionByHash]);
+  }, [library, effectiveFilter, searchQuery, sortBy, positionByHash]);
 
   const pickFile = () => fileInputRef.current?.click();
 
@@ -1476,40 +1485,51 @@ export default function Shelf({
               <div className="shelf-filters" role="tablist" aria-label="Filtrar libros">
                 <button
                   type="button"
-                  className={`shelf-filter-pill${shelfFilter === "all" ? " shelf-filter-pill--active" : ""}`}
+                  className={`shelf-filter-pill${effectiveFilter === "all" ? " shelf-filter-pill--active" : ""}`}
                   onClick={() => setShelfFilter("all")}
                   role="tab"
-                  aria-selected={shelfFilter === "all"}
+                  aria-selected={effectiveFilter === "all"}
                 >
                   Todos ({library.length})
                 </button>
                 <button
                   type="button"
-                  className={`shelf-filter-pill${shelfFilter === "reading" ? " shelf-filter-pill--active" : ""}`}
+                  className={`shelf-filter-pill${effectiveFilter === "reading" ? " shelf-filter-pill--active" : ""}`}
                   onClick={() => setShelfFilter("reading")}
                   role="tab"
-                  aria-selected={shelfFilter === "reading"}
+                  aria-selected={effectiveFilter === "reading"}
                 >
                   Leyendo ahora
                 </button>
                 <button
                   type="button"
-                  className={`shelf-filter-pill${shelfFilter === "unread" ? " shelf-filter-pill--active" : ""}`}
+                  className={`shelf-filter-pill${effectiveFilter === "unread" ? " shelf-filter-pill--active" : ""}`}
                   onClick={() => setShelfFilter("unread")}
                   role="tab"
-                  aria-selected={shelfFilter === "unread"}
+                  aria-selected={effectiveFilter === "unread"}
                 >
                   Por empezar
                 </button>
                 <button
                   type="button"
-                  className={`shelf-filter-pill${shelfFilter === "finished" ? " shelf-filter-pill--active" : ""}`}
+                  className={`shelf-filter-pill${effectiveFilter === "finished" ? " shelf-filter-pill--active" : ""}`}
                   onClick={() => setShelfFilter("finished")}
                   role="tab"
-                  aria-selected={shelfFilter === "finished"}
+                  aria-selected={effectiveFilter === "finished"}
                 >
                   Terminados
                 </button>
+                {articleCount > 0 ? (
+                  <button
+                    type="button"
+                    className={`shelf-filter-pill${effectiveFilter === "articles" ? " shelf-filter-pill--active" : ""}`}
+                    onClick={() => setShelfFilter("articles")}
+                    role="tab"
+                    aria-selected={effectiveFilter === "articles"}
+                  >
+                    Artículos ({articleCount})
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="shelf-filter-pill shelf-filter-pill--import"
@@ -1615,6 +1635,14 @@ export default function Shelf({
                         >
                           Papel
                         </span>
+                      ) : book.localOnly ? (
+                        <span
+                          className="shelf-paperonly-badge"
+                          title="Artículo web guardado solo en este dispositivo"
+                          aria-label="Artículo"
+                        >
+                          Artículo
+                        </span>
                       ) : null}
                       {cov ? (
                         coverageIsReliable(cov) ? (
@@ -1678,8 +1706,14 @@ export default function Shelf({
                             ? "Toca para descargar"
                             : `${
                                 position && total
-                                  ? `${Math.round(progressOf(position, total) * 100)}% leído`
-                                  : "Sin empezar"
+                                  ? `${Math.round(progressOf(position, total) * 100)}% leído${
+                                      book.localOnly && book.estimatedMinutes
+                                        ? ` · ~${book.estimatedMinutes} min`
+                                        : ""
+                                    }`
+                                  : book.localOnly && book.estimatedMinutes
+                                    ? `~${book.estimatedMinutes} min`
+                                    : "Sin empezar"
                               }${book.pendingUpload ? " · Subiendo…" : ""}`}
                       </span>
                       <button
@@ -1897,7 +1931,15 @@ export default function Shelf({
                 </div>
 
                 <div className="shelf-options-danger-zone">
-                  {confirmDelete === optionsBook.hash ? (
+                  {optionsBook.localOnly ? (
+                    <button
+                      type="button"
+                      className="btn shelf-book-remove"
+                      onClick={() => remove(optionsBook.hash)}
+                    >
+                      Archivar artículo
+                    </button>
+                  ) : confirmDelete === optionsBook.hash ? (
                     <div className="shelf-options-confirm" role="alert">
                       <p className="meta">
                         ¿Seguro que quieres quitar «{displayTitle(optionsBook.name, optionsBook.title)}»? Tus palabras guardadas en tu Herbario se conservan.

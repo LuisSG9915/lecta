@@ -4,6 +4,7 @@ import { captureDbScope } from "../lib/idb";
 import {
   ArticleImportError,
   buildArticleEpubFile,
+  estimateArticleReadingMinutes,
   fetchExtractedArticle,
 } from "../lib/article-import";
 
@@ -11,6 +12,7 @@ export interface ArticleImportMeta {
   title?: string;
   author?: string;
   language?: string;
+  estimatedMinutes?: number;
   localOnly: true;
 }
 
@@ -46,6 +48,7 @@ export default function ArticleImportSheet({
         title: article.title,
         author: article.author ?? article.sourceHost,
         language: article.language,
+        estimatedMinutes: estimateArticleReadingMinutes(article.paragraphs),
         localOnly: true,
       });
       onClose();

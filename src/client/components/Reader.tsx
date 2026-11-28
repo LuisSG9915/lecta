@@ -325,7 +325,7 @@ type ReaderProps = {
   // cierre guarde la posición *antes* de desmontar y sincronizar: si el
   // guardado del desmontaje compite con el sync, este último puede leer
   // la fila vieja y devolver otra posición encima.
-  positionFlushRef?: { current: (() => Promise<void>) | null };
+  positionFlushRef?: { current: (() => Promise<void>) | null }; onArchiveArticle?: () => void;
 };
 
 // Caché por sección: la consulta al catálogo se hace una sola vez por
@@ -424,7 +424,7 @@ export default function Reader({
   readerInitialWord,
   positionSyncVersion = 0,
   resumeRequest = null,
-  positionFlushRef,
+  positionFlushRef, onArchiveArticle,
 }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -3131,7 +3131,7 @@ export default function Reader({
         summaryParts={summaryParts}
         wordCount={endWordQueue.length}
         onFixWords={handleFixChapterWords}
-        onOpenNotebook={onOpenNotebook}
+        onOpenNotebook={onOpenNotebook} onArchiveArticle={onArchiveArticle}
       />
     ) : null;
 

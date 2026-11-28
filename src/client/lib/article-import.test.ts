@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractSharedArticleUrl } from "./share-target";
-import { buildArticleEpubFile } from "./article-import";
+import { buildArticleEpubFile, estimateArticleReadingMinutes } from "./article-import";
 import { checkEpubFile } from "./epub-intake";
 import { extractEpubMeta } from "../../shared/epub-meta";
 
@@ -40,5 +40,12 @@ describe("share-target + article-import (E18)", () => {
     expect(meta?.author).toBe("Autor & Ensayista");
     expect(meta?.language).toBe("es");
     expect(meta?.sections).toBe(1);
+  });
+
+  it("estimateArticleReadingMinutes calcula minutos reales (mínimo 1)", () => {
+    expect(estimateArticleReadingMinutes([])).toBe(1);
+    expect(estimateArticleReadingMinutes(["Una frase corta."])).toBe(1);
+    const fiveMin = Array.from({ length: 1100 }, () => "palabra").join(" ");
+    expect(estimateArticleReadingMinutes([fiveMin])).toBe(5);
   });
 });

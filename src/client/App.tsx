@@ -128,6 +128,7 @@ type BookFileSelection = {
   hash: string;
   name: string;
   file: File;
+  localOnly?: boolean;
 };
 
 // El libro abierto recuerda de qué cuenta es. Sin esto, un cambio de
@@ -860,6 +861,7 @@ export default function App() {
         mediaKind: book.mediaKind,
         imdbId: book.imdbId,
         localOnly: book.localOnly || undefined,
+        estimatedMinutes: book.estimatedMinutes,
         shared: remoteByHash.get(book.hash)?.shared || undefined,
         // El género de la fila remota manda: es la elección real al
         // compartir; el detectado local del EPUB solo rellena huecos.
@@ -1510,6 +1512,7 @@ export default function App() {
       catalog?: boolean;
       title?: string;
       author?: string;
+      estimatedMinutes?: number;
       localOnly?: boolean;
     },
   ) => {
@@ -1540,8 +1543,12 @@ export default function App() {
         genre: genreFromSubjects(quickMeta?.subjects ?? []) || undefined,
         metaVersion: quickMeta ? 1 : undefined,
         localOnly: metaOverride?.localOnly || undefined,
+        estimatedMinutes: metaOverride?.estimatedMinutes,
       };
-      openBook({ hash, name: file.name, file }, initialMeta);
+      openBook(
+        { hash, name: file.name, file, localOnly: metaOverride?.localOnly || undefined },
+        initialMeta,
+      );
       void saveBook(
         {
           hash,
@@ -1711,6 +1718,7 @@ export default function App() {
         hash: stored.hash,
         name: stored.name,
         file: new File([stored.data], stored.name, { type: "application/epub+zip" }),
+        localOnly: stored.localOnly || undefined,
       });
       setMessage(`Abriendo «${stored.title ?? stored.name}»…`);
     };
@@ -2288,7 +2296,11 @@ export default function App() {
     }
     if (book?.hash === hash) {
       closeReader();
-      setMessage("Libro eliminado. Elige otro para seguir leyendo.");
+      setMessage(
+        removed?.localOnly
+          ? "Artículo archivado."
+          : "Libro eliminado. Elige otro para seguir leyendo.",
+      );
     }
     void refreshLibrary();
   };
@@ -2492,11 +2504,12 @@ export default function App() {
               resumeRequest={
                 resumeRequest?.hash === book.hash ? resumeRequest : null
               }
+              onArchiveArticle={book.localOnly ? () => void removeBook(book.hash) : undefined}
             />
           </Suspense>
 
           {showVocabulary ? (
-            <Suspense fallback={<LoadingScreen label="Abriendo tu cuaderno…" />}>
+            <Suspense fallback={<LoadingScreen label="Abriendo tu Herbario…" />}>
               <Vocabulary
                 key={sessionUserId ?? "anon"}
                 presentation="overlay"

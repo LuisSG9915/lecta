@@ -5,6 +5,7 @@ interface ChapterEndCardProps {
   wordCount: number;
   onFixWords: () => void;
   onOpenNotebook: () => void;
+  onArchiveArticle?: () => void;
 }
 
 /** Tarjeta de cierre natural de capítulo: resumen + chip «Fijar N palabras». */
@@ -14,6 +15,7 @@ export function ChapterEndCard({
   wordCount,
   onFixWords,
   onOpenNotebook,
+  onArchiveArticle,
 }: ChapterEndCardProps) {
   return (
     <div className="chapter-summary" role="status">
@@ -23,6 +25,11 @@ export function ChapterEndCard({
       {wordCount > 0 ? (
         <button type="button" className="btn--quiet" onClick={onFixWords}>
           Fijar {wordCount} {wordCount === 1 ? "palabra" : "palabras"} (≈25 s)
+        </button>
+      ) : null}
+      {onArchiveArticle ? (
+        <button type="button" className="btn--quiet" onClick={onArchiveArticle}>
+          Archivar artículo
         </button>
       ) : null}
       <button type="button" className="btn--quiet" onClick={onOpenNotebook}>

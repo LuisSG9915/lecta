@@ -104,6 +104,15 @@ export async function fetchExtractedArticle(
   };
 }
 
+export function estimateArticleReadingMinutes(paragraphs: string[]): number {
+  const wordCount = paragraphs.reduce((acc, p) => {
+    const trimmed = p.trim();
+    if (!trimmed) return acc;
+    return acc + trimmed.split(/\s+/).length;
+  }, 0);
+  return Math.max(1, Math.round(wordCount / 220));
+}
+
 /**
  * Empaqueta un artículo extraído en un EPUB 3 válido para lectura local en IndexedDB.
  */

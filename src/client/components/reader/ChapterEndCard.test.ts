@@ -53,5 +53,28 @@ describe("ChapterEndCard", () => {
     expect(chip()).toBeUndefined();
     expect(host.textContent).toContain("Cerraste «Capítulo 1» — 2 consultas");
     expect(host.textContent).toContain("Ver Herbario");
+    expect(host.textContent).not.toContain("Archivar artículo");
+  });
+
+  it("con onArchiveArticle muestra «Archivar artículo» y lo dispara al pulsar", () => {
+    const onArchiveArticle = vi.fn();
+    act(() => {
+      root.render(
+        h(ChapterEndCard, {
+          label: "Ensayo web",
+          summaryParts: "",
+          wordCount: 0,
+          onFixWords: vi.fn(),
+          onOpenNotebook: vi.fn(),
+          onArchiveArticle,
+        }),
+      );
+    });
+    const archiveBtn = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Archivar artículo",
+    );
+    expect(archiveBtn).toBeTruthy();
+    act(() => archiveBtn!.click());
+    expect(onArchiveArticle).toHaveBeenCalledTimes(1);
   });
 });

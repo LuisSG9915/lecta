@@ -55,7 +55,7 @@ export interface StoredBook {
   // «Otro episodio» reabre la preparación sin volver a buscar el
   // título. Las obras viejas no lo tienen y se curan solas al
   // preparar otro episodio.
-  imdbId?: string; localOnly?: boolean;
+  imdbId?: string; localOnly?: boolean; estimatedMinutes?: number;
 }
 
 export interface StoredBookRecord extends Omit<StoredBook, "data"> {

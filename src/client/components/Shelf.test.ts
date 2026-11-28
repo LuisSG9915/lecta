@@ -965,4 +965,60 @@ describe("Shelf - Continuar escuchando", () => {
       document.body.querySelector('[role="dialog"][aria-label="Leer artículo por enlace"]'),
     ).toBeTruthy();
   });
+
+  it("Buzón de Artículos: pestaña Artículos (N), tiempo estimado ~N min y archivar en 1 toque (M2)", async () => {
+    const onRemove = vi.fn();
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [
+            {
+              hash: "h-novela",
+              name: "novela.epub",
+              title: "Novela larga",
+              addedAt: Date.now() - 1000,
+              sectionCount: 12,
+            },
+            {
+              hash: "h-art-1",
+              name: "ensayo.epub",
+              title: "Ensayo de atención lenta",
+              addedAt: Date.now(),
+              sectionCount: 1,
+              localOnly: true,
+              estimatedMinutes: 6,
+            },
+          ],
+          vocabCount: 0,
+          dueReviewsCount: 0,
+          onSelect: vi.fn(),
+          onRemove,
+        }),
+      );
+    });
+
+    // Pestaña Artículos (1) + insignia Artículo + ~6 min
+    const articleTab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) =>
+      b.textContent?.includes("Artículos (1)"),
+    );
+    expect(articleTab).toBeTruthy();
+    expect(host.textContent).toContain("~6 min");
+    expect(host.textContent).toContain("Artículo");
+
+    await act(async () => articleTab!.click());
+    const cards = [...host.querySelectorAll(".shelf-book .shelf-book-cover")];
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.getAttribute("aria-label")).toContain("Ensayo de atención lenta");
+
+    // Archivar en 1 toque desde Opciones
+    const optsBtn = host.querySelector<HTMLButtonElement>('[aria-label="Opciones de Ensayo de atención lenta"]');
+    expect(optsBtn).toBeTruthy();
+    await act(async () => optsBtn!.click());
+    const archiveBtn = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent?.trim() === "Archivar artículo",
+    );
+    expect(archiveBtn).toBeTruthy();
+    await act(async () => archiveBtn!.click());
+    expect(onRemove).toHaveBeenCalledWith("h-art-1");
+  });
 });
