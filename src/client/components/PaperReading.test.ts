@@ -209,7 +209,7 @@ describe("PaperChapterSheet", () => {
       ],
     });
     await render(h(PaperChapterSheet, props));
-    expect(text()).toContain("«muralla» guardada en tu Cuaderno");
+    expect(text()).toContain("«muralla» guardada en tu Herbario");
     await click(
       queryAll("button").find((b) => b.textContent === "Deshacer") ?? null,
     );
@@ -334,7 +334,7 @@ describe("PaperReading", () => {
       }),
     );
     expect(text()).toContain("Leído");
-    expect(text()).toContain("Preparado · 2 en tu Cuaderno");
+    expect(text()).toContain("Preparado · 2 en tu Herbario");
     expect(text()).toContain("Sin revisar");
     expect(text()).toContain("Aquí te quedaste");
     // «Aquí te quedaste» solo en el capítulo marcado.

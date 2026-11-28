@@ -108,7 +108,7 @@ export function LearnSessionView({
           className="btn--quiet"
           onClick={() => setLearn(null)}
         >
-          Ver el cuaderno
+          Ver el Herbario
         </button>
       </div>
     ) : (

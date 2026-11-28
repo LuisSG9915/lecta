@@ -152,7 +152,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const pinBtn = host.querySelector<HTMLButtonElement>(".btn--pin-notebook");
     expect(pinBtn).not.toBeNull();
-    expect(pinBtn?.textContent).toContain("Guardar en mi cuaderno");
+    expect(pinBtn?.textContent).toContain("Guardar en mi Herbario");
     expect(pinBtn?.querySelector(".icon--star")).toBeTruthy();
   });
 
@@ -183,7 +183,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const badge = host.querySelector(".word-panel-saved-badge");
     expect(badge).not.toBeNull();
-    expect(badge?.textContent).toContain("Guardada en tu cuaderno");
+    expect(badge?.textContent).toContain("Guardada en tu Herbario");
     expect(badge?.querySelector(".icon--star")).toBeTruthy();
 
     const removeBtn = host.querySelector<HTMLButtonElement>(".btn--remove-word");
@@ -231,7 +231,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     });
 
     const badge = host.querySelector(".word-panel-saved-badge");
-    expect(badge?.textContent?.trim()).toBe("Guardada en tu cuaderno · Asentada");
+    expect(badge?.textContent?.trim()).toBe("Guardada en tu Herbario · Asentada");
     expect(badge?.querySelector(".icon--star")).toBeTruthy();
   });
 
@@ -339,9 +339,9 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
         priority: true,
       }),
     );
-    expect(onNotice).toHaveBeenCalledWith("Fijada con prioridad en tu cuaderno.");
+    expect(onNotice).toHaveBeenCalledWith("Fijada con prioridad en tu Herbario.");
     expect(host.querySelector(".word-panel-notice-toast")?.textContent).toContain(
-      "Fijada con prioridad en tu cuaderno.",
+      "Fijada con prioridad en tu Herbario.",
     );
 
     const { scheduleReadingSyncPush } = await import("../lib/reading-sync");

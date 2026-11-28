@@ -1173,7 +1173,7 @@ export default function Shelf({
                             className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(heroCoverage.percent)}`}
                             title={`Afinidad léxica: ${heroCoverage.percent}%${
                               heroCoverage.reencuentrosCount
-                                ? ` · Repite ${heroCoverage.reencuentrosCount} de tu cuaderno`
+                                ? ` · Repite ${heroCoverage.reencuentrosCount} de tu Herbario`
                                 : ""
                             }`}
                           >
@@ -1318,8 +1318,8 @@ export default function Shelf({
                     {(wordCounts.get(current.hash) ?? 0) > 0 ? (
                       <span className="meta">
                         {wordCounts.get(current.hash) === 1
-                          ? "1 palabra de este libro en tu cuaderno"
-                          : `${wordCounts.get(current.hash)} palabras de este libro en tu cuaderno`}
+                          ? "1 palabra de este libro en tu Herbario"
+                          : `${wordCounts.get(current.hash)} palabras de este libro en tu Herbario`}
                       </span>
                     ) : null}
                   </div>
@@ -1379,7 +1379,7 @@ export default function Shelf({
                   <div className="shelf-cat-pending-note" role="status">
                     <span className="cat-note-icon" aria-hidden="true"><Icon name="notebook" size={14} /></span>
                     <span className="cat-note-text">
-                      Tienes {effectiveDueWordsCount} palabra{effectiveDueWordsCount === 1 ? "" : "s"} {effectiveDueWordsCount === 1 ? "lista" : "listas"} en tu cuaderno
+                      Tienes {effectiveDueWordsCount} palabra{effectiveDueWordsCount === 1 ? "" : "s"} {effectiveDueWordsCount === 1 ? "lista" : "listas"} en tu Herbario
                     </span>
                   </div>
                 ) : null}
@@ -1622,7 +1622,7 @@ export default function Shelf({
                             className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(cov.percent)}`}
                             title={`Afinidad léxica: ~${cov.percent}%${
                               cov.reencuentrosCount
-                                ? ` · Repite ${cov.reencuentrosCount} de tu cuaderno`
+                                ? ` · Repite ${cov.reencuentrosCount} de tu Herbario`
                                 : ""
                             }`}
                           >

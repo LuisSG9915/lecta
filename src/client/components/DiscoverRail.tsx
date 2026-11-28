@@ -731,7 +731,7 @@ export default function DiscoverRail({
                 {coverage?.reencuentrosCount != null && coverage.reencuentrosCount > 0 ? (
                   <p className="meta discover-reencuentros">
                     Repite {coverage.reencuentrosCount}{" "}
-                    {coverage.reencuentrosCount === 1 ? "palabra" : "palabras"} de tu cuaderno
+                    {coverage.reencuentrosCount === 1 ? "palabra" : "palabras"} de tu Herbario
                   </p>
                 ) : null}
               </div>
@@ -846,12 +846,12 @@ export default function DiscoverRail({
                   {previewView.coverage.reencuentrosCount === 1
                     ? "palabra"
                     : "palabras"}{" "}
-                  de tu cuaderno
+                  de tu Herbario
                 </p>
               ) : null}
               {previewExamples.length ? (
                 <p className="meta discover-preview-cuaderno">
-                  Del cuaderno: {previewExamples.join(", ")}
+                  Del Herbario: {previewExamples.join(", ")}
                 </p>
               ) : null}
               <p className="discover-preview-synopsis">

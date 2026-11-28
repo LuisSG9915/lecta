@@ -112,17 +112,17 @@ export function NotebookHero({
                       learnableCount === 1 ? "palabra nueva" : "palabras nuevas"
                     } para aprender`
                   : wordCount === 0
-                    ? "Tu cuaderno está esperando tus lecturas"
+                    ? "Tu Herbario está esperando tus lecturas"
                     : `Estás al día. ${nextDueTs !== null ? `El próximo repaso: ${futureRelativeDay(nextDueTs)}` : "Tu mente descansa hoy."}`}
             </h2>
           </div>
 
           {wordCount > 0 ? (
-            <div className="vocab-progress-card" aria-label="Progreso del cuaderno">
+            <div className="vocab-progress-card" aria-label="Progreso del Herbario">
               <div
                 className="vocab-progress-track"
                 role="progressbar"
-                aria-label="Progreso del cuaderno"
+                aria-label="Progreso del Herbario"
                 aria-valuenow={progressStats.settled}
                 aria-valuemin={0}
                 aria-valuemax={progressStats.total}

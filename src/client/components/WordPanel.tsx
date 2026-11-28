@@ -120,7 +120,7 @@ export interface UnifiedWordPanelProps {
   context?: string;
   passageActions?: {
     onHighlight?: (tone: "amber" | "salvia" | "dario") => void;
-    onQuoteCard: () => void;
+    onQuoteCard: (gloss?: string) => void;
     onAsk: () => void;
     onDeepRead: () => void;
   };
@@ -763,7 +763,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         incrementCollectionPendingCount("words");
         scheduleReadingSyncPush("words");
 
-        const msg = "Fijada con prioridad en tu cuaderno.";
+        const msg = "Fijada con prioridad en tu Herbario.";
         onNotice?.(msg);
         setQuickNotice(msg);
         setTimeout(() => setQuickNotice(null), 2500);
@@ -843,7 +843,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     savedRef.current = false;
     setIsSaved(false);
     triggerHaptic(8);
-    const msg = "Eliminada del cuaderno";
+    const msg = "Eliminada del Herbario";
     onNotice?.(msg);
     setQuickNotice(msg);
     setTimeout(() => setQuickNotice(null), 2000);
@@ -1045,13 +1045,13 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 className="word-panel__saved-pill word-panel-saved-badge"
                 data-sprout={sprouted || undefined}
               >
-                <Icon name="star" size={14} /> Guardada en tu cuaderno{savedStage ? ` · ${savedStage}` : ""}
+                <Icon name="star" size={14} /> Guardada en tu Herbario{savedStage ? ` · ${savedStage}` : ""}
               </span>
               <button
                 type="button"
                 className="word-panel__unsave-link btn--remove-word"
                 onClick={handleRemove}
-                title="Quitar de mi cuaderno"
+                title="Quitar de mi Herbario"
               >
                 Quitar
               </button>
@@ -1064,7 +1064,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 onClick={handleSave}
                 disabled={saving}
               >
-                <Icon name="star" size={14} /> Guardar en mi cuaderno
+                <Icon name="star" size={14} /> Guardar en mi Herbario
               </button>
               <button
                 type="button"
@@ -1519,7 +1519,14 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   <button
                     type="button"
                     className="selection-menu-btn"
-                    onClick={passageActions.onQuoteCard}
+                    onClick={() =>
+                      passageActions.onQuoteCard(
+                        meaning?.text ||
+                          localEntry?.shortDefinition?.trim() ||
+                          savedEntry?.meaning?.trim() ||
+                          undefined,
+                      )
+                    }
                   >
                     <Icon name="quote" size={14} />
                     <span>Postal</span>

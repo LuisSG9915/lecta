@@ -39,7 +39,7 @@ const statusText = (entry: PaperChapterEntry) => {
   if (entry.status === "read") return "Leído";
   if (entry.status === "prepared")
     return entry.unknownCount
-      ? `Preparado · ${entry.unknownCount} en tu Cuaderno`
+      ? `Preparado · ${entry.unknownCount} en tu Herbario`
       : "Preparado";
   return "Sin revisar";
 };

@@ -98,7 +98,11 @@ export function trialEndSubject(): string {
   return "Terminaron tus 14 días de prueba en Lecta+";
 }
 
-export function buildTrialEndHtml(usage: TrialUsage, unsubUrl: string): string {
+export function buildTrialEndHtml(
+  usage: TrialUsage,
+  unsubUrl: string,
+  opts?: { welcomeOffer?: boolean },
+): string {
   const items: string[] = [];
   if (usage.aiUses > 0) {
     items.push(
@@ -116,6 +120,9 @@ export function buildTrialEndHtml(usage: TrialUsage, unsubUrl: string): string {
     );
   }
   const usageList = items.length > 0 ? `<ul style="margin:0 0 16px;padding-left:20px;line-height:1.6;">${items.join("")}</ul>` : "";
+  const welcomeParagraph = opts?.welcomeOffer
+    ? `<p style="margin:0 0 16px;">Durante las próximas 72 h tienes precio de bienvenida: <strong>$399 MXN el primer año</strong> (≈$33 al mes; después $499 MXN/año).</p>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="utf-8"><title>${escapeHtml(trialEndSubject())}</title></head>
@@ -123,7 +130,8 @@ export function buildTrialEndHtml(usage: TrialUsage, unsubUrl: string): string {
   <h1 style="font-size:22px;margin:0 0 16px;">Terminaron tus 14 días de prueba en Lecta+</h1>
   <p style="margin:0 0 12px;">Esto es lo que construiste durante tus dos semanas de lectura:</p>
   ${usageList}
-  <p style="margin:0 0 20px;">Tus libros, tu Herbario y tu avance siguen guardados en tu cuenta gratuita. Si quieres conservar las ayudas sin límite ni cortes de cuota, puedes activar Lecta+ en tu Carné.</p>
+  <p style="margin:0 0 16px;">Tus libros, tu Herbario y tu avance siguen guardados en tu cuenta gratuita. Si quieres conservar las ayudas sin límite ni cortes de cuota, puedes activar Lecta+ en tu Carné.</p>
+  ${welcomeParagraph}
   <p style="margin:0 0 24px;"><a href="${escapeHtml(TRIAL_END_CTA_URL)}" style="background:#b3472a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Ver mi Carné de Lecta+</a></p>
   <p style="color:#9a958e;font-size:12px;margin-top:24px;">Este es un aviso único al terminar tu prueba de Lecta+. <a href="${escapeHtml(unsubUrl)}" style="color:#9a958e;">No recibir estos avisos</a>.</p>
 </body>
@@ -216,11 +224,12 @@ export async function runTrialEndEmails(
       }
       attemptedSend = true;
       const unsub = unsubscribeUrl(user.id, await reengageToken(secret, user.id));
+      const welcomeOffer = Boolean(env.STRIPE_COUPON_TRIAL_END_ID?.trim());
       const ok = await sendTrialEndEmail(
         env,
         user.email,
         trialEndSubject(),
-        buildTrialEndHtml(usage, unsub),
+        buildTrialEndHtml(usage, unsub, { welcomeOffer }),
         unsub,
       );
       if (ok) {

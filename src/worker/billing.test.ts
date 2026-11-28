@@ -759,6 +759,47 @@ describe("Pase anual único (pass_yearly: Tarjeta / SPEI / OXXO)", () => {
     const asyncUpsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
     expect(asyncUpsert?.[1]?.[0]).toBe("u2");
     expect(asyncUpsert?.[1]?.[2]).toBeNull();
+    expect(String(asyncUpsert?.[0])).toContain("stripe_subscription_id = NULL");
     expect(Number(asyncUpsert?.[1]?.[3])).toBeGreaterThanOrEqual(now + 365 * 86_400_000 - 5000);
+  });
+
+  it("permite extender un Pase anual activo (sin suscripción) pero rechaza con 409 a suscriptor o fundador", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    const passEnv: WorkerEnv = { ...env, STRIPE_PRICE_PASS_YEARLY_ID: "price_pass" };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/extend" }));
+
+    // Titular de pase anual (sin stripeSubscriptionId): puede extender con 200
+    loadUserPlanMock.mockResolvedValueOnce(
+      plan({ plan: "lecta_plus", expiresAt: Date.now() + 90 * 86_400_000, stripeSubscriptionId: null }),
+    );
+    const okRes = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "pass_yearly" }) },
+      passEnv,
+    );
+    expect(okRes.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Suscriptor recurrente: 409
+    loadUserPlanMock.mockResolvedValueOnce(
+      plan({ plan: "lecta_plus", expiresAt: Date.now() + 90 * 86_400_000, stripeSubscriptionId: "sub_1" }),
+    );
+    const subRes = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "pass_yearly" }) },
+      passEnv,
+    );
+    expect(subRes.status).toBe(409);
+
+    // Fundador vitalicio: 409
+    loadUserPlanMock.mockResolvedValueOnce(plan({ plan: "founder_lifetime" }));
+    const founderRes = await app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ period: "pass_yearly" }) },
+      passEnv,
+    );
+    expect(founderRes.status).toBe(409);
   });
 });

@@ -65,7 +65,7 @@ describe("DiagnosticsModal", () => {
     expect(host.textContent).toContain("Acerca de y Diagnóstico");
     expect(host.textContent).toContain(`Lecta v${APP_VERSION}`);
     expect(host.textContent).toContain("Libros en dispositivo: 1");
-    expect(host.textContent).toContain("Palabras en cuaderno: 2");
+    expect(host.textContent).toContain("Palabras en Herbario: 2");
     expect(host.textContent).toContain("Registro de errores recientes (1)");
     expect(host.textContent).toContain("Prueba de error");
   });
@@ -135,7 +135,7 @@ describe("DiagnosticsModal", () => {
 
     expect(host.textContent).toContain("Interruptores de función (kill-switches locales)");
     expect(host.textContent).toContain("Voz Neural HD Offline");
-    expect(host.textContent).toContain("Minijuegos del Cuaderno");
+    expect(host.textContent).toContain("Minijuegos del Herbario");
 
     const ttsToggle = Array.from(host.querySelectorAll("button")).find(
       (b) => b.getAttribute("aria-pressed") === "true",

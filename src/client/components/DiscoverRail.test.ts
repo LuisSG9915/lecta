@@ -337,7 +337,7 @@ describe("DiscoverRail", () => {
 
     const reencuentros = host.querySelector(".discover-reencuentros");
     expect(reencuentros).toBeTruthy();
-    expect(reencuentros?.textContent).toContain("Repite 1 palabra de tu cuaderno");
+    expect(reencuentros?.textContent).toContain("Repite 1 palabra de tu Herbario");
   });
 
   it("muestra la píldora de afinidad .book-affinity-pill con data-tone y label cálido (Fase 1)", async () => {

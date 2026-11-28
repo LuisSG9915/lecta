@@ -167,8 +167,8 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     const wordDialog = page.locator('[role="dialog"]').filter({ hasText: "perenne" });
     await expect(wordDialog).toBeVisible({ timeout: 6_000 });
 
-    // Guardar palabra en el cuaderno
-    const saveBtn = wordDialog.locator("button:has-text('Guardar en mi cuaderno')");
+    // Guardar palabra en el Herbario
+    const saveBtn = wordDialog.locator("button:has-text('Guardar en mi Herbario')");
     await expect(saveBtn).toBeVisible();
     await saveBtn.click();
 
@@ -337,7 +337,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
 
     const wordDialog = page.locator('[role="dialog"]').filter({ hasText: "perenne" });
     await expect(wordDialog).toBeVisible({ timeout: 6_000 });
-    const saveBtn = wordDialog.locator("button:has-text('Guardar en mi cuaderno')");
+    const saveBtn = wordDialog.locator("button:has-text('Guardar en mi Herbario')");
     await expect(saveBtn).toBeVisible();
     await saveBtn.click();
     await expect(wordDialog.locator(".word-panel-saved-badge")).toBeVisible({ timeout: 5_000 });

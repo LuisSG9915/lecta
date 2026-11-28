@@ -650,7 +650,7 @@ export default function CommunityShelf({
                         {coverage.reencuentrosCount === 1
                           ? "palabra"
                           : "palabras"}{" "}
-                        de tu cuaderno
+                        de tu Herbario
                       </p>
                     ) : null}
                   </div>
@@ -765,7 +765,7 @@ export default function CommunityShelf({
                   {previewView.coverage.reencuentrosCount === 1
                     ? "palabra"
                     : "palabras"}{" "}
-                  de tu cuaderno
+                  de tu Herbario
                 </p>
               ) : null}
               {previewView.guide ? (

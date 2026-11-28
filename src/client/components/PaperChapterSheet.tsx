@@ -82,12 +82,12 @@ function SavedNote({
   if (outcome.kind === "already")
     return (
       <p className="paper-saved-note" role="status">
-        «{outcome.form}» ya está en tu Cuaderno.
+        «{outcome.form}» ya está en tu Herbario.
       </p>
     );
   return (
     <p className="paper-saved-note" role="status">
-      «{outcome.form}» guardada en tu Cuaderno
+      «{outcome.form}» guardada en tu Herbario
       {outcome.meaning ? ` — ${outcome.meaning}` : ""}.{" "}
       <button
         type="button"

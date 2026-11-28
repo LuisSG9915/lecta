@@ -411,7 +411,7 @@ export default function BookGlossaryModal({
                     <Icon name="bookmark" size={16} />
                   </span>
                   <span className="glossary-stat-value">{savedCount.toLocaleString("es")}</span>
-                  <span className="glossary-stat-label">en cuaderno</span>
+                  <span className="glossary-stat-label">en Herbario</span>
                 </div>
               </div>
             ) : null}
@@ -498,7 +498,7 @@ export default function BookGlossaryModal({
                     setPage(1);
                   }}
                 >
-                  En Cuaderno ({savedCount.toLocaleString("es")})
+                  En Herbario ({savedCount.toLocaleString("es")})
                 </button>
                 <button
                   type="button"
@@ -732,7 +732,7 @@ export default function BookGlossaryModal({
                             </span>
                             {term.isSaved ? (
                               <span className="glossary-status-pill glossary-status-pill--saved">
-                                <Icon name="check" size={13} /> En cuaderno
+                                <Icon name="check" size={13} /> En Herbario
                               </span>
                             ) : term.isKnown ? (
                               <span className="glossary-status-pill glossary-status-pill--known">
@@ -793,11 +793,11 @@ export default function BookGlossaryModal({
                                 >
                                   {savingTerm === term.form
                                     ? "Guardando..."
-                                    : "+ Guardar en Cuaderno"}
+                                    : "+ Guardar en Herbario"}
                                 </button>
                               ) : (
                                 <span className="meta glossary-saved-notice">
-                                  <Icon name="check" size={14} /> Guardada en tu Cuaderno
+                                  <Icon name="check" size={14} /> Guardada en tu Herbario
                                 </span>
                               )}
 

@@ -4,9 +4,12 @@ import { parseTrialBook } from "./trial";
 describe("parseTrialBook", () => {
   it("acepta solo los clásicos de la lista", () => {
     expect(parseTrialBook("marianela")?.title).toBe("Marianela");
+    expect(parseTrialBook("marianela")?.language).toBe("es");
     expect(parseTrialBook("alice-wonderland")?.author).toBe("Lewis Carroll");
+    expect(parseTrialBook("alice-wonderland")?.language).toBe("en");
     expect(parseTrialBook("lazarillo")?.title).toBe("El Lazarillo de Tormes");
     expect(parseTrialBook("christmas-carol")?.author).toBe("Charles Dickens");
+    expect(parseTrialBook("frankenstein")?.language).toBe("en");
   });
 
   it("acepta cualquier id con formato válido del catálogo (se valida al abrir)", () => {

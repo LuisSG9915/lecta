@@ -2376,7 +2376,7 @@ export default function App() {
       }
       const parsed = parseTrialBook(resumeId);
       if (parsed) {
-        await getCatalogBook({ ...parsed, language: "es" });
+        await getCatalogBook({ ...parsed, language: parsed.language ?? "es" });
       }
     } catch {
       // Sin red o error puntual: el usuario queda en la estantería sin bloqueo
@@ -2669,6 +2669,7 @@ export default function App() {
                       <TrialEndSheet
                         endedAt={userPlan?.trialEndedAt}
                         welcomeOfferEndsAt={userPlan?.welcomeOfferEndsAt}
+                        passYearlyAvailable={userPlan?.passYearlyAvailable}
                       />
                     </Suspense>
                   ) : null}
@@ -2677,7 +2678,7 @@ export default function App() {
 
               {hasVisitedVocab || activeNav === "vocabulary" || showVocabulary ? (
                 <Activity mode={activeNav === "vocabulary" ? "visible" : "hidden"}>
-                  <Suspense fallback={<LoadingScreen label="Abriendo tu cuaderno…" />}>
+                  <Suspense fallback={<LoadingScreen label="Abriendo tu Herbario…" />}>
                     <Vocabulary
                       key={`${sessionUserId ?? "anon"}:${vocabFilterRequest?.nonce ?? 0}`}
                       presentation="page"

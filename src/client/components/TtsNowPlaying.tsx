@@ -184,7 +184,7 @@ export default function TtsNowPlaying({
               className={`btn--quiet tts-chip-capture ${captured ? "tts-chip-capture--active" : ""}`}
               onClick={handleCapture}
               disabled={snap.status === "preparing"}
-              aria-label="Capturar joya léxica de la frase al Cuaderno"
+              aria-label="Capturar joya léxica de la frase al Herbario"
               title="Guardar palabra clave de la frase"
             >
               {captured ? (

@@ -1159,7 +1159,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                         {state.stats.saved}
                       </span>
                       <span className="companion-stat-label">
-                        Palabras en Cuaderno
+                        Palabras en Herbario
                       </span>
                     </div>
                   </div>

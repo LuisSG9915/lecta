@@ -114,7 +114,7 @@ export default function ReaderCard({
         </p>
       ) : notice === "gracias" ? (
         <p role="status" className="status">
-          Gracias. Estamos confirmando tu pago; Lecta+ aparece en unos segundos.
+          Gracias. Estamos confirmando tu pago; con tarjeta aparece en unos segundos y con OXXO o SPEI al acreditarse.
         </p>
       ) : notice === "cancelado" && !paid ? (
         <p role="status" className="status">
@@ -141,6 +141,16 @@ export default function ReaderCard({
                   <p className="reader-card__detail">
                     Vigente hasta el {dateLabel(plan.expiresAt)} (sin renovación automática).
                   </p>
+                ) : null}
+                {plan.passYearlyAvailable === true ? (
+                  <button
+                    type="button"
+                    className="btn reader-card__pass"
+                    disabled={busy}
+                    onClick={() => void go("/api/billing/checkout", { period: "pass_yearly" })}
+                  >
+                    Extender 1 año más ($549 MXN)
+                  </button>
                 ) : null}
               </>
             );

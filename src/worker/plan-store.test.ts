@@ -189,4 +189,17 @@ describe("upsertPlanFromStripe", () => {
     expect(sqls).toContain("ROLLBACK TO SAVEPOINT stripe_order");
     expect(String(sqls[sqls.length - 1])).not.toContain("stripe_event_created");
   });
+
+  it("clearSubscription: true borra cualquier stripe_subscription_id previa", async () => {
+    const client = clientWith(() => ({ rows: [{ user_id: "u1" }] }));
+    await upsertPlanFromStripe(
+      client,
+      "u1",
+      { stripeCustomerId: "cus_1", stripeSubscriptionId: null, clearSubscription: true, planExpiresAt: 500 },
+      9,
+    );
+    const [sql] = client.query.mock.calls[0];
+    expect(String(sql)).toContain("stripe_subscription_id = NULL");
+    expect(String(sql)).not.toContain("COALESCE(EXCLUDED.stripe_subscription_id");
+  });
 });

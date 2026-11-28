@@ -29,6 +29,8 @@ export interface QuoteCardState {
   author?: string;
   chapterTitle?: string;
   alreadySaved?: boolean;
+  highlightWord?: string;
+  gloss?: string;
 }
 
 export interface UseReaderAnnotationsAndSearchOptions {
@@ -267,8 +269,9 @@ export function useReaderAnnotationsAndSearch({
     [setSelButton, savePassageRange],
   );
 
-  const openQuoteCardFromSelection = useCallback((explicitText?: string) => {
-    const container = containerRef.current;
+  const openQuoteCardFromSelection = useCallback(
+    (explicitText?: string, opts?: { highlightWord?: string; gloss?: string }) => {
+      const container = containerRef.current;
     const sel = window.getSelection();
     if (!container) {
       setSelButton(null);
@@ -294,15 +297,19 @@ export function useReaderAnnotationsAndSearch({
       const pClean = p.text.replace(/\s+/g, " ").trim().toLowerCase();
       return pClean === clean || (clean.length >= 10 && (pClean.includes(clean) || clean.includes(pClean)));
     });
-    setQuoteCard({
-      text,
-      bookTitle: title,
-      author,
-      chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
-      alreadySaved,
-    });
-    setSelButton(null);
-  }, [containerRef, title, author, currentChapterTarget, sectionTitle, sectionLabel, sectionIndex, setSelButton, passages]);
+      setQuoteCard({
+        text,
+        bookTitle: title,
+        author,
+        chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
+        alreadySaved,
+        highlightWord: opts?.highlightWord,
+        gloss: opts?.gloss,
+      });
+      setSelButton(null);
+    },
+    [containerRef, title, author, currentChapterTarget, sectionTitle, sectionLabel, sectionIndex, setSelButton, passages],
+  );
 
   const askCatAboutSelection = useCallback(
     async (param?: string | { word?: string; passage: string; bookId?: string }) => {

@@ -168,7 +168,12 @@ billing.post("/api/billing/checkout", async (c) => {
     return c.json({ error: "Servicio temporalmente no disponible" }, 503);
   }
   // La prueba inversa da Lecta+ sin pago: durante ella sí se puede suscribir.
-  if (hasLectaPlus(plan.plan) && plan.trialEndsAt === null) {
+  // También quien tiene Pase anual (sin suscripción) puede extender 1 año más.
+  const canExtendPass =
+    period === "pass_yearly" &&
+    plan.plan === "lecta_plus" &&
+    !plan.stripeSubscriptionId;
+  if (hasLectaPlus(plan.plan) && plan.trialEndsAt === null && !canExtendPass) {
     return c.json({ error: "Tu cuenta ya tiene Lecta+." }, 409);
   }
   const price =
@@ -399,6 +404,7 @@ billing.post("/api/billing/webhook", async (c) => {
         wrote = await upsertPlanFromStripe(client, userId, {
           stripeCustomerId: customer,
           stripeSubscriptionId: subscriptionId,
+          clearSubscription: isPaymentCheckout,
           planExpiresAt: expiresAt,
           eventCreated: typeof event.created === "number" ? event.created * 1000 : undefined,
         });

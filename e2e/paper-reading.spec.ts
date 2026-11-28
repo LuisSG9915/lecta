@@ -141,7 +141,7 @@ test.describe("Lecta — Leo este libro en papel", () => {
     });
     await expect(suggestion).toBeVisible({ timeout: 10_000 });
     await suggestion.click();
-    await expect(sheet).toContainText("guardada en tu Cuaderno", {
+    await expect(sheet).toContainText("guardada en tu Herbario", {
       timeout: 10_000,
     });
 

@@ -151,7 +151,7 @@ describe("Account componente Tú y Login", () => {
     expect(host.textContent).toContain("Meta semanal de lectura");
     expect(host.textContent).toContain("Inteligencia artificial y diccionario");
     expect(host.textContent).toContain("Compañero y logros");
-    expect(host.textContent).toContain("El gato del cuaderno");
+    expect(host.textContent).toContain("El gato del Herbario");
   });
 
   it("pulsar «Iniciar sesión o crear cuenta» abre el diálogo modal con pestañas", async () => {

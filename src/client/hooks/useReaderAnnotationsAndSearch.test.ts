@@ -204,6 +204,15 @@ describe("useReaderAnnotationsAndSearch", () => {
     expect(handle.current.quoteCard?.bookTitle).toBe("Don Quijote");
     expect(handle.current.quoteCard?.author).toBe("Cervantes");
     expect(handle.current.quoteCard?.chapterTitle).toBe("Capítulo 1");
+
+    await act(async () => {
+      handle.current.openQuoteCardFromSelection("Era una noche efímera y serena.", {
+        highlightWord: "efímera",
+        gloss: "De corta duración",
+      });
+    });
+    expect(handle.current.quoteCard?.highlightWord).toBe("efímera");
+    expect(handle.current.quoteCard?.gloss).toBe("De corta duración");
   });
 
   it("askCatAboutSelection inyecta dictEntry de inmediato, registra en glosario y preserva el bloque local tras la respuesta de IA", async () => {

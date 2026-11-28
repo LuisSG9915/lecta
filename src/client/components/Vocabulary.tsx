@@ -596,7 +596,7 @@ export function Vocabulary({
     >
       {undo ? (
         <Notice
-          message={`«${undo.word.form}» se quitó del cuaderno.`}
+          message={`«${undo.word.form}» se quitó del Herbario.`}
           actionLabel="Deshacer"
           onAction={() => void restore()}
           onDismissMessage={() => setUndo(null)}
@@ -604,7 +604,7 @@ export function Vocabulary({
       ) : null}
       {quoteUndo ? (
         <Notice
-          message="La cita se quitó del cuaderno."
+          message="La cita se quitó del Herbario."
           actionLabel="Deshacer"
           onAction={() => void restoreQuote()}
           onDismissMessage={() => setQuoteUndo(null)}
@@ -755,7 +755,7 @@ export function Vocabulary({
               </div>
             )}
 
-            <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">
+            <div className="segmented nb-tabs" role="group" aria-label="Secciones del Herbario">
               <button
                 type="button"
                 data-active={tab === "words" || undefined}
@@ -811,11 +811,11 @@ export function Vocabulary({
           <>
             {loadError ? (
               <p className="nb-empty" role="alert">
-                No se pudo abrir tu cuaderno en este dispositivo.
+                No se pudo abrir tu Herbario en este dispositivo.
               </p>
             ) : null}
             {words === null && !loadError ? (
-              <p className="meta">Abriendo tu cuaderno…</p>
+              <p className="meta">Abriendo tu Herbario…</p>
             ) : null}
             {saveError ? (
               <p className="status" role="alert">

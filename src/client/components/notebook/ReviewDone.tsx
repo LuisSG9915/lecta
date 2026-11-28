@@ -78,7 +78,7 @@ export function ReviewDone({
           Volver a mi lectura
         </button>
         <button type="button" className="btn--quiet" onClick={() => setQueue(null)}>
-          Ver el cuaderno
+          Ver el Herbario
         </button>
       </div>
     </div>

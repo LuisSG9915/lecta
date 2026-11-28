@@ -1975,9 +1975,9 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     expect(host.textContent).not.toContain("Retiro completado");
     expect(host.querySelector(".quote-modal")).not.toBeNull();
 
-    // Interactividad: botón guardar en cuaderno
+    // Interactividad: botón guardar en Herbario
     const saveBtn = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Guardar en mi Cuaderno"),
+      b.textContent?.includes("Guardar en mi Herbario"),
     )!;
     expect(saveBtn).toBeTruthy();
 
@@ -1986,9 +1986,9 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     });
 
     expect(saveDirectly).toHaveBeenCalledWith(mockQuote);
-    expect(host.textContent).toContain("Pasaje guardado en tu Cuaderno.");
+    expect(host.textContent).toContain("Pasaje guardado en tu Herbario.");
     const savedBtn = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Guardado en tu Cuaderno"),
+      b.textContent?.includes("Guardado en tu Herbario"),
     )!;
     expect(savedBtn.querySelector(".icon--check")).toBeTruthy();
     expect(savedBtn).toBeTruthy();

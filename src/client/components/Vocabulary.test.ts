@@ -234,7 +234,7 @@ describe("Aprender", () => {
     expect(saveSessionMock).toHaveBeenCalled();
     expect(text()).toContain("Aprender terminado");
     // La palabra conocida ya no cuenta como pendiente.
-    await click("Ver el cuaderno");
+    await click("Ver el Herbario");
     expect(text()).toContain("1 guardadas · 0 para repasar");
   });
 
@@ -659,7 +659,7 @@ describe("Reestructura del Cuaderno", () => {
     expect(exportDetails).toBeTruthy();
     const exportButtons = exportDetails?.querySelectorAll("button");
     const exportLabels = [...(exportButtons ?? [])].map((b) => b.textContent?.trim());
-    expect(exportLabels).toEqual(["CSV", "Para Anki", "Cuaderno (.md)"]);
+    expect(exportLabels).toEqual(["CSV", "Para Anki", "Herbario (.md)"]);
     expect(exportLabels).not.toContain("Pasajes CSV");
   });
 
@@ -985,7 +985,7 @@ describe("Reestructura del Cuaderno", () => {
 
       // Aviso de eliminación con botón Deshacer
       const noticeText = host.querySelector(".app-notice-text");
-      expect(noticeText?.textContent).toBe("«efímero» se quitó del cuaderno.");
+      expect(noticeText?.textContent).toBe("«efímero» se quitó del Herbario.");
       const undoBtn = host.querySelector<HTMLButtonElement>(".app-notice-action");
       expect(undoBtn?.textContent).toBe("Deshacer");
 
@@ -1978,7 +1978,7 @@ describe("Plan de simplificación — Fase 2 (superficie)", () => {
     await tap(pick(true));
     await click("Terminar por hoy");
     expect(catState().dataset.combo).toBe("1");
-    await click("Ver el cuaderno");
+    await click("Ver el Herbario");
     scrollTo.mockClear();
     await click("Aprender 3 palabras nuevas");
     expect(catState().dataset.combo).toBe("0");
@@ -2155,7 +2155,7 @@ describe("Plan de simplificación — Fase 3 (cifras, texto y accesibilidad)", (
         expect.objectContaining({ key: "q1", deleted: true }),
       );
       expect(text()).not.toContain("Una frase memorable");
-      expect(text()).toContain("La cita se quitó del cuaderno.");
+      expect(text()).toContain("La cita se quitó del Herbario.");
       await click("Deshacer");
       expect(updateAnnotationMock.mock.calls[1][0]).toEqual(
         expect.objectContaining({ key: "q1", deleted: false }),
@@ -2169,7 +2169,7 @@ describe("Plan de simplificación — Fase 3 (cifras, texto y accesibilidad)", (
       await click("Eliminar");
       expect(text()).toContain("Una frase memorable");
       expect(text()).toContain("No se pudo quitar la cita");
-      expect(text()).not.toContain("La cita se quitó del cuaderno.");
+      expect(text()).not.toContain("La cita se quitó del Herbario.");
     });
   });
 

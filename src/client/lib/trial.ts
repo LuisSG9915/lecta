@@ -6,27 +6,54 @@
 // (`migrateAnonymousToUser`).
 import type { CatalogBook } from "./catalog";
 
-export type TrialBook = Pick<CatalogBook, "id" | "title" | "author">;
+export type TrialBook = Pick<CatalogBook, "id" | "title" | "author" | "language">;
 
 /** Allowlist: solo estos clásicos se abren sin cuenta. */
 export const TRIAL_BOOKS: Record<string, TrialBook> = {
-  marianela: { id: "marianela", title: "Marianela", author: "Benito Pérez Galdós" },
-  lazarillo: { id: "lazarillo", title: "El Lazarillo de Tormes", author: "Anónimo" },
-  "nino-bola": { id: "nino-bola", title: "El Niño de la Bola", author: "Pedro Antonio de Alarcón" },
+  marianela: { id: "marianela", title: "Marianela", author: "Benito Pérez Galdós", language: "es" },
+  lazarillo: { id: "lazarillo", title: "El Lazarillo de Tormes", author: "Anónimo", language: "es" },
+  "nino-bola": { id: "nino-bola", title: "El Niño de la Bola", author: "Pedro Antonio de Alarcón", language: "es" },
   "alice-wonderland": {
     id: "alice-wonderland",
     title: "Alice's Adventures in Wonderland",
     author: "Lewis Carroll",
+    language: "en",
   },
   "christmas-carol": {
     id: "christmas-carol",
     title: "A Christmas Carol",
     author: "Charles Dickens",
+    language: "en",
   },
   "call-of-the-wild": {
     id: "call-of-the-wild",
     title: "The Call of the Wild",
     author: "Jack London",
+    language: "en",
+  },
+  "pride-and-prejudice": {
+    id: "pride-and-prejudice",
+    title: "Pride and Prejudice",
+    author: "Jane Austen",
+    language: "en",
+  },
+  frankenstein: {
+    id: "frankenstein",
+    title: "Frankenstein",
+    author: "Mary Wollstonecraft Shelley",
+    language: "en",
+  },
+  "picture-dorian-gray": {
+    id: "picture-dorian-gray",
+    title: "The Picture of Dorian Gray",
+    author: "Oscar Wilde",
+    language: "en",
+  },
+  "jekyll-hyde": {
+    id: "jekyll-hyde",
+    title: "The Strange Case of Dr. Jekyll and Mr. Hyde",
+    author: "Robert Louis Stevenson",
+    language: "en",
   },
 };
 

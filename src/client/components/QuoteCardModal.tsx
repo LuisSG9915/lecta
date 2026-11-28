@@ -52,7 +52,7 @@ export default function QuoteCardModal({
   const [includeCompanion, setIncludeCompanion] = useState(companionAvailable);
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(
-    alreadySaved ? "Pasaje ya guardado en tu Cuaderno." : null,
+    alreadySaved ? "Pasaje ya guardado en tu Herbario." : null,
   );
   const [savedLocal, setSavedLocal] = useState(false);
   const isSaved = alreadySaved || savedLocal;
@@ -172,7 +172,7 @@ export default function QuoteCardModal({
       triggerHaptic("success");
       onSavePassage();
       setSavedLocal(true);
-      setStatusMsg("Pasaje guardado en tu Cuaderno.");
+      setStatusMsg("Pasaje guardado en tu Herbario.");
     }
   };
 
@@ -381,7 +381,7 @@ export default function QuoteCardModal({
                   className="btn--quiet"
                   onClick={handleSaveToNotebook}
                 >
-                  Guardar en mi Cuaderno
+                  Guardar en mi Herbario
                 </button>
               ) : onSavePassage && isSaved ? (
                 <button
@@ -390,7 +390,7 @@ export default function QuoteCardModal({
                   disabled
                   aria-disabled="true"
                 >
-                  <Icon name="check" size={14} /> Guardado en tu Cuaderno
+                  <Icon name="check" size={14} /> Guardado en tu Herbario
                 </button>
               ) : null}
             </div>

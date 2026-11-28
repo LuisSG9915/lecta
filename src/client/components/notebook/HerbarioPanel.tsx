@@ -166,7 +166,7 @@ export function HerbarioPanel({
         <>
           <div className="nb-tools">
             <label className="nb-search">
-              <span className="visually-hidden">Buscar en el cuaderno</span>
+              <span className="visually-hidden">Buscar en el Herbario</span>
               <input
                 type="search"
                 value={query}
@@ -375,9 +375,9 @@ export function HerbarioPanel({
                     type="button"
                     className="btn--quiet"
                     onClick={exportMarkdownNotebook}
-                    title="Exportar cuaderno completo en Markdown para Obsidian, Notion o PKM"
+                    title="Exportar Herbario completo en Markdown para Obsidian, Notion o PKM"
                   >
-                    Cuaderno (.md)
+                    Herbario (.md)
                   </button>
                 </div>
               </details>

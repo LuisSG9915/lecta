@@ -387,7 +387,7 @@ describe("GamePanel", () => {
     click(storyTab);
     await flush();
 
-    expect(host.textContent).toContain("Palabras del cuaderno que se integrarán en el cuento");
+    expect(host.textContent).toContain("Palabras del Herbario que se integrarán en el cuento");
     expect(host.textContent).toContain("«sombra»");
     expect(host.textContent).toContain("«antiguo»");
 

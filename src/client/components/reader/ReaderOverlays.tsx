@@ -43,6 +43,8 @@ export interface QuoteCardState {
   author?: string;
   chapterTitle?: string;
   alreadySaved?: boolean;
+  highlightWord?: string;
+  gloss?: string;
 }
 
 export interface PageRecapState {
@@ -539,6 +541,8 @@ export function ReaderOverlays({
           bookTitle={quoteCard.bookTitle ?? bookTitle}
           author={quoteCard.author ?? author}
           chapterTitle={quoteCard.chapterTitle ?? currentChapterTitle}
+          highlightWord={quoteCard.highlightWord}
+          gloss={quoteCard.gloss}
           alreadySaved={quoteCard.alreadySaved}
           onClose={onCloseQuoteCard}
           onSavePassage={

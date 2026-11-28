@@ -776,7 +776,7 @@ function FullSectionPreview(props: SectionPreviewProps) {
           </div>
 
           <p className="meta">
-            Marca cada palabra: lo que no conozcas se agrega a tu Cuaderno
+            Marca cada palabra: lo que no conozcas se agrega a tu Herbario
             al guardar. Puedes dejar algunas sin responder.
           </p>
           {visibleGroups.map((group) => (
@@ -822,7 +822,7 @@ function FullSectionPreview(props: SectionPreviewProps) {
                 <>
                   <p className="meta">
                     El catálogo no sabe si estas palabras son raras o comunes.
-                    Marcadas como desconocidas también irán a tu Cuaderno.
+                    Marcadas como desconocidas también irán a tu Herbario.
                   </p>
                   <ul className="section-preview-list">
                     {uncertainRows.map((row) => (
@@ -857,7 +857,7 @@ function FullSectionPreview(props: SectionPreviewProps) {
                 <>
                   <p className="meta">
                     No cupieron en la selección principal de esta ronda.
-                    Marcadas como desconocidas también irán a tu Cuaderno.
+                    Marcadas como desconocidas también irán a tu Herbario.
                   </p>
                   <ul className="section-preview-list">
                     {deferredRows.slice(0, deferredShown).map((row) => (
@@ -896,7 +896,7 @@ function FullSectionPreview(props: SectionPreviewProps) {
           ) : null}
           <p className="meta">
             {answered
-              ? `${answered} respondida(s)${unknownCount ? ` · ${unknownCount} irán a tu Cuaderno` : ""}`
+              ? `${answered} respondida(s)${unknownCount ? ` · ${unknownCount} irán a tu Herbario` : ""}`
               : "Responde las que quieras; el resto queda pendiente."}
           </p>
           {confirmDiscard ? (

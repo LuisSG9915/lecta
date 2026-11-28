@@ -186,6 +186,8 @@ export async function setStarterCoat(
 export type StripePlanPatch = {
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
+  /** En compras de pago único (`pass_yearly`), limpia cualquier `sub_...` previa. */
+  clearSubscription?: boolean;
   planExpiresAt: number | null;
   /** `event.created` de Stripe en ms: un evento más viejo que el aplicado se ignora. */
   eventCreated?: number;
@@ -210,11 +212,14 @@ export async function upsertPlanFromStripe(
     patch.planExpiresAt,
     now,
   ];
+  const subSet = patch.clearSubscription
+    ? "stripe_subscription_id = NULL"
+    : "stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, lecta_user_plan.stripe_subscription_id)";
   const setCommon = `
        plan = CASE WHEN lecta_user_plan.plan = 'founder_lifetime'
                    THEN lecta_user_plan.plan ELSE 'lecta_plus' END,
        stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, lecta_user_plan.stripe_customer_id),
-       stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, lecta_user_plan.stripe_subscription_id),
+       ${subSet},
        plan_expires_at = EXCLUDED.plan_expires_at,
        updated_at = EXCLUDED.updated_at`;
   let applied = true;

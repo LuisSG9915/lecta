@@ -321,7 +321,7 @@ export function GamePanel(props: GamePanelProps) {
           ? evalResult.feedback
           : workshopTab === "challenge"
             ? `¡Bienvenido al Reto del Escritor! Escribe una oración con «${currentWord.word}» y la revisamos juntos`
-            : "Selecciona el tono e hilvanemos un microrrelato con las palabras de tu cuaderno";
+            : "Selecciona el tono e hilvanemos un microrrelato con las palabras de tu Herbario";
 
     return (
       <section
@@ -431,7 +431,7 @@ export function GamePanel(props: GamePanelProps) {
                   {availableWords.length > 8 ? (
                     <select
                       className="ai-word-select"
-                      aria-label="Elegir otra palabra del cuaderno"
+                      aria-label="Elegir otra palabra del Herbario"
                       value={selectedWordIndex}
                       onChange={(e) => {
                         setSelectedWordIndex(Number(e.target.value));
@@ -521,7 +521,7 @@ export function GamePanel(props: GamePanelProps) {
           <div className="ai-story-container">
             <div>
               <p className="meta" style={{ marginBottom: "0.5rem" }}>
-                Palabras del cuaderno que se integrarán en el cuento:
+                Palabras del Herbario que se integrarán en el cuento:
               </p>
               <div className="ai-story-chips">
                 {availableWords.slice(0, 4).map((w, i) => (

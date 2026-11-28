@@ -178,8 +178,8 @@ test.describe("Tarjeta de palabra (F9)", () => {
     await define.click();
     await expect(card).toBeVisible({ timeout: 3_000 });
 
-    // Guardar desde la ficha abierta por presión persiste en el Cuaderno.
-    await card.locator("button:has-text('Guardar en mi cuaderno')").click();
+    // Guardar desde la ficha abierta por presión persiste en el Herbario.
+    await card.locator("button:has-text('Guardar en mi Herbario')").click();
     await expect(card.locator(".word-panel-saved-badge")).toBeVisible({ timeout: 5_000 });
     const stored = await page.evaluate(async () => {
       const dbs = await indexedDB.databases();

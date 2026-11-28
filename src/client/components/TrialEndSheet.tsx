@@ -20,17 +20,20 @@ import Sheet from "./Sheet";
 export { trialFigures };
 export type { TrialSummary };
 
-type Period = "monthly" | "yearly";
+type Period = "monthly" | "yearly" | "pass_yearly";
 
 export default function TrialEndSheet({
   endedAt,
   welcomeOfferEndsAt,
+  passYearlyAvailable,
   navigate = (url: string) => window.location.assign(url),
 }: {
   /** Fin de la prueba (ms) que manda el servidor. */
   endedAt?: number;
   /** Fin de la oferta de bienvenida de 72 h (ms), solo si hay cupón real configurado. */
   welcomeOfferEndsAt?: number | null;
+  /** `true` si el servidor ofrece el pase anual de pago único ($549 MXN). */
+  passYearlyAvailable?: boolean;
   navigate?: (url: string) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -126,6 +129,16 @@ export default function TrialEndSheet({
           <button type="button" className="btn" disabled={busy} onClick={() => void checkout("monthly")}>
             {PRICES.monthly.label} · {PRICES.monthly.price}
           </button>
+          {passYearlyAvailable === true ? (
+            <button
+              type="button"
+              className="btn--quiet reader-card__pass"
+              disabled={busy}
+              onClick={() => void checkout("pass_yearly")}
+            >
+              ¿Prefieres pago único sin renovación? Pase de 1 año ($549 MXN)
+            </button>
+          ) : null}
           <button type="button" className="btn--quiet" onClick={close}>
             Seguir gratis
           </button>

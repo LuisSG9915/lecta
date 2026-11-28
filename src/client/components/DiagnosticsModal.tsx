@@ -288,7 +288,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
           <h3 className="eyebrow">Datos locales y sincronización</h3>
           <ul style={{ listStyle: "none", padding: 0, margin: "var(--s-1) 0", fontSize: "var(--fs-sm)" }}>
             <li>Libros en dispositivo: {counts ? counts.books : "Cargando…"}</li>
-            <li>Palabras en cuaderno: {counts ? counts.words : "Cargando…"}</li>
+            <li>Palabras en Herbario: {counts ? counts.words : "Cargando…"}</li>
             <li>Posiciones guardadas: {counts ? counts.positions : "Cargando…"}</li>
             <li>Anotaciones y pasajes: {counts ? counts.annotations : "Cargando…"}</li>
             <li>Sesiones de actividad: {counts ? counts.activity : "Cargando…"}</li>
@@ -373,7 +373,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
             {(
               [
                 { key: "neuralTts" as const, label: "Voz Neural HD Offline", desc: "Síntesis neuronal local descargable" },
-                { key: "vocabGames" as const, label: "Minijuegos del Cuaderno", desc: "Práctica interactiva y retos de repaso" },
+                { key: "vocabGames" as const, label: "Minijuegos del Herbario", desc: "Práctica interactiva y retos de repaso" },
                 { key: "kindleSync" as const, label: "Sincronización con Kindle", desc: "Emparejamiento y lectura remota en e-reader" },
                 { key: "focusTelemetry" as const, label: "Telemetría de Enfoque", desc: "Detección de fatiga lectora y pausas" },
                 { key: "chapterPriming" as const, label: "Pre-lectura de Capítulos", desc: "Anticipación de vocabulario difícil" },

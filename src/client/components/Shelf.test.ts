@@ -337,7 +337,7 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
     const catContainer = host.querySelector(".shelf-hero-companion") as HTMLDivElement;
     expect(catContainer).toBeTruthy();
     expect(host.querySelector(".shelf-cat-pending-note")?.textContent).toContain(
-      "Tienes 1 palabra lista en tu cuaderno",
+      "Tienes 1 palabra lista en tu Herbario",
     );
 
     await act(async () => {

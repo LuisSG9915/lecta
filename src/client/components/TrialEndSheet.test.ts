@@ -89,4 +89,21 @@ describe("TrialEndSheet", () => {
     expect(text).toContain("después $499 MXN al año");
     await act(async () => root.unmount());
   });
+
+  it("con passYearlyAvailable muestra Pase de 1 año ($549 MXN) y manda period pass_yearly", async () => {
+    const navigate = vi.fn();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(h(TrialEndSheet, { passYearlyAvailable: true, navigate })));
+    const passBtn = host.querySelector<HTMLButtonElement>(".reader-card__pass")!;
+    expect(passBtn.textContent).toContain("Pase de 1 año ($549 MXN)");
+    await act(async () => passBtn.click());
+    const call = (accountFetchModule.accountFetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls.find(
+      (c) => c[0].includes("checkout"),
+    )!;
+    expect(JSON.parse(String(call[1].body))).toEqual({ period: "pass_yearly" });
+    expect(navigate).toHaveBeenCalledWith("https://stripe.test/c");
+    await act(async () => root.unmount());
+  });
 });

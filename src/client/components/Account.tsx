@@ -915,7 +915,7 @@ export default function Account({
             <div className="account-card-header">
               <strong className="account-card-title">Sincronización en la nube</strong>
               <p className="account-card-desc">
-                Guarda tus libros, tu avance y tu cuaderno para leer en cualquier dispositivo.
+                Guarda tus libros, tu avance y tu Herbario para leer en cualquier dispositivo.
               </p>
             </div>
             <div className="actions">
@@ -1186,7 +1186,7 @@ export default function Account({
               <div className="account-card-header">
                 <strong className="account-card-title">Compañero y logros</strong>
                 <p className="account-card-desc">
-                  Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros y cofres por leer y repasar.{" "}
+                  Un gato de biblioteca crece contigo en el Herbario: niveles, logros y cofres por leer y repasar.{" "}
                   {session?.user
                     ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
                     : "Todo queda en este dispositivo."}{" "}
@@ -1195,10 +1195,10 @@ export default function Account({
               </div>
               <div className="setting-row setting-row--toggle">
                 <div className="setting-info">
-                  <span className="setting-label">El gato del cuaderno</span>
+                  <span className="setting-label">El gato del Herbario</span>
                 </div>
                 <Toggle
-                  label="El gato del cuaderno"
+                  label="El gato del Herbario"
                   checked={gameOn}
                   onChange={toggleGame}
                 />

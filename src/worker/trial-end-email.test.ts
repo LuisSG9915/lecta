@@ -74,6 +74,14 @@ describe("trial-end-email plantilla y filtros", () => {
     expect(plural).toContain("4 consultas con IA mientras leías");
     expect(plural).toContain("12 palabras guardadas en tu Herbario");
     expect(plural).toContain("3 libros sincronizados en tu Biblioteca");
+    expect(plural).not.toContain("$399 MXN");
+
+    const withWelcome = buildTrialEndHtml(
+      { aiUses: 1, wordsSaved: 2, cloudBooks: 0 },
+      "https://lectal.app/api/reengage/unsubscribe?u=u1&t=abc",
+      { welcomeOffer: true },
+    );
+    expect(withWelcome).toContain("$399 MXN el primer año");
   });
 });
 

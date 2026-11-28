@@ -2488,7 +2488,7 @@ export default function Reader({
     // Reclasifica la sección visible: la palabra pasa a «guardada»
     // tanto en la tarjeta como en las marcas del texto.
     applyPrediction(sectionIndexRef.current, language);
-    onStatus(`«${word.form}» ya está en tu cuaderno.`);
+    onStatus(`«${word.form}» ya está en tu Herbario.`);
   }, [language, applyPrediction, onStatus, bookHash, ttsRef, flashCatSavedWord]);
 
   const handleTtsCaptureWord = useTtsCaptureWord({
@@ -2514,7 +2514,7 @@ export default function Reader({
     // Al salir del cuaderno puede volver a entrar como predicha: la
     // reclasificación actualiza lista y marcas.
     applyPrediction(sectionIndexRef.current, language);
-    onStatus(`«${word.form}» se quitó del cuaderno.`);
+    onStatus(`«${word.form}» se quitó del Herbario.`);
   };
 
   // Saltos desde hojas (índice, búsqueda, marcadores): guardan el punto
@@ -3105,7 +3105,7 @@ export default function Reader({
   const summaryParts = endSummary
     ? [
         endSummary.summary.saved > 0 &&
-          `${endSummary.summary.saved} palabra${endSummary.summary.saved === 1 ? "" : "s"} al Cuaderno`,
+          `${endSummary.summary.saved} palabra${endSummary.summary.saved === 1 ? "" : "s"} al Herbario`,
         endSummary.summary.consulted > 0 &&
           `${endSummary.summary.consulted} consulta${endSummary.summary.consulted === 1 ? "" : "s"}`,
         endSummary.summary.declaredKnown > 0 &&
@@ -3186,10 +3186,10 @@ export default function Reader({
             if (range) void savePassageRange(range, tone);
           }
         : undefined,
-      onQuoteCard: () => {
+      onQuoteCard: (gloss?: string) => {
         const text = selection.context || selection.word;
         closeSelection();
-        openQuoteCardFromSelection(text);
+        openQuoteCardFromSelection(text, { highlightWord: selection.word, gloss });
       },
       onAsk: () => {
         const word = selection.word;

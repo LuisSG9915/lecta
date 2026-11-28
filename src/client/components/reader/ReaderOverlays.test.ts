@@ -269,7 +269,7 @@ describe("ReaderOverlays: Integración flujo postal y unicidad de capas (FASE 3)
 
     // Guardar pasaje
     const saveBtn = [...container.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Guardar en mi Cuaderno"),
+      b.textContent?.includes("Guardar en mi Herbario"),
     )!;
     expect(saveBtn).toBeTruthy();
 
@@ -280,9 +280,9 @@ describe("ReaderOverlays: Integración flujo postal y unicidad de capas (FASE 3)
     // Invocó savePassageDirectly con el texto de la cita
     expect(savePassageDirectly).toHaveBeenCalledWith(mockQuote);
     // Estado visual actualizado a guardado
-    expect(container.textContent).toContain("Pasaje guardado en tu Cuaderno.");
+    expect(container.textContent).toContain("Pasaje guardado en tu Herbario.");
     const savedBtn = [...container.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Guardado en tu Cuaderno"),
+      b.textContent?.includes("Guardado en tu Herbario"),
     )!;
     expect(savedBtn.querySelector(".icon--check")).toBeTruthy();
     expect(savedBtn).toBeTruthy();

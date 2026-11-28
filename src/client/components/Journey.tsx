@@ -983,7 +983,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                     </>
                   ) : (
                     <p className="meta">
-                      Aún no has guardado palabras en tu cuaderno. Toca cualquier palabra mientras lees.
+                      Aún no has guardado palabras en tu Herbario. Toca cualquier palabra mientras lees.
                     </p>
                   )}
                 </div>

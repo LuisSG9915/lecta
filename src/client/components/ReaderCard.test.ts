@@ -201,15 +201,31 @@ describe("ReaderCard (Carné de Lector)", () => {
     expect(navigate).toHaveBeenCalledWith("https://checkout.stripe.com/pass");
   });
 
-  it("pase anual activo (hasSubscription: false) muestra vigencia sin renovación y oculta portal", () => {
-    render({
-      plan: "lecta_plus",
-      starterCoat: null,
-      expiresAt: Date.UTC(2027, 10, 27),
-      hasSubscription: false,
-    });
+  it("pase anual activo (hasSubscription: false) muestra vigencia sin renovación, oculta portal y permite extender", async () => {
+    const navigate = vi.fn();
+    const fetchSpy = vi
+      .spyOn(accountFetchModule, "accountFetch")
+      .mockResolvedValue(json({ url: "https://checkout.stripe.com/extend" }));
+
+    render(
+      {
+        plan: "lecta_plus",
+        starterCoat: null,
+        expiresAt: Date.UTC(2027, 10, 27),
+        hasSubscription: false,
+        passYearlyAvailable: true,
+      },
+      navigate,
+    );
     expect(host.textContent).toContain("Pase anual Lecta+");
     expect(host.textContent).toContain("sin renovación automática");
     expect(host.textContent).not.toContain("Administrar suscripción");
+    const extendBtn = host.querySelector<HTMLButtonElement>(".reader-card__pass")!;
+    expect(extendBtn.textContent).toContain("Extender 1 año más ($549 MXN)");
+    await act(async () => extendBtn.click());
+    const [path, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/billing/checkout");
+    expect(JSON.parse(String(init.body))).toEqual({ period: "pass_yearly" });
+    expect(navigate).toHaveBeenCalledWith("https://checkout.stripe.com/extend");
   });
 });
