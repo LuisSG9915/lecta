@@ -15,6 +15,10 @@ import {
 
 export interface ReaderFloatingBarsProps {
   ttsCapturedToast: string | null;
+  ttsSessionCaptures?: string[];
+  ttsActive?: boolean;
+  onOpenNotebook?: () => void;
+  onDismissAudioSummary?: () => void;
   activeBilingualParagraph: { originalText: string; translatedText?: string } | null;
   bookHash: string;
   language: string;
@@ -23,18 +27,59 @@ export interface ReaderFloatingBarsProps {
 
 function ReaderFloatingBarsImpl(props: ReaderFloatingBarsProps) {
   const {
-  ttsCapturedToast,
-  activeBilingualParagraph,
-  bookHash,
-  language,
-  setBilingualMode,
+    ttsCapturedToast,
+    ttsSessionCaptures,
+    ttsActive = false,
+    onOpenNotebook,
+    onDismissAudioSummary,
+    activeBilingualParagraph,
+    bookHash,
+    language,
+    setBilingualMode,
   } = props;
+
+  const showAudioSummary =
+    !ttsActive && !ttsCapturedToast && ttsSessionCaptures && ttsSessionCaptures.length > 0;
+  const capturePreview = ttsSessionCaptures?.slice(0, 3).join(", ") ?? "";
+  const extraCount = (ttsSessionCaptures?.length ?? 0) - 3;
 
   return (
     <>
   {ttsCapturedToast ? (
     <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
       <Icon name="star" size={14} /> Guardada en Herbario: <strong>{ttsCapturedToast}</strong>
+    </div>
+  ) : showAudioSummary ? (
+    <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
+      <Icon name="headphones" size={14} />{" "}
+      <span>
+        Capturaste {ttsSessionCaptures.length}{" "}
+        {ttsSessionCaptures.length === 1 ? "palabra" : "palabras"} al escuchar:{" "}
+        <strong>{capturePreview}</strong>
+        {extraCount > 0 ? ` (+${extraCount})` : ""}
+      </span>{" "}
+      {onOpenNotebook ? (
+        <button
+          type="button"
+          className="btn--quiet"
+          onClick={() => {
+            onDismissAudioSummary?.();
+            onOpenNotebook();
+          }}
+        >
+          Ver en Herbario
+        </button>
+      ) : null}
+      {onDismissAudioSummary ? (
+        <button
+          type="button"
+          className="btn--quiet"
+          onClick={onDismissAudioSummary}
+          aria-label="Cerrar resumen de audio"
+        >
+          <Icon name="close" size={14} />
+        </button>
+      ) : null}
     </div>
   ) : null}
 

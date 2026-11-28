@@ -54,8 +54,10 @@ import { FreeModes } from "./notebook/FreeModes";
 import { HerbarioPanel } from "./notebook/HerbarioPanel";
 import { LearnSessionView } from "./notebook/LearnSessionView";
 import { NotebookHero } from "./notebook/NotebookHero";
+import AudioReviewPlayer from "./notebook/AudioReviewPlayer";
 import { QuotesPanel, type QuoteCardRequest } from "./notebook/QuotesPanel";
 import { ReviewDone } from "./notebook/ReviewDone";
+import { isSpeechAvailable } from "../lib/speech";
 
 
 // Reexportados desde lib/word-highlight: los tests y el herbario los
@@ -148,6 +150,7 @@ export function Vocabulary({
   const [quoteUndo, setQuoteUndo] = useState<SavedAnnotation | null>(null);
   const quoteUndoTimer = useRef<number | undefined>(undefined);
   const [workshopOpen, setWorkshopOpen] = useState(false);
+  const [audioReviewOpen, setAudioReviewOpen] = useState(false);
   const [retentionHorizon, setRetentionHorizon] = useState<RetentionHorizon>(() =>
     loadRetentionHorizon(),
   );
@@ -544,6 +547,14 @@ export function Vocabulary({
     void downloadNotebookMarkdown();
   };
 
+  const audioReviewWords = useMemo(
+    () =>
+      (reviewWords.length > 0 ? reviewWords : all)
+        .filter((w) => Boolean(w.meaning?.trim()))
+        .slice(0, 15),
+    [reviewWords, all],
+  );
+
   // La sesión solo cuenta mientras hay ejercicios o fichas por resolver: en la
   // pantalla de cierre la barra de navegación ya debe estar disponible.
   const sessionKind =
@@ -670,6 +681,11 @@ export function Vocabulary({
               onPetCat={petHeroCat}
               startLearn={() => startLearn()}
               startAdaptiveFlow={() => startAdaptiveFlow()}
+              onStartAudioReview={
+                audioReviewWords.length > 0 && isSpeechAvailable()
+                  ? () => setAudioReviewOpen(true)
+                  : undefined
+              }
               onClose={onClose}
             >
               {/* Modos libres: un solo plegable, cerrado por defecto. El héroe
@@ -913,6 +929,12 @@ export function Vocabulary({
             );
             notifyVocabChange();
           }}
+        />
+      ) : null}
+      {audioReviewOpen && audioReviewWords.length > 0 ? (
+        <AudioReviewPlayer
+          words={audioReviewWords}
+          onClose={() => setAudioReviewOpen(false)}
         />
       ) : null}
     </div>

@@ -802,7 +802,7 @@ export default function Reader({
     recordToast,
     setRecordToast,
     ttsCapturedToast,
-    setTtsCapturedToast,
+    setTtsCapturedToast, ttsSessionCaptures, setTtsSessionCaptures,
     glossaryOpen,
     setGlossaryOpen,
     settingsTab,
@@ -2496,7 +2496,7 @@ export default function Reader({
     bookHash,
     ttsRef,
     onWordSaved,
-    setTtsCapturedToast,
+    setTtsCapturedToast, onWordCaptured: (f) => setTtsSessionCaptures((prev) => (prev.includes(f) ? prev : [...prev, f])),
   });
 
   const onWordRemoved = (word: SavedWord) => {
@@ -3588,7 +3588,7 @@ export default function Reader({
         />
 
         <ReaderFloatingBars
-          ttsCapturedToast={ttsCapturedToast}
+          ttsCapturedToast={ttsCapturedToast} ttsSessionCaptures={ttsSessionCaptures} ttsActive={ttsSnap.status !== "idle"} onOpenNotebook={onOpenNotebook} onDismissAudioSummary={() => setTtsSessionCaptures([])}
           activeBilingualParagraph={activeBilingualParagraph}
           bookHash={bookHash}
           language={language}

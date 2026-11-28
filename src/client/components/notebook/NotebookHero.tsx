@@ -39,6 +39,7 @@ type NotebookHeroProps = {
   onPetCat: () => void;
   startLearn: () => void;
   startAdaptiveFlow: () => void;
+  onStartAudioReview?: () => void;
   onClose: () => void;
   /** Modos libres (plegable), debajo del botón principal. */
   children?: ReactNode;
@@ -60,6 +61,7 @@ export function NotebookHero({
   onPetCat,
   startLearn,
   startAdaptiveFlow,
+  onStartAudioReview,
   onClose,
   children,
 }: NotebookHeroProps) {
@@ -261,6 +263,16 @@ export function NotebookHero({
                 <span>Seguir leyendo</span>
               </button>
             )}
+            {wordCount > 0 && onStartAudioReview ? (
+              <button
+                type="button"
+                className="btn nb-hero-btn-audio"
+                onClick={onStartAudioReview}
+              >
+                <Icon name="headphones" size={16} />
+                <span>Escuchar repasos</span>
+              </button>
+            ) : null}
           </div>
 
           {children}

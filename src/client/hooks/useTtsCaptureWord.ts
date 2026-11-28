@@ -15,10 +15,11 @@ type Deps = {
   ttsRef: RefObject<TtsController | null>;
   onWordSaved: (word: SavedWord) => void;
   setTtsCapturedToast: (value: string | null) => void;
+  onWordCaptured?: (form: string) => void;
 };
 
 export function useTtsCaptureWord(deps: Deps): () => Promise<void> {
-  const { language, bookHash, ttsRef, onWordSaved, setTtsCapturedToast } = deps;
+  const { language, bookHash, ttsRef, onWordSaved, setTtsCapturedToast, onWordCaptured } = deps;
 
   return useCallback(async () => {
     const ctl = ttsRef.current;
@@ -53,10 +54,11 @@ export function useTtsCaptureWord(deps: Deps): () => Promise<void> {
         scope,
       );
       onWordSaved(savedWord);
+      onWordCaptured?.(keyWord.form);
       setTtsCapturedToast(keyWord.form);
       setTimeout(() => setTtsCapturedToast(null), 2500);
     } catch {
       // fallback silencioso
     }
-  }, [language, bookHash, ttsRef, onWordSaved, setTtsCapturedToast]);
+  }, [language, bookHash, ttsRef, onWordSaved, setTtsCapturedToast, onWordCaptured]);
 }

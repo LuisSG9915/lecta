@@ -109,8 +109,9 @@ export async function speakWord(
     utterance.onend = settle;
     utterance.onerror = settle;
 
-    // Red de seguridad por si onend se pierde en plataformas móviles
-    setTimeout(settle, 4_000);
+    // Red de seguridad adaptativa por si onend se pierde en plataformas móviles
+    const safetyTimeoutMs = Math.max(4_000, Math.min(18_000, trimmed.length * 120));
+    setTimeout(settle, safetyTimeoutMs);
 
     try {
       synth.speak(utterance);

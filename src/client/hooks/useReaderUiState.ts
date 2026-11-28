@@ -16,6 +16,8 @@ export type UseReaderUiStateResult = {
   setRecordToast: (v: string | null) => void;
   ttsCapturedToast: string | null;
   setTtsCapturedToast: (v: string | null) => void;
+  ttsSessionCaptures: string[];
+  setTtsSessionCaptures: (v: string[] | ((prev: string[]) => string[])) => void;
   glossaryOpen: boolean;
   setGlossaryOpen: (v: boolean) => void;
   settingsTab: "appearance" | "book" | "strategy";
@@ -31,6 +33,7 @@ export function useReaderUiState(): UseReaderUiStateResult {
   const [showLongPressHint, setShowLongPressHint] = useState(false);
   const [recordToast, setRecordToast] = useState<string | null>(null);
   const [ttsCapturedToast, setTtsCapturedToast] = useState<string | null>(null);
+  const [ttsSessionCaptures, setTtsSessionCaptures] = useState<string[]>([]);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"appearance" | "book" | "strategy">("appearance");
   const [activeBilingualParagraph, setActiveBilingualParagraph] = useState<{
@@ -51,6 +54,8 @@ export function useReaderUiState(): UseReaderUiStateResult {
     setRecordToast,
     ttsCapturedToast,
     setTtsCapturedToast,
+    ttsSessionCaptures,
+    setTtsSessionCaptures,
     glossaryOpen,
     setGlossaryOpen,
     settingsTab,

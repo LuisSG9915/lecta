@@ -2438,4 +2438,49 @@ describe("E13 — Postal de palabra en su frase desde el Herbario", () => {
     expect(modal.textContent).toContain("Postal de palabra");
     expect(modal.textContent).toContain("Significado");
   });
+
+  it("M3: botón «Escuchar repasos» abre AudioReviewPlayer y cierra limpiamente", async () => {
+    const prevSynth = (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+    const prevUtter = (window as unknown as { SpeechSynthesisUtterance?: unknown }).SpeechSynthesisUtterance;
+    const cancelMock = vi.fn();
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        speak: vi.fn(),
+        cancel: cancelMock,
+        getVoices: () => [{ lang: "en-US", name: "Mock" }],
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: function MockUtterance(this: { text?: string }, text: string) {
+        this.text = text;
+      },
+    });
+
+    try {
+      listWordsMock.mockResolvedValue([
+        word({ form: "lantern", meaning: "farol", language: "en", card: undefined }),
+      ]);
+      await render();
+
+      const audioBtn = button("Escuchar repasos");
+      expect(audioBtn).toBeTruthy();
+      await act(async () => audioBtn!.click());
+
+      const dialog = document.body.querySelector('[role="dialog"][aria-label="Repaso en audio"]');
+      expect(dialog).toBeTruthy();
+      expect(dialog?.textContent).toContain("lantern");
+
+      const closeBtn = dialog?.querySelector<HTMLButtonElement>('[aria-label="Cerrar repaso en audio"]');
+      await act(async () => closeBtn?.click());
+      expect(document.body.querySelector('[role="dialog"][aria-label="Repaso en audio"]')).toBeNull();
+      expect(cancelMock).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, "speechSynthesis", { configurable: true, value: prevSynth });
+      Object.defineProperty(window, "SpeechSynthesisUtterance", { configurable: true, value: prevUtter });
+    }
+  });
 });
