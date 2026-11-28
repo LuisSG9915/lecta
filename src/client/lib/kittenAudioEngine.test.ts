@@ -382,4 +382,102 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
       ).rejects.toThrow("TTS neural engine failed to initialize");
     });
   });
+
+  describe("GainNode y fade-out nocturno (E16)", () => {
+    it("enruta play() por GainNode hacia destination y aplica rampa lineal con setFadeGain / resetGain", () => {
+      const gainNode = {
+        gain: {
+          value: 1,
+          cancelScheduledValues: vi.fn(),
+          setValueAtTime: vi.fn(),
+          linearRampToValueAtTime: vi.fn(),
+        },
+        connect: vi.fn(),
+      };
+      const sourceNode = {
+        buffer: null as AudioBuffer | null,
+        playbackRate: { value: 1 },
+        connect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+        disconnect: vi.fn(),
+        onended: null as (() => void) | null,
+      };
+      const fakeCtx = {
+        state: "running",
+        currentTime: 12.5,
+        destination: { id: "dest" },
+        resume: vi.fn().mockResolvedValue(undefined),
+        createGain: vi.fn(() => gainNode),
+        createBufferSource: vi.fn(() => sourceNode),
+      } as unknown as AudioContext;
+
+      vi.stubGlobal(
+        "AudioContext",
+        class {
+          constructor() {
+            return fakeCtx;
+          }
+        },
+      );
+
+      const engine = new KittenTtsEngine();
+      const buf = { duration: 1.5 } as AudioBuffer;
+      engine.play(buf, 1.0);
+
+      expect(fakeCtx.createGain).toHaveBeenCalledTimes(1);
+      expect(gainNode.connect).toHaveBeenCalledWith(fakeCtx.destination);
+      expect(sourceNode.connect).toHaveBeenCalledWith(gainNode);
+
+      engine.setFadeGain(0, 10);
+      expect(gainNode.gain.cancelScheduledValues).toHaveBeenCalledWith(12.5);
+      expect(gainNode.gain.setValueAtTime).toHaveBeenCalledWith(1, 12.5);
+      expect(gainNode.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0, 22.5);
+
+      engine.resetGain();
+      expect(gainNode.gain.setValueAtTime).toHaveBeenLastCalledWith(1, 12.5);
+      expect(gainNode.gain.value).toBe(1);
+
+      engine.stop();
+      engine.resetAudioContextForTesting();
+      vi.unstubAllGlobals();
+    });
+
+    it("hace fallback directo a ctx.destination si el mock de AudioContext no define createGain", () => {
+      const sourceNode = {
+        buffer: null as AudioBuffer | null,
+        playbackRate: { value: 1 },
+        connect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+        disconnect: vi.fn(),
+        onended: null as (() => void) | null,
+      };
+      const fakeCtx = {
+        state: "running",
+        currentTime: 0,
+        destination: { id: "dest" },
+        resume: vi.fn().mockResolvedValue(undefined),
+        createBufferSource: vi.fn(() => sourceNode),
+      } as unknown as AudioContext;
+
+      vi.stubGlobal(
+        "AudioContext",
+        class {
+          constructor() {
+            return fakeCtx;
+          }
+        },
+      );
+
+      const engine = new KittenTtsEngine();
+      engine.play({ duration: 1.0 } as AudioBuffer, 1.0);
+      expect(sourceNode.connect).toHaveBeenCalledWith(fakeCtx.destination);
+      expect(() => engine.setFadeGain(0, 10)).not.toThrow();
+
+      engine.stop();
+      engine.resetAudioContextForTesting();
+      vi.unstubAllGlobals();
+    });
+  });
 });

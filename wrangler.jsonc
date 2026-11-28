@@ -47,7 +47,8 @@
 			"!/libros/*",
 			"!/tts/*",
 			"!/inicio/web/*",
-			"!/inicio/fonts/*"
+			"!/inicio/fonts/*",
+			"!/nivel/nivel.js"
 		]
 	},
 	// Freno del acceso (src/worker/auth-rate-limit.ts): 10 POST por minuto e IP

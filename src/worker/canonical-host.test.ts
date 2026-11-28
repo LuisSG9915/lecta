@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CANONICAL_ORIGIN, isProbePath, isWorkerRoute, legacyHostRedirect } from "./canonical-host";
 import handler from "./index";
@@ -10,7 +12,7 @@ const OLD = "https://lecta.luis-sg9915.workers.dev";
 
 describe("legacyHostRedirect", () => {
   it("manda páginas del host viejo a lectal.app con 301, conservando ruta y query", () => {
-    for (const path of ["/", "/inicio/", "/inicio", "/k", "/index.html", "/reader/libro?x=1"]) {
+    for (const path of ["/", "/inicio/", "/inicio", "/nivel", "/nivel/", "/nivel.html", "/k", "/index.html", "/reader/libro?x=1"]) {
       const res = legacyHostRedirect(new Request(`${OLD}${path}`));
       expect(res?.status).toBe(301);
       expect(res?.headers.get("location")).toBe(`${CANONICAL_ORIGIN}${path}`);
@@ -18,7 +20,7 @@ describe("legacyHostRedirect", () => {
   });
 
   it("no toca la API, archivos con extensión, el shell del SW ni los POST", () => {
-    for (const path of ["/api/health", "/api/billing/webhook", "/sw.js", "/sw-manifest.json", "/assets/index-ABC.js", "/__lecta_shell__"]) {
+    for (const path of ["/api/health", "/api/billing/webhook", "/nivel/nivel.js", "/sw.js", "/sw-manifest.json", "/assets/index-ABC.js", "/__lecta_shell__"]) {
       expect(legacyHostRedirect(new Request(`${OLD}${path}`))).toBeNull();
     }
     expect(legacyHostRedirect(new Request(`${OLD}/`, { method: "POST" }))).toBeNull();
@@ -39,6 +41,9 @@ describe("isWorkerRoute", () => {
     expect(isWorkerRoute("/")).toBe(false);
     expect(isWorkerRoute("/kitten")).toBe(false);
     expect(isWorkerRoute("/inicio/")).toBe(false);
+    expect(isWorkerRoute("/nivel")).toBe(false);
+    expect(isWorkerRoute("/nivel/")).toBe(false);
+    expect(isWorkerRoute("/nivel.html")).toBe(false);
   });
 });
 
@@ -82,9 +87,11 @@ describe("fetch del Worker", () => {
 
   it("las páginas de lectal.app van al binding de assets", async () => {
     const assets = { fetch: vi.fn(async () => new Response("html", { status: 200 })) };
-    const res = await call("https://lectal.app/inicio/", { ASSETS: assets } as unknown as WorkerEnv);
-    expect(res.status).toBe(200);
-    expect(assets.fetch).toHaveBeenCalledTimes(1);
+    for (const page of ["/inicio/", "/nivel", "/nivel/"]) {
+      const res = await call(`https://lectal.app${page}`, { ASSETS: assets } as unknown as WorkerEnv);
+      expect(res.status).toBe(200);
+    }
+    expect(assets.fetch).toHaveBeenCalledTimes(3);
   });
 
   it("la API sigue en Hono, también en el host viejo", async () => {
@@ -94,5 +101,21 @@ describe("fetch del Worker", () => {
     expect(res.status).not.toBe(301);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(assets.fetch).not.toHaveBeenCalled();
+  });
+
+  it("publica /nivel estático sin scripts inline, con enlace canónico y enlace desde /inicio/", () => {
+    const nivelHtml = fs.readFileSync(path.resolve(process.cwd(), "marketing/landing/nivel.html"), "utf8");
+    const nivelJs = fs.readFileSync(path.resolve(process.cwd(), "marketing/landing/nivel.js"), "utf8");
+    const landingHtml = fs.readFileSync(path.resolve(process.cwd(), "marketing/landing/index.html"), "utf8");
+
+    expect(nivelHtml).toContain('<link rel="canonical" href="https://lectal.app/nivel/">');
+    expect(nivelHtml).toContain('<script src="/nivel/nivel.js" defer></script>');
+    expect(nivelHtml).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/i);
+    expect(nivelHtml).toContain("/?probar=alice-wonderland&src=nivel");
+    expect(nivelHtml).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|\uFE0F/u);
+
+    expect(nivelJs).toContain("/api/catalog/");
+    expect(nivelJs).toContain("/?probar=");
+    expect(landingHtml).toContain('href="/nivel/"');
   });
 });

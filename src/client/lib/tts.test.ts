@@ -1341,6 +1341,54 @@ describe("ttsController", () => {
     expect(ctl.snapshot().status).toBe("idle");
   });
 
+  it("dispara fade-out de 10 s una sola vez al faltar <= 10 s y restaura ganancia al cancelar o reanudar (E16)", async () => {
+    consent();
+    const { deps } = makeDeps([section("<p>Párrafo uno. Párrafo dos.</p>")]);
+    const fakeKitten = {
+      unlockAudioContext: vi.fn(),
+      isSupported: vi.fn(() => false),
+      getModelProgress: vi.fn(() => ({ status: "idle", percent: 0 })),
+      isReady: vi.fn(() => false),
+      setFadeGain: vi.fn(),
+      resetGain: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      isPlaying: vi.fn(() => false),
+      setKeepAlive: vi.fn(),
+    } as unknown as KittenTtsEngine;
+    deps.kittenEngine = fakeKitten;
+
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0, { sleepTimerMs: 30_000 });
+    await flush();
+    expect(ctl.snapshot().status).toBe("speaking");
+    expect(fakeKitten.resetGain).toHaveBeenCalledTimes(1);
+
+    // Con 11 s restantes aún no dispara el fade
+    vi.advanceTimersByTime(19_000);
+    expect(fakeKitten.setFadeGain).not.toHaveBeenCalled();
+
+    // Al llegar a 10 s restantes dispara setFadeGain(0, 10) una sola vez
+    vi.advanceTimersByTime(1_000);
+    expect(fakeKitten.setFadeGain).toHaveBeenCalledTimes(1);
+    expect(fakeKitten.setFadeGain).toHaveBeenCalledWith(0, 10);
+
+    // Avanzar más tiempo no vuelve a disparar fade duplicado
+    vi.advanceTimersByTime(5_000);
+    expect(fakeKitten.setFadeGain).toHaveBeenCalledTimes(1);
+
+    // Al cancelar el timer restaura la ganancia a 1
+    ctl.setSleepTimer?.(null);
+    expect(fakeKitten.resetGain).toHaveBeenCalledTimes(2);
+
+    // Al pausar y reanudar con un timer nuevo restaura ganancia
+    ctl.setSleepTimer?.(25_000);
+    ctl.pause("user");
+    ctl.resume();
+    expect(fakeKitten.resetGain).toHaveBeenCalledTimes(4);
+  });
+
   it("avanza y retrocede de frase con nextSentence y prevSentence", async () => {
     consent();
     const { deps, speakers } = makeDeps([section("<p>Primera. Segunda. Tercera.</p>")]);

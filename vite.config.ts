@@ -232,6 +232,12 @@ function landingPage(): Plugin {
         recursive: true,
         filter: (src) => !src.endsWith(".json"),
       });
+
+      const nivelTo = resolve(process.cwd(), "dist/client/nivel");
+      mkdirSync(nivelTo, { recursive: true });
+      cpSync(join(from, "nivel.html"), join(nivelTo, "index.html"));
+      cpSync(join(from, "nivel.html"), resolve(process.cwd(), "dist/client/nivel.html"));
+      cpSync(join(from, "nivel.js"), join(nivelTo, "nivel.js"));
     },
   };
 }
@@ -276,8 +282,9 @@ function swManifest(): Plugin {
           // Las voces de Kitten (/tts/) son una descarga opcional con la voz neural
           // (3,2 MB): precachearlas se las bajaría a quien nunca la activó.
           if (path.indexOf("/tts/") === 0) continue;
-          // La landing (/inicio/) no es parte de la app: no se precachea.
+          // La landing (/inicio/) y el escáner público (/nivel/) no son parte de la app: no se precachean.
           if (path.indexOf("/inicio/") === 0) continue;
+          if (path.indexOf("/nivel/") === 0 || path === "/nivel.html") continue;
           assets.push(path);
         }
       };

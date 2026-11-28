@@ -313,6 +313,7 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     // Capturar joya léxica al Cuaderno
     const captureBtn = container.querySelector(".dock-audio-capture-btn") as HTMLButtonElement;
     expect(captureBtn).not.toBeNull();
+    expect(captureBtn.getAttribute("aria-label")).toBe("Guardar palabra difícil de esta frase");
     act(() => captureBtn.click());
     expect(onCaptureWord).toHaveBeenCalledTimes(1);
     expect(captureBtn.textContent).toContain("Guardada");

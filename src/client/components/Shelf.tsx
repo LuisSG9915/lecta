@@ -67,6 +67,9 @@ import type { NotificationPayload } from "../lib/companionNotification";
 import { useCompanion } from "./CompanionProvider";
 const CoatChoice = lazy(() => import("./CoatChoice"));
 const Sheet = lazy(() => import("./Sheet"));
+const ArticleImportSheet = lazy(() => import("./ArticleImportSheet"));
+import type { ArticleImportMeta } from "./ArticleImportSheet";
+import { hasLectaPlus } from "../../shared/plan";
 import { needsCoatChoice, useUserPlan } from "../lib/account-plan";
 import { loadTtsLandingPosition } from "../lib/tts-landing";
 import { loadTtsSettings } from "../lib/ttsSettings";
@@ -79,7 +82,7 @@ import { SUBTITLE_ZONE_ENABLED } from "../lib/screen-zone";
 // marca los que aún tienen una subida encolada.
 export type ShelfItem = Pick<
   StoredBook,
-  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind" | "imdbId"
+  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind" | "imdbId" | "localOnly"
 > & {
   remoteOnly?: boolean;
   pendingUpload?: boolean;
@@ -165,6 +168,9 @@ export type ShelfProps = {
   // evidencia recién guardada sin remontar la estantería.
   vocabVersion?: number;
   onRequestCalibration?: () => void;
+  onImportArticle?: (file: File, meta: ArticleImportMeta) => void;
+  initialArticleUrl?: string | null;
+  onClearInitialArticleUrl?: () => void;
 };
 
 export type Props = ShelfProps;
@@ -268,6 +274,10 @@ export default function Shelf({
   onOpenJourney,
   onOpenPractice,
   onRequestCalibration,
+  onImportArticle,
+  initialArticleUrl = null,
+  onClearInitialArticleUrl,
+  user,
 }: ShelfProps) {
   const library = (books as ShelfItem[]) ?? rawLibrary;
   const handleLibraryChange = onBooksChange ?? onLibraryChange;
@@ -292,6 +302,12 @@ export default function Shelf({
     setShareGenre(book?.genre ?? "");
   };
   const [dragging, setDragging] = useState(false);
+  const [articleSheetOpen, setArticleSheetOpen] = useState(false);
+  const showArticleSheet = articleSheetOpen || Boolean(initialArticleUrl);
+  const closeArticleSheet = () => {
+    setArticleSheetOpen(false);
+    onClearInitialArticleUrl?.();
+  };
   const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
@@ -1086,6 +1102,17 @@ export default function Shelf({
               <span className="add-slot-mark" aria-hidden="true" />
               <span>Arrastra un archivo EPUB o pulsa para elegirlo</span>
             </button>
+            {onImportArticle ? (
+              <button
+                type="button"
+                className="add-slot add-slot--wide"
+                style={{ marginTop: "var(--s-2)" }}
+                onClick={() => setArticleSheetOpen(true)}
+              >
+                <Icon name="book" size={16} />
+                <span>Leer artículo por enlace</span>
+              </button>
+            ) : null}
           </div>
         </section>
       ) : (
@@ -1689,6 +1716,18 @@ export default function Shelf({
                   Añadir libro
                 </button>
               </li>
+              {onImportArticle ? (
+                <li>
+                  <button
+                    type="button"
+                    className="add-slot"
+                    onClick={() => setArticleSheetOpen(true)}
+                  >
+                    <Icon name="book" size={16} />
+                    <span>Leer artículo por enlace</span>
+                  </button>
+                </li>
+              ) : null}
             </ul>
           </section>
 
@@ -1788,7 +1827,7 @@ export default function Shelf({
                   </div>
                 ) : null}
 
-                {onShareBook && !optionsBook.paperOnly ? (
+                {onShareBook && !optionsBook.paperOnly && !optionsBook.localOnly ? (
                   <div className="shelf-options-section">
                     {!optionsBook.shared ? (
                       <>
@@ -2021,6 +2060,18 @@ export default function Shelf({
                 </div>
               ) : undefined
             }
+          />
+        </Suspense>
+      ) : null}
+
+      {showArticleSheet && onImportArticle ? (
+        <Suspense fallback={null}>
+          <ArticleImportSheet
+            initialUrl={initialArticleUrl}
+            isPlus={hasLectaPlus(userPlan?.plan)}
+            planLoading={Boolean(user || dbUserId) && userPlan === null}
+            onImported={onImportArticle}
+            onClose={closeArticleSheet}
           />
         </Suspense>
       ) : null}

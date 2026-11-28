@@ -18,7 +18,7 @@ import { isSyncPaused } from "./sync-state";
 export async function queueBookUpload(hash: string, name?: string, scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   const book = await getStoredBook(hash, bound);
-  if (!book || !book.data || book.data.size === 0) {
+  if (!book || book.localOnly || !book.data || book.data.size === 0) {
     return;
   }
   return enqueueBookOp({ kind: "upload", hash, name }, bound);
@@ -28,7 +28,7 @@ export async function queueBookUpload(hash: string, name?: string, scope?: DbSco
 export async function queueBookMeta(hash: string, name?: string, scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   const book = await getStoredBook(hash, bound);
-  if (!book) return;
+  if (!book || book.localOnly) return;
   return enqueueBookOp({ kind: "meta", hash, name }, bound);
 }
 

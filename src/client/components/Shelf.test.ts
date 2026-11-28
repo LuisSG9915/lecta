@@ -886,4 +886,83 @@ describe("Shelf - Continuar escuchando", () => {
       spy.mockRestore();
     }
   });
+
+  it("permite abrir la importación por enlace y oculta compartir en artículos localOnly (E18)", async () => {
+    const onImportArticle = vi.fn();
+    const onShareBook = vi.fn();
+
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [
+            {
+              hash: "h-article-1",
+              name: "ensayo.epub",
+              title: "Ensayo importado",
+              addedAt: Date.now(),
+              sectionCount: 1,
+              localOnly: true,
+            },
+          ],
+          vocabCount: 0,
+          dueReviewsCount: 0,
+          onSelect: vi.fn(),
+          onImportArticle,
+          onShareBook,
+        }),
+      );
+    });
+
+    // Botón de opciones del libro localOnly no ofrece "Compartir a la comunidad"
+    const optsBtn = host.querySelector<HTMLButtonElement>('[title="Opciones del libro"]');
+    expect(optsBtn).toBeTruthy();
+    await act(async () => optsBtn!.click());
+    expect(document.body.textContent).not.toContain("Compartir a la comunidad");
+    const closeOpts = document.body.querySelector<HTMLButtonElement>('[aria-label="Cerrar opciones"]');
+    await act(async () => closeOpts?.click());
+
+    // Al pulsar "Leer artículo por enlace" carga lazy ArticleImportSheet
+    const articleBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Leer artículo por enlace"),
+    );
+    expect(articleBtn).toBeTruthy();
+    await act(async () => articleBtn!.click());
+    for (let i = 0; i < 15; i += 1) {
+      if (document.body.querySelector('[role="dialog"][aria-label="Leer artículo por enlace"]')) break;
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 15));
+      });
+    }
+    const dialog = document.body.querySelector('[role="dialog"][aria-label="Leer artículo por enlace"]');
+    expect(dialog).toBeTruthy();
+  });
+
+  it("muestra «Leer artículo por enlace» también con la estantería vacía (E18)", async () => {
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [],
+          vocabCount: 0,
+          dueReviewsCount: 0,
+          onSelect: vi.fn(),
+          onImportArticle: vi.fn(),
+        }),
+      );
+    });
+
+    const articleBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Leer artículo por enlace"),
+    );
+    expect(articleBtn).toBeTruthy();
+    await act(async () => articleBtn!.click());
+    for (let i = 0; i < 15; i += 1) {
+      if (document.body.querySelector('[role="dialog"][aria-label="Leer artículo por enlace"]')) break;
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 15));
+      });
+    }
+    expect(
+      document.body.querySelector('[role="dialog"][aria-label="Leer artículo por enlace"]'),
+    ).toBeTruthy();
+  });
 });

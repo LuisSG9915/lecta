@@ -50,6 +50,8 @@ const MAX_STALL_RETRIES = 1;
 // margen; si el render nunca llega la sesión termina con «error» en
 // vez de quedar esperando eternamente.
 const SECTION_NAV_TIMEOUT_MS = 8_000;
+const SLEEP_FADE_MS = 10_000;
+const SLEEP_FADE_SEC = 10;
 
 export type TtsEmitDraft = Record<string, unknown> & { kind: string };
 
@@ -161,6 +163,8 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   let destroyed = false;
   let speakGen = 0;
   let sleepTimerDeadline = 0;
+  let sleepFadeTimer = 0;
+  let sleepFadeTriggered = false;
   // Evita repetir la nota de degradación neural→sistema en cada oración.
   let neuralFallbackNotified = false;
   // «Fin de capítulo»: vive aquí (no en finish) y sobrevive al cruce de capítulo.
@@ -271,6 +275,43 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   };
 
   const sessionMs = () => (startedAt ? Date.now() - startedAt : 0);
+
+  const clearSleepFadeTimer = () => {
+    if (sleepFadeTimer) {
+      window.clearTimeout(sleepFadeTimer);
+      sleepFadeTimer = 0;
+    }
+  };
+
+  const resetSleepFade = () => {
+    clearSleepFadeTimer();
+    sleepFadeTriggered = false;
+    (deps.kittenEngine ?? kittenTtsEngine).resetGain?.();
+  };
+
+  const triggerSleepFade = () => {
+    if (sleepFadeTriggered || sleepTimerDeadline <= 0 || snap.status !== "speaking") return;
+    const remainingMs = sleepTimerDeadline - Date.now();
+    if (remainingMs > SLEEP_FADE_MS) return;
+    sleepFadeTriggered = true;
+    clearSleepFadeTimer();
+    const durationSec = Math.max(0.5, Math.min(SLEEP_FADE_SEC, remainingMs / 1000));
+    (deps.kittenEngine ?? kittenTtsEngine).setFadeGain?.(0, durationSec);
+  };
+
+  const scheduleSleepFade = () => {
+    clearSleepFadeTimer();
+    if (sleepTimerDeadline <= 0 || sleepFadeTriggered || snap.status !== "speaking") return;
+    const remainingMs = sleepTimerDeadline - Date.now();
+    if (remainingMs <= SLEEP_FADE_MS) {
+      triggerSleepFade();
+      return;
+    }
+    sleepFadeTimer = window.setTimeout(() => {
+      sleepFadeTimer = 0;
+      triggerSleepFade();
+    }, Math.max(0, remainingMs - SLEEP_FADE_MS));
+  };
 
   const stopHeartbeat = () => {
     if (heartbeat) {
@@ -551,6 +592,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       return !nextBlock || currBlock !== nextBlock;
     };
 
+    if (sleepTimerDeadline > 0 && !sleepFadeTriggered && sleepTimerDeadline - Date.now() <= SLEEP_FADE_MS) {
+      triggerSleepFade();
+    }
+
     if (sleepTimerDeadline > 0 && Date.now() >= sleepTimerDeadline && isEndOfParagraph()) {
       finish("sleep_timer");
       return;
@@ -609,6 +654,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   // Deja todo en idle: cancela voz, limpia marcas, emite el cierre y
   // publica el snapshot. Idempotente — stop durante stopping no repite.
   const finish = (reason: TtsEndReason) => {
+    resetSleepFade();
     sleepTimerDeadline = 0;
     sleepAtChapterEnd = false;
     syncKeepAlive(false);
@@ -661,6 +707,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         /* sin motor real: el gate de soportado ya lo cubrió */
       }
       ctx = nextCtx;
+      resetSleepFade();
       sleepTimerDeadline = options?.sleepTimerMs && options.sleepTimerMs > 0 ? Date.now() + options.sleepTimerMs : 0;
       startedAt = Date.now();
       sentenceCount = 0;
@@ -706,6 +753,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         cursor = Math.min(Math.max(0, resolved), items.length - 1);
         speaker = makeSpeaker();
         publish({ status: "speaking" });
+        scheduleSleepFade();
         deps.noteActivity();
         armHeartbeat();
         speakCurrent();
@@ -726,6 +774,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       } else {
         speaker?.pause();
       }
+      clearSleepFadeTimer();
       stopHeartbeat();
       // Último latido: el resto <30 s desde el anterior no se pierde.
       if (startedAt) deps.noteActivity();
@@ -745,8 +794,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     resume() {
       if (snap.status !== "paused") return;
       (deps.kittenEngine ?? kittenTtsEngine).unlockAudioContext?.();
+      resetSleepFade();
       resumedCount += 1;
       publish({ status: "speaking", pauseReason: null });
+      scheduleSleepFade();
       deps.emit({
         kind: "tts_resumed",
         sessionId: snap.sessionId,
@@ -938,6 +989,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     },
 
     setSleepTimer(opt: number | { chapterEnd: true } | null) {
+      resetSleepFade();
       if (opt !== null && typeof opt === "object") {
         sleepTimerDeadline = 0;
         sleepAtChapterEnd = true;
@@ -949,6 +1001,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         sleepTimerEndsAt: sleepTimerDeadline || null,
         sleepAtChapterEnd,
       });
+      if (sleepTimerDeadline > 0 && snap.status === "speaking") {
+        scheduleSleepFade();
+      }
     },
 
     setAutoAdvanceChapter(value: boolean) {

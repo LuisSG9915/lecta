@@ -5425,6 +5425,11 @@ b.lecta-anchor {
   font-weight: 600;
 }
 
+.dock-audio-capture-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .dock-audio-capture-btn.is-captured {
   background: color-mix(in srgb, var(--warning) 25%, transparent);
   color: var(--warning);

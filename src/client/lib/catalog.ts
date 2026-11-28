@@ -6,7 +6,7 @@ import {
 } from "./idb";
 import type { LexiconEntry } from "./lexicon";
 import { getLanguageTheta } from "./profile-models";
-import { COVERAGE_FLUID_MIN, COVERAGE_IDEAL_MIN } from "./coverage";
+import { coverageIsReliable, COVERAGE_FLUID_MIN, COVERAGE_IDEAL_MIN, type BookCoverage } from "./coverage";
 
 // Catálogo público de Lecta: clásicos de dominio público servidos por
 // el worker desde R2 (`/api/catalog*` en src/worker/catalog.ts). Las
@@ -429,5 +429,118 @@ export function getBookAffinityBadge(
     label: "Ideal para tu ritmo",
     description: "Fluidez natural con nuevas palabras a tu medida",
   };
+}
+
+export const SHORT_STORY_MAX_WORDS = 5500;
+
+export function isShortStory(book: Pick<CatalogBook, "wordCount">): boolean {
+  return (
+    typeof book.wordCount === "number" &&
+    Number.isFinite(book.wordCount) &&
+    book.wordCount > 0 &&
+    book.wordCount <= SHORT_STORY_MAX_WORDS
+  );
+}
+
+export type EnglishLadderTier = "start" | "fluent" | "unfiltered";
+
+export const ENGLISH_LADDER_TIERS = [
+  { id: "start", label: "Para soltarse" },
+  { id: "fluent", label: "Lectura fluida" },
+  { id: "unfiltered", label: "Literatura sin filtros" },
+] as const;
+
+/**
+ * Clasifica un libro en uno de los 3 peldaños de la escalera de inglés
+ * usando primero cobertura medida confiable y, si aún falta, dificultad/extensión.
+ */
+export function englishLadderTier(
+  book: Pick<CatalogBook, "difficulty" | "wordCount">,
+  coverage?: Pick<BookCoverage, "percent" | "measuredShare"> | null,
+): EnglishLadderTier {
+  if (coverage && coverageIsReliable(coverage)) {
+    if (coverage.percent >= COVERAGE_FLUID_MIN) return "start";
+    if (coverage.percent >= COVERAGE_IDEAL_MIN) return "fluent";
+    return "unfiltered";
+  }
+
+  let diffValue: number | null = null;
+  if (typeof book.difficulty === "number" && Number.isFinite(book.difficulty)) {
+    diffValue = book.difficulty;
+  } else if (typeof book.difficulty === "string" && book.difficulty.trim()) {
+    const raw = book.difficulty.trim();
+    const upper = raw.toUpperCase();
+    if (upper === "A1" || upper === "A2") diffValue = -1.0;
+    else if (upper === "B1" || upper === "B2") diffValue = 0.2;
+    else if (upper === "C1" || upper === "C2") diffValue = 1.6;
+    else if (/f[aá]cil|easy|principiante|b[aá]sico/i.test(raw)) diffValue = -1.0;
+    else if (/intermedio|medium/i.test(raw)) diffValue = 0.2;
+    else if (/dif[ií]cil|hard|avanzado|elevado/i.test(raw)) diffValue = 1.6;
+    else {
+      const parsed = parseFloat(raw);
+      if (Number.isFinite(parsed)) diffValue = parsed;
+    }
+  }
+
+  if (diffValue !== null) {
+    if (diffValue <= -0.3) return "start";
+    if (diffValue <= 1.0) return "fluent";
+    return "unfiltered";
+  }
+
+  if (typeof book.wordCount === "number" && book.wordCount > 0) {
+    if (book.wordCount <= 25_000) return "start";
+    if (book.wordCount <= 75_000) return "fluent";
+  }
+  return "unfiltered";
+}
+
+export function readingFitLabel(
+  coverageRatio: number | null | undefined,
+): string | null {
+  if (
+    typeof coverageRatio !== "number" ||
+    !Number.isFinite(coverageRatio) ||
+    coverageRatio <= 0
+  ) {
+    return null;
+  }
+  const pct = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(coverageRatio <= 1 ? coverageRatio * 100 : coverageRatio),
+    ),
+  );
+  if (pct >= COVERAGE_FLUID_MIN) {
+    return `Entiendes ~${pct} % · Ideal para leer fluido`;
+  }
+  if (pct >= COVERAGE_IDEAL_MIN) {
+    return `Entiendes ~${pct} % · Buen reto con ayudas`;
+  }
+  return `Entiendes ~${pct} % · Lectura exigente`;
+}
+
+export function formatCoverageScannerSummary(
+  coverage:
+    | Pick<BookCoverage, "percent" | "measuredShare" | "newWordsCount">
+    | null
+    | undefined,
+  wordCount?: number,
+): string | null {
+  if (!coverage || !coverageIsReliable(coverage)) return null;
+  const fit = readingFitLabel(coverage.percent / 100);
+  if (!fit) return null;
+  if (typeof coverage.newWordsCount === "number" && coverage.newWordsCount > 0) {
+    if (typeof wordCount === "number" && wordCount > 3500) {
+      const ch1New = Math.max(
+        1,
+        Math.round(coverage.newWordsCount * Math.min(1, 2500 / wordCount)),
+      );
+      return `${fit} · ~${ch1New} palabras nuevas en el cap. 1`;
+    }
+    return `${fit} · ~${coverage.newWordsCount} palabras nuevas`;
+  }
+  return fit;
 }
 

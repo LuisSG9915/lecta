@@ -108,6 +108,7 @@ import type {
 } from "./lib/subtitle-works";
 import type { SubtitleGuide } from "./components/SubtitleShelf";
 import { findDeepLinkItem, parseOpenBookParam } from "./lib/deep-link";
+import { extractSharedArticleUrl } from "./lib/share-target";
 import { shouldShowTrialEnd } from "./lib/trial-notice";
 import type { PositionConflict } from "./lib/positions-sync";
 import {
@@ -138,6 +139,7 @@ type BookSelection = BookFileSelection & {
 
 const LOCAL_ONLY_NOTICE_KEY = "lecta:local-only-notice:v1";
 const RESUME_TRIAL_BOOK_KEY = "lecta:resume-trial-book";
+const RESUME_ARTICLE_URL_KEY = "lecta:resume-article-url";
 /** true si aún no se mostró (sin storage no se muestra). */
 function localOnlyNoticePending(): boolean {
   try {
@@ -178,11 +180,28 @@ export default function App() {
     const probar = params.get("probar");
     // ?abrir=<sha256>: enlace directo a un libro (correo de regreso).
     const abrir = params.get("abrir");
+    // PWA share_target (?url= o ?text= con enlace HTTPS). Se guarda en
+    // sessionStorage para sobrevivir al magic link si el usuario no había iniciado sesión.
+    let sharedArticleUrl = extractSharedArticleUrl(params.get("url"), params.get("text"));
+    const fromShareUrl = sharedArticleUrl !== null;
+    if (sharedArticleUrl) {
+      try {
+        sessionStorage.setItem(RESUME_ARTICLE_URL_KEY, sharedArticleUrl);
+      } catch {
+        // ignore storage errors
+      }
+    } else {
+      try {
+        sharedArticleUrl = sessionStorage.getItem(RESUME_ARTICLE_URL_KEY);
+      } catch {
+        // ignore storage errors
+      }
+    }
     if (gato) rememberStarterCoat(gato);
     rememberLandingSource(src);
     if (
       token || urlError || deleted || gato !== null || src !== null || carneRaw || probar !== null ||
-      abrir !== null
+      abrir !== null || fromShareUrl
     ) {
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -193,8 +212,12 @@ export default function App() {
       carne,
       trial: parseTrialBook(probar),
       openHash: parseOpenBookParam(abrir),
+      sharedArticleUrl,
     };
   });
+  const [sharedArticleUrl, setSharedArticleUrl] = useState<string | null>(
+    authLink.sharedArticleUrl,
+  );
   const [book, setBook] = useState<BookSelection | null>(null);
   // «Probar con un clásico» (lib/trial.ts): loading → reading → ended.
   // Mientras no esté `ended`, la falta de sesión no manda a Welcome.
@@ -828,6 +851,7 @@ export default function App() {
         paperOnly: book.paperOnly || remoteByHash.get(book.hash)?.paperOnly || undefined,
         mediaKind: book.mediaKind,
         imdbId: book.imdbId,
+        localOnly: book.localOnly || undefined,
         shared: remoteByHash.get(book.hash)?.shared || undefined,
         // El género de la fila remota manda: es la elección real al
         // compartir; el detectado local del EPUB solo rellena huecos.
@@ -1260,7 +1284,7 @@ export default function App() {
       // subida falla queda «Pendiente de subir» y se reintenta solo.
       // Guarda estricta: jamás encolar libros con data vacía o de 0 bytes.
       for (const storedBook of localBooks) {
-        if (!remoteHashes.has(storedBook.hash)) {
+        if (!storedBook.localOnly && !remoteHashes.has(storedBook.hash)) {
           if (storedBook.data && storedBook.data.size > 0) {
             // Free: solo metadatos; Lecta+: también el archivo (027).
             await bookQueueMod.queueBookSync(
@@ -1473,7 +1497,13 @@ export default function App() {
 
   const selectBook = async (
     file: File,
-    metaOverride?: { language?: string; catalog?: boolean },
+    metaOverride?: {
+      language?: string;
+      catalog?: boolean;
+      title?: string;
+      author?: string;
+      localOnly?: boolean;
+    },
   ) => {
     setError("");
     setMessage("Comprobando el archivo…");
@@ -1493,14 +1523,15 @@ export default function App() {
       const { extractEpubMeta } = await import("../shared/epub-meta");
       const quickMeta = await extractEpubMeta(fileBytes).catch(() => null);
       const initialMeta = {
-        title: quickMeta?.title,
-        author: quickMeta?.author,
+        title: metaOverride?.title ?? quickMeta?.title,
+        author: metaOverride?.author ?? quickMeta?.author,
         // El catálogo conoce el idioma (RDF oficial): manda sobre el
         // metadato del EPUB para los libros de «Obtener».
         language: metaOverride?.language ?? quickMeta?.language,
         sectionCount: quickMeta?.sections,
         genre: genreFromSubjects(quickMeta?.subjects ?? []) || undefined,
         metaVersion: quickMeta ? 1 : undefined,
+        localOnly: metaOverride?.localOnly || undefined,
       };
       openBook({ hash, name: file.name, file }, initialMeta);
       void saveBook(
@@ -1536,6 +1567,7 @@ export default function App() {
           if (
             sessionUserId &&
             !metaOverride?.catalog &&
+            !metaOverride?.localOnly &&
             planStore.get() &&
             !hasLectaPlus(planStore.get()?.plan) &&
             localOnlyNoticePending()
@@ -1558,7 +1590,7 @@ export default function App() {
         });
       // La subida pasa por la cola persistente: sin conexión queda
       // encolada y la tarjeta se marca «Pendiente de subir».
-      if (sessionUserId) {
+      if (sessionUserId && !metaOverride?.localOnly) {
         // Free: solo metadatos (el libro aparece en otro dispositivo y ahí
         // se adjunta); Lecta+: también el archivo a R2. Los EPUB del
         // catálogo nunca suben: llevan la marca Project Gutenberg y la
@@ -2231,13 +2263,14 @@ export default function App() {
 
   const removeBook = async (hash: string) => {
     const scope = captureDbScope();
+    const removed = library.find((item) => item.hash === hash);
     // Optimista: la tarjeta sale de la vista ya — el refresco de abajo no
     // la regresa porque la op de borrado encolada la filtra de la nube.
     setLibrary((prev) => prev.filter((item) => item.hash !== hash));
     await deleteStoredBook(hash, scope).catch(() => undefined);
     // El borrado remoto también pasa por la cola: un 404 o un corte de
     // red no pierden la operación, se reintenta al volver la conexión.
-    if (sessionUserId) {
+    if (sessionUserId && !removed?.localOnly) {
       // El encolado se espera antes de refrescar: así la op ya está en
       // bookOps cuando refreshLibrary la lee y el libro no reaparece
       // como «En la nube» mientras el DELETE corre en segundo plano.
@@ -2600,6 +2633,16 @@ export default function App() {
                     onStartCalibration={handleOpenCalibration}
                     onRemove={removeBook}
                     onAdd={(file) => void selectBook(file)}
+                    onImportArticle={(file, meta) => void selectBook(file, meta)}
+                    initialArticleUrl={sharedArticleUrl}
+                    onClearInitialArticleUrl={() => {
+                      setSharedArticleUrl(null);
+                      try {
+                        sessionStorage.removeItem(RESUME_ARTICLE_URL_KEY);
+                      } catch {
+                        // ignore storage errors
+                      }
+                    }}
                     onLibraryChange={() => void refreshLibrary()}
                     onBooksChange={() => void refreshLibrary()}
                     onGetCatalogBook={getCatalogBook}

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { queueBookDelete, queueBookUpload, runBookQueue } from "./book-queue";
-import { queueBookSync } from "./book-queue";
+import { queueBookDelete, queueBookMeta, queueBookSync, queueBookUpload, runBookQueue } from "./book-queue";
 import * as idbModule from "./idb";
 import * as booksApi from "./books";
 import * as coverModule from "./cover";
@@ -48,6 +47,27 @@ describe("book-queue guards and processor", () => {
         { kind: "upload", hash: "b-valid", name: "valid.epub" },
         expect.anything(),
       );
+    });
+
+    it("jamás encola libros localOnly (artículos importados en dispositivo)", async () => {
+      const enqueueMock = vi.spyOn(idbModule, "enqueueBookOp").mockResolvedValue({
+        id: "op-local",
+        kind: "upload",
+        hash: "b-local",
+        createdAt: 1000,
+      });
+      vi.spyOn(idbModule, "getStoredBook").mockResolvedValue({
+        hash: "b-local",
+        name: "articulo.epub",
+        addedAt: 1000,
+        localOnly: true,
+        data: new Blob(["epub-content"]),
+      });
+
+      await queueBookUpload("b-local", "articulo.epub");
+      await queueBookMeta("b-local", "articulo.epub");
+      await queueBookSync("b-local", "articulo.epub", true);
+      expect(enqueueMock).not.toHaveBeenCalled();
     });
 
     it("queueBookDelete encola la operación de borrado", async () => {

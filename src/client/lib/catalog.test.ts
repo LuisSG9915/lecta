@@ -5,13 +5,17 @@ import {
   CatalogAuthError,
   downloadCatalogEpub,
   describeCatalogBook,
+  englishLadderTier,
   entriesByFormOf,
+  formatCoverageScannerSummary,
   getBookAffinityBadge,
   getBookMoodTags,
   isCatalogIndex,
+  isShortStory,
   isVocabManifest,
   listCatalog,
   manifestBookForms,
+  readingFitLabel,
   type BookVocabManifest,
   type CatalogIndex,
 } from "./catalog";
@@ -283,6 +287,64 @@ describe("getBookAffinityBadge (Fase 1)", () => {
     expect(getBookAffinityBadge("es", "ideal").tone).toBe("ideal");
     expect(getBookAffinityBadge("es", "relaxed").tone).toBe("relaxed");
     expect(getBookAffinityBadge("es", "supported").tone).toBe("supported");
+  });
+});
+
+describe("E15: Relatos de 10 min, escalera de inglés y Escáner de Cobertura", () => {
+  it("isShortStory identifica únicamente libros con 0 < wordCount <= 5500", () => {
+    expect(isShortStory({ wordCount: 5500 })).toBe(true);
+    expect(isShortStory({ wordCount: 1200 })).toBe(true);
+    expect(isShortStory({ wordCount: 5501 })).toBe(false);
+    expect(isShortStory({ wordCount: 0 })).toBe(false);
+    expect(isShortStory({ wordCount: undefined })).toBe(false);
+  });
+
+  it("englishLadderTier clasifica por cobertura confiable primero y luego por dificultad/extensión", () => {
+    expect(
+      englishLadderTier(
+        { difficulty: "C1", wordCount: 90_000 },
+        { percent: 95, measuredShare: 0.9 },
+      ),
+    ).toBe("start");
+    expect(
+      englishLadderTier(
+        { difficulty: "A1", wordCount: 10_000 },
+        { percent: 88, measuredShare: 0.85 },
+      ),
+    ).toBe("fluent");
+    expect(
+      englishLadderTier(
+        { difficulty: "A1", wordCount: 10_000 },
+        { percent: 72, measuredShare: 0.8 },
+      ),
+    ).toBe("unfiltered");
+    // Cobertura no confiable cae al fallback
+    expect(
+      englishLadderTier(
+        { difficulty: "A2", wordCount: 20_000 },
+        { percent: 40, measuredShare: 0.2 },
+      ),
+    ).toBe("start");
+    expect(englishLadderTier({ difficulty: "B1", wordCount: 40_000 })).toBe("fluent");
+    expect(englishLadderTier({ wordCount: 120_000 })).toBe("unfiltered");
+  });
+
+  it("readingFitLabel y formatCoverageScannerSummary omiten datos no confiables y formatean estimados", () => {
+    expect(readingFitLabel(undefined)).toBeNull();
+    expect(readingFitLabel(0)).toBeNull();
+    expect(readingFitLabel(0.95)).toBe("Entiendes ~95 % · Ideal para leer fluido");
+    expect(readingFitLabel(0.88)).toBe("Entiendes ~88 % · Buen reto con ayudas");
+    expect(readingFitLabel(0.72)).toBe("Entiendes ~72 % · Lectura exigente");
+
+    expect(
+      formatCoverageScannerSummary({ percent: 90, measuredShare: 0.3, newWordsCount: 50 }),
+    ).toBeNull();
+    expect(
+      formatCoverageScannerSummary(
+        { percent: 93, measuredShare: 0.9, newWordsCount: 120 },
+        25_000,
+      ),
+    ).toBe("Entiendes ~93 % · Buen reto con ayudas · ~12 palabras nuevas en el cap. 1");
   });
 });
 

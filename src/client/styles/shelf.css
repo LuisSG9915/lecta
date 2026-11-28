@@ -1544,6 +1544,10 @@
   display: none;
 }
 
+.discover-english-ladder {
+  margin-block-end: var(--s-3);
+}
+
 .discover-filter-pill {
   border: 1px solid var(--rule, rgba(120, 95, 70, 0.18));
   background: var(--paper-raised);

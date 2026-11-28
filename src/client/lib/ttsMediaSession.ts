@@ -14,6 +14,8 @@ export type MediaHandlers = {
   stop: () => void;
 };
 
+// Controles de transporte estándar para pantalla bloqueada; la captura léxica
+// táctil vive en el botón ≥44×44 px (.dock-audio-capture-btn) de SmartReaderDock.
 const ACTIONS = [
   "play",
   "pause",

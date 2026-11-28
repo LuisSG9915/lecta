@@ -1056,8 +1056,8 @@ export default function SmartReaderDock({
                   className={`dock-audio-pill-btn dock-pill-btn dock-audio-capture-btn ${wordCapturedToast ? "is-captured" : ""}`}
                   onClick={handleCapture}
                   disabled={ttsSnap.status === "preparing"}
-                  aria-label="Capturar joya léxica de la frase al Cuaderno"
-                  title="Guardar palabra clave de la frase"
+                  aria-label="Guardar palabra difícil de esta frase"
+                  title="Guardar palabra difícil de esta frase"
                 >
                   <span aria-hidden="true">
                     <Icon name={wordCapturedToast ? "check" : "star"} size={14} />

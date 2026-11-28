@@ -26,6 +26,7 @@ import { admin } from "./admin";
 import { handleKindleLinkPage, handleKindleStatus, handleKindleLinkAction, handleKindlePrimingAction, requireKindlePlan, handleKindlePrefsApiGet, handleKindlePrefsApiPut, kindleRoutes, kindleHtmlCspFor } from "./kindle/routes";
 import { aiRoutes } from "./ai-routes";
 import { books } from "./books";
+import { articleExtract } from "./article-extract";
 
 export { clearExplainPassageCache, type ExplainInPassageResponse } from "./ai-routes";
 
@@ -119,6 +120,7 @@ app.route("/", reengage);
 app.route("/", studyPlan);
 app.route("/", fluencyForecast);
 app.route("/", coach);
+app.route("/", articleExtract);
 // Formularios del portal Kindle (login, ajustes, vocabulario, subrayados):
 // unos pocos cientos de bytes. `/k/login` es público, así que se corta
 // en la puerta antes de que parseBody() materialice el cuerpo.

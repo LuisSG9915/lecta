@@ -4,13 +4,18 @@ import {
   catalogCoverUrl,
   catalogVocab,
   describeCatalogBook,
+  ENGLISH_LADDER_TIERS,
+  englishLadderTier,
   entriesByFormOf,
   formatBookLength,
+  formatCoverageScannerSummary,
   getBookAffinityBadge,
   getBookMoodTags,
+  isShortStory,
   listCatalog,
   manifestBookForms,
   type CatalogBook,
+  type EnglishLadderTier,
 } from "../lib/catalog";
 import { normalizeSearchText } from "../lib/search-text";
 import { getLanguageTheta } from "../lib/profile-models";
@@ -76,8 +81,8 @@ type CoverageSource = {
 
 export const DISCOVER_MOOD_FILTERS = [
   "Todos",
+  "Lecturas de 10 min",
   "Cuentos y teatro",
-  "Ideal para sesiones de 10 min",
   "Poesía y Modernismo",
   "Vocabulario Elevado",
 ];
@@ -115,6 +120,7 @@ export default function DiscoverRail({
   const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<string>("Todos");
   const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+  const [englishTier, setEnglishTier] = useState<EnglishLadderTier | "all">("all");
   const [paceFilter, setPaceFilter] = useState<PaceFilter>("all");
   const [previewBook, setPreviewBook] = useState<CatalogBook | null>(null);
   const [previewExamples, setPreviewExamples] = useState<string[]>([]);
@@ -181,7 +187,10 @@ export default function DiscoverRail({
     const q = normalizeSearchText(effectiveQuery);
     return books.filter(
       (b) =>
-        (activeFilter === "Todos" || getBookMoodTags(b).includes(activeFilter)) &&
+        (activeFilter === "Todos" ||
+          (activeFilter === "Lecturas de 10 min"
+            ? isShortStory(b)
+            : getBookMoodTags(b).includes(activeFilter))) &&
         (!languageFilter || coverageLanguageOf(b.language) === languageFilter) &&
         (!q ||
           normalizeSearchText(b.title).includes(q) ||
@@ -371,9 +380,12 @@ export default function DiscoverRail({
       ordered.filter(
         (book) =>
           baseFilteredIds.has(book.id) &&
-          (paceFilter === "all" || affinityTone(book) === paceFilter),
+          (paceFilter === "all" || affinityTone(book) === paceFilter) &&
+          (languageFilter !== "en" ||
+            englishTier === "all" ||
+            englishLadderTier(book, coverages.get(book.id)) === englishTier),
       ),
-    [ordered, baseFilteredIds, paceFilter, affinityTone],
+    [ordered, baseFilteredIds, paceFilter, affinityTone, languageFilter, englishTier, coverages],
   );
   const visible = expanded ? filtered : filtered.slice(0, DISCOVER_RAIL_LIMIT);
 
@@ -456,6 +468,10 @@ export default function DiscoverRail({
   };
 
   const previewView = previewBook ? viewOf(previewBook) : null;
+  const previewScannerSummary =
+    previewBook && previewView?.coverage && coverageIsReliable(previewView.coverage)
+      ? formatCoverageScannerSummary(previewView.coverage, previewBook.wordCount)
+      : null;
 
   // Abre la vista previa calculando los ejemplos del Cuaderno en el
   // handler: los refs ya están llenos cuando el lector toca la tarjeta.
@@ -480,6 +496,19 @@ export default function DiscoverRail({
               {filter}
             </button>
           ))}
+          {catalogLanguages.includes("en") ? (
+            <button
+              type="button"
+              className={`discover-filter-pill${languageFilter === "en" ? " discover-filter-pill--active" : ""}`}
+              onClick={() => {
+                setLanguageFilter(languageFilter === "en" ? null : "en");
+                setEnglishTier("all");
+              }}
+              aria-pressed={languageFilter === "en"}
+            >
+              Escalera en inglés
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -514,7 +543,10 @@ export default function DiscoverRail({
                 type="button"
                 className={`discover-filter-pill${languageFilter === null ? " discover-filter-pill--active" : ""}`}
                 aria-pressed={languageFilter === null}
-                onClick={() => setLanguageFilter(null)}
+                onClick={() => {
+                  setLanguageFilter(null);
+                  setEnglishTier("all");
+                }}
               >
                 Todos
               </button>
@@ -524,7 +556,10 @@ export default function DiscoverRail({
                   type="button"
                   className={`discover-filter-pill${languageFilter === lang ? " discover-filter-pill--active" : ""}`}
                   aria-pressed={languageFilter === lang}
-                  onClick={() => setLanguageFilter(lang)}
+                  onClick={() => {
+                    setLanguageFilter(lang);
+                    setEnglishTier("all");
+                  }}
                 >
                   {lang.toUpperCase()}
                 </button>
@@ -551,6 +586,34 @@ export default function DiscoverRail({
           </div>
         </div>
       </details>
+
+      {languageFilter === "en" ? (
+        <div
+          className="discover-filters discover-english-ladder"
+          role="group"
+          aria-label="Escalera de inglés"
+        >
+          <button
+            type="button"
+            className={`discover-filter-pill${englishTier === "all" ? " discover-filter-pill--active" : ""}`}
+            aria-pressed={englishTier === "all"}
+            onClick={() => setEnglishTier("all")}
+          >
+            Todos los niveles
+          </button>
+          {ENGLISH_LADDER_TIERS.map((tier) => (
+            <button
+              key={tier.id}
+              type="button"
+              className={`discover-filter-pill${englishTier === tier.id ? " discover-filter-pill--active" : ""}`}
+              aria-pressed={englishTier === tier.id}
+              onClick={() => setEnglishTier(tier.id)}
+            >
+              {tier.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="discover-toolbar">
         {controlledQuery === undefined ? (
@@ -760,8 +823,8 @@ export default function DiscoverRail({
               {previewView.coverage ? (
                 coverageIsReliable(previewView.coverage) ? (
                   <p className="meta discover-preview-coverage">
-                    ~{previewView.coverage.percent}% del vocabulario ya lo
-                    conoces
+                    {previewScannerSummary ??
+                      `~${previewView.coverage.percent}% del vocabulario ya lo conoces`}
                   </p>
                 ) : (
                   <p className="meta discover-preview-coverage">
@@ -773,6 +836,7 @@ export default function DiscoverRail({
               previewView.coverage.newWordsCount > 0 ? (
                 <p className="meta discover-new-words">
                   +{previewView.coverage.newWordsCount} palabras útiles
+                  {previewScannerSummary ? " en todo el libro" : ""}
                 </p>
               ) : null}
               {previewView.coverage?.reencuentrosCount != null &&

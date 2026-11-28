@@ -624,5 +624,132 @@ describe("DiscoverRail", () => {
     expect(onOpen).toHaveBeenCalledWith(owned);
     expect(host.querySelector(".sheet")).toBeNull();
   });
+
+  it("filtra relatos de 10 min por wordCount <= 5500 (E15)", async () => {
+    const books = [
+      book("relato-1", { title: "Relato Breve", wordCount: 2400 }),
+      book("relato-2", { title: "Novela Larga", wordCount: 85_000 }),
+      book("relato-sin-conteo", { title: "Sin Conteo" }),
+    ];
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const pills = [...host.querySelectorAll<HTMLButtonElement>(".discover-filter-pill")];
+    expect(pills.some((b) => b.textContent === "Ideal para sesiones de 10 min")).toBe(false);
+    const pill = pills.find((b) => b.textContent === "Lecturas de 10 min");
+    expect(pill).toBeTruthy();
+
+    await act(async () => pill!.click());
+    expect(titles()).toEqual(["Relato Breve"]);
+  });
+
+  it("despliega la escalera de inglés (3 peldaños) al filtrar por EN (E15)", async () => {
+    const books = [
+      book("es-1", { title: "Libro ES", language: "es", wordCount: 30_000 }),
+      book("en-easy", { title: "Short Story", language: "en", difficulty: "A2", wordCount: 15_000 }),
+      book("en-mid", { title: "Fluent Novel", language: "en", difficulty: "B1", wordCount: 45_000 }),
+      book("en-hard", { title: "Classic Tome", language: "en", difficulty: "C1", wordCount: 120_000 }),
+    ];
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    // La escalera no aparece hasta elegir EN
+    expect(host.querySelector('[aria-label="Escalera de inglés"]')).toBeNull();
+
+    const langGroup = host.querySelector<HTMLElement>('[aria-label="Filtrar por idioma"]')!;
+    const enPill = [...langGroup.querySelectorAll("button")].find((b) => b.textContent === "EN")!;
+    await act(async () => enPill.click());
+
+    const ladder = host.querySelector<HTMLElement>('[aria-label="Escalera de inglés"]');
+    expect(ladder).toBeTruthy();
+    expect(ladder?.textContent).toContain("Para soltarse");
+    expect(ladder?.textContent).toContain("Lectura fluida");
+    expect(ladder?.textContent).toContain("Literatura sin filtros");
+    expect(titles()).toEqual(["Short Story", "Fluent Novel", "Classic Tome"]);
+
+    const startBtn = [...ladder!.querySelectorAll("button")].find(
+      (b) => b.textContent === "Para soltarse",
+    )!;
+    await act(async () => startBtn.click());
+    expect(titles()).toEqual(["Short Story"]);
+
+    const hardBtn = [...ladder!.querySelectorAll("button")].find(
+      (b) => b.textContent === "Literatura sin filtros",
+    )!;
+    await act(async () => hardBtn.click());
+    expect(titles()).toEqual(["Classic Tome"]);
+
+    // El acceso directo «Escalera en inglés» permite alternar EN sin abrir «Más filtros»
+    const shortcut = [...host.querySelectorAll<HTMLButtonElement>(".discover-filter-pill")].find(
+      (b) => b.textContent === "Escalera en inglés",
+    );
+    expect(shortcut?.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => shortcut!.click());
+    expect(host.querySelector('[aria-label="Escalera de inglés"]')).toBeNull();
+    await act(async () => shortcut!.click());
+    expect(host.querySelector('[aria-label="Escalera de inglés"]')).toBeTruthy();
+  });
+
+  it("muestra el escáner de cobertura en vista previa manteniendo 1 sola píldora por tarjeta en riel (E15)", async () => {
+    const books = [
+      book("medido", {
+        title: "Libro Medido",
+        language: "es",
+        wordCount: 25_000,
+      }),
+    ];
+    const vocabs = {
+      medido: vocab([
+        ["casa", 6],
+        ["perenne", 2.1],
+        ["arcano", 1.8],
+      ]),
+    };
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async (id: string) => vocabs[id as keyof typeof vocabs] ?? null,
+          loadInputs: async () => INPUTS,
+        }),
+      );
+    });
+
+    // Regla del riel: exactamente una .book-affinity-pill por tarjeta
+    const card = host.querySelector(".discover-book");
+    expect(card?.querySelectorAll(".book-affinity-pill").length).toBe(1);
+
+    await act(async () => host.querySelector<HTMLButtonElement>(".discover-title--action")!.click());
+    const coverageEl = host.querySelector(".sheet .discover-preview-coverage");
+    expect(coverageEl).toBeTruthy();
+    expect(coverageEl?.textContent).toContain("Entiendes ~");
+    expect(coverageEl?.textContent).toContain("palabras nuevas");
+  });
 });
 

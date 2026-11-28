@@ -173,6 +173,7 @@ export function sanitizeAudioSamples(
 export class KittenTtsEngine {
   private worker: Worker | null = null;
   private audioCtx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
   // Watchdog de la fuente en curso: tiene que morir con ella. Si sobrevive a un
   // `stopCurrentSource()` (la fuente nueva reemplaza a la vieja sin pasar por su
@@ -301,10 +302,12 @@ export class KittenTtsEngine {
       void this.audioCtx.close().catch(() => {});
     }
     this.audioCtx = null;
+    this.masterGain = null;
   }
 
   public resetAudioContextForTesting(): void {
     this.audioCtx = null;
+    this.masterGain = null;
   }
 
   isSupported(): boolean {
@@ -629,12 +632,72 @@ export class KittenTtsEngine {
       if (AudioCtx) {
         try {
           this.audioCtx = new AudioCtx({ sampleRate: 24000 });
+          this.masterGain = null;
         } catch {
           this.audioCtx = null;
+          this.masterGain = null;
         }
       }
     }
     return this.audioCtx;
+  }
+
+  private getOutputNode(ctx: AudioContext): AudioNode {
+    if (this.masterGain) return this.masterGain;
+    if (typeof ctx.createGain === "function") {
+      try {
+        const gain = ctx.createGain();
+        gain.gain.value = 1;
+        gain.connect(ctx.destination);
+        this.masterGain = gain;
+        return gain;
+      } catch {
+        // fallback al destino directo en mocks incompletos
+      }
+    }
+    return ctx.destination;
+  }
+
+  /**
+   * Aplica una rampa lineal de volumen sobre `masterGain` (usado para el fade-out nocturno).
+   */
+  public setFadeGain(target: number, durationSec: number): void {
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+    this.getOutputNode(ctx);
+    if (!this.masterGain) return;
+    const safeTarget = Math.max(0, Math.min(1, target));
+    const safeDuration = Math.max(0, durationSec);
+    const now = ctx.currentTime ?? 0;
+    const param = this.masterGain.gain;
+    if (typeof param.cancelScheduledValues === "function") {
+      param.cancelScheduledValues(now);
+    }
+    if (typeof param.setValueAtTime === "function") {
+      param.setValueAtTime(param.value, now);
+    }
+    if (safeDuration > 0 && typeof param.linearRampToValueAtTime === "function") {
+      param.linearRampToValueAtTime(safeTarget, now + safeDuration);
+    } else {
+      param.value = safeTarget;
+    }
+  }
+
+  /**
+   * Restaura el volumen de salida a 1 al iniciar, reanudar o cancelar el temporizador.
+   */
+  public resetGain(): void {
+    const ctx = this.getAudioContext();
+    if (!ctx || !this.masterGain) return;
+    const now = ctx.currentTime ?? 0;
+    const param = this.masterGain.gain;
+    if (typeof param.cancelScheduledValues === "function") {
+      param.cancelScheduledValues(now);
+    }
+    if (typeof param.setValueAtTime === "function") {
+      param.setValueAtTime(1, now);
+    }
+    param.value = 1;
   }
 
   /**
@@ -1088,7 +1151,7 @@ export class KittenTtsEngine {
           // El modelo ONNX ya sintetizó a la velocidad speed manteniendo el pitch y formantes naturales.
           // playbackRate debe ser 1.0 para no remuestrear ni distorsionar la voz ("alien / ardilla").
           source.playbackRate.value = 1.0;
-          source.connect(ctx.destination);
+          source.connect(this.getOutputNode(ctx));
           this.currentSource = source;
 
           source.onended = onDone;
@@ -1209,7 +1272,7 @@ export class KittenTtsEngine {
       source.buffer = audioBuffer;
       // playbackRate = 1.0 preserva la frecuencia original de 24kHz sin distorsión de resampling
       source.playbackRate.value = 1.0;
-      source.connect(ctx.destination);
+      source.connect(this.getOutputNode(ctx));
 
       source.onended = onDone;
 
