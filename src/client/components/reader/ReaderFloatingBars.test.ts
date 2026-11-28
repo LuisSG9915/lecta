@@ -59,6 +59,8 @@ describe("ReaderFloatingBars — resumen post-audio (M3)", () => {
     });
 
     expect(host.textContent).toContain("Capturaste 2 palabras al escuchar: efímero, terso");
+    const toast = host.querySelector('[role="status"]');
+    expect(toast?.classList.contains("reader-hint-toast--interactive")).toBe(true);
     const openBtn = [...host.querySelectorAll("button")].find(
       (b) => b.textContent?.trim() === "Ver en Herbario",
     )!;

@@ -39,6 +39,13 @@ export const LANDING_EVENTS = new Set([
   "app:trial-end-cta",
   "app:trial-end-email",
   "app:recap-locked",
+  "nivel:view",
+  "nivel:epub",
+  "nivel:cta",
+  "app:share-postal",
+  "app:share-exlibris",
+  "app:article-share-target",
+  "app:audio-review",
 ]);
 
 /** Días de aviso de la prueba inversa (`app:trial-warning:<dia>`). */

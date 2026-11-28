@@ -3,14 +3,14 @@
 // también atraparía /api/books/community. El middleware entrega la sesión con
 // c.set("session") para que el handler no vuelva a consultar Better Auth.
 import { createMiddleware } from "hono/factory";
-import { dailyAiLimit, hasLectaPlus } from "../shared/plan";
+import { dailyAiLimit, hasLectaPlus, planSource, type PlanSource } from "../shared/plan";
 import type { WorkerEnv } from "./db";
 import { loadUserPlan } from "./plan-store";
 import { getSession } from "./session";
 
 export type Session = NonNullable<Awaited<ReturnType<typeof getSession>>>;
 /** `aiDailyLimit`: tope diario invisible de IA (F11); null en free. */
-export type PlanVariables = { session: Session; aiDailyLimit?: number | null };
+export type PlanVariables = { session: Session; aiDailyLimit?: number | null; planSource?: PlanSource };
 
 export type CourtesyVariables = PlanVariables & { lectaPlus: boolean };
 
@@ -41,6 +41,7 @@ export const requireLectaPlus = createMiddleware<{
   }
   c.set("session", session);
   c.set("aiDailyLimit", dailyAiLimit(snapshot.plan, snapshot.trialEndsAt));
+  c.set("planSource", planSource(snapshot.plan, snapshot.trialEndsAt));
   await next();
 });
 

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import Dialog from "./Dialog";
 import { captureDbScope } from "../lib/idb";
+import { trackPlanEvent } from "../lib/plan-events";
 import {
   ArticleImportError,
   buildArticleEpubFile,
@@ -51,6 +52,7 @@ export default function ArticleImportSheet({
         estimatedMinutes: estimateArticleReadingMinutes(article.paragraphs),
         localOnly: true,
       });
+      if (initialUrl) trackPlanEvent("app:article-share-target");
       onClose();
     } catch (err) {
       if (err instanceof ArticleImportError && err.code === "LECTA_PLUS_REQUIRED") {

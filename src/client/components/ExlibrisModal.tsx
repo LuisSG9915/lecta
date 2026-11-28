@@ -4,6 +4,7 @@ import Icon from "./Icon";
 import { useCompanionSafe } from "./CompanionProvider";
 import { resolveCoatId } from "../../shared/companion-data";
 import { triggerHaptic } from "../lib/haptics";
+import { trackPlanEvent } from "../lib/plan-events";
 import {
   buildExlibrisData,
   copyExlibrisToClipboard,
@@ -89,6 +90,7 @@ export default function ExlibrisModal({
       const blob = await generateExlibrisBlob(config);
       triggerHaptic("selection");
       const outcome = await shareExlibrisCard(blob, config);
+      trackPlanEvent("app:share-exlibris");
       if (outcome === "shared") setStatusMsg("Exlibris compartido.");
       else if (outcome === "copied") setStatusMsg("Copiado al portapapeles.");
       else setStatusMsg("Imagen descargada.");
@@ -112,6 +114,7 @@ export default function ExlibrisModal({
         downloadExlibrisCard(blob, data.title);
         setStatusMsg("Copia no soportada; imagen descargada.");
       }
+      trackPlanEvent("app:share-exlibris");
     } catch {
       setStatusMsg("No se pudo copiar.");
     } finally {
@@ -125,6 +128,7 @@ export default function ExlibrisModal({
       const blob = await generateExlibrisBlob(config);
       triggerHaptic("light");
       downloadExlibrisCard(blob, data.title);
+      trackPlanEvent("app:share-exlibris");
       setStatusMsg("Descargando Exlibris…");
     } catch {
       setStatusMsg("No se pudo descargar.");

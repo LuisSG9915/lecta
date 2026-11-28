@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { runInBackground } from "./background";
 import type { WorkerEnv } from "./db";
+import { recordLandingEvent, recordPlanEvent } from "./landing-events";
 import { requireLectaPlus, type PlanVariables } from "./plan-middleware";
 import { consumeRateUnits } from "./rate-limit";
 
@@ -406,6 +408,14 @@ export function createArticleExtractRouter(fetchImpl: typeof fetch = fetch) {
           422,
         );
       }
+      const source = c.get("planSource") ?? "plus";
+      runInBackground(
+        c,
+        Promise.all([
+          recordLandingEvent(c.env, { event: "app:article-import", source }).catch(() => false),
+          recordPlanEvent(c.env, session.user.id, "app:article-import").catch(() => false),
+        ]),
+      );
       return c.json(article, 200);
     } catch (err) {
       if (err instanceof ExtractHttpError) {

@@ -50,7 +50,7 @@ function ReaderFloatingBarsImpl(props: ReaderFloatingBarsProps) {
       <Icon name="star" size={14} /> Guardada en Herbario: <strong>{ttsCapturedToast}</strong>
     </div>
   ) : showAudioSummary ? (
-    <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
+    <div className="reader-hint-toast reader-hint-toast--captured reader-hint-toast--interactive" role="status" aria-live="polite">
       <Icon name="headphones" size={14} />{" "}
       <span>
         Capturaste {ttsSessionCaptures.length}{" "}

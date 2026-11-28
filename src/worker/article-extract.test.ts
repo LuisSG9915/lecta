@@ -11,6 +11,8 @@ import {
 const loadPlanMock = vi.fn();
 const getSessionMock = vi.fn();
 const consumeRateUnitsMock = vi.fn();
+const recordLandingEventMock = vi.fn();
+const recordPlanEventMock = vi.fn();
 
 vi.mock("./plan-store", () => ({
   loadUserPlan: (...args: unknown[]) => loadPlanMock(...args),
@@ -22,6 +24,11 @@ vi.mock("./session", () => ({
 
 vi.mock("./rate-limit", () => ({
   consumeRateUnits: (...args: unknown[]) => consumeRateUnitsMock(...args),
+}));
+
+vi.mock("./landing-events", () => ({
+  recordLandingEvent: (...args: unknown[]) => recordLandingEventMock(...args),
+  recordPlanEvent: (...args: unknown[]) => recordPlanEventMock(...args),
 }));
 
 const env = { DATABASE_URL: "postgres://local/test" } as unknown as WorkerEnv;
@@ -113,6 +120,8 @@ describe("POST /api/articles/extract", () => {
     getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
     loadPlanMock.mockResolvedValue({ plan: "lecta_plus", trialEndsAt: null });
     consumeRateUnitsMock.mockResolvedValue(true);
+    recordLandingEventMock.mockResolvedValue(true);
+    recordPlanEventMock.mockResolvedValue(true);
   });
 
   it("exige sesión (401) y plan Lecta+ (402 en cuenta free)", async () => {
@@ -284,7 +293,7 @@ describe("POST /api/articles/extract", () => {
     expect(json.title).toBe("Redirigido");
   });
 
-  it("devuelve 422 cuando el HTML no tiene párrafos legibles", async () => {
+  it("devuelve 422 cuando el HTML no tiene párrafos legibles y no registra telemetría", async () => {
     const app = mountApp(
       vi.fn(async () =>
         new Response("<html><body><nav><a href='/'>Inicio</a></nav></body></html>", {
@@ -295,5 +304,31 @@ describe("POST /api/articles/extract", () => {
     );
     const res = await postExtract(app, "https://example.com/empty");
     expect(res.status).toBe(422);
+    expect(recordLandingEventMock).not.toHaveBeenCalled();
+    expect(recordPlanEventMock).not.toHaveBeenCalled();
+  });
+
+  it("registra app:article-import sin PII al extraer con éxito", async () => {
+    loadPlanMock.mockResolvedValueOnce({
+      plan: "lecta_plus",
+      trialEndsAt: Date.now() + 5 * 86_400_000,
+    });
+    const html = `<html><head><title>Privado</title></head><body><article><p>Texto de prueba para telemetría sin URL ni título.</p></article></body></html>`;
+    const app = mountApp(
+      vi.fn(async () =>
+        new Response(html, {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      ) as unknown as typeof fetch,
+    );
+    const res = await postExtract(app, "https://secret.example.com/privado");
+    expect(res.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(recordLandingEventMock).toHaveBeenCalledWith(env, {
+      event: "app:article-import",
+      source: "trial",
+    });
+    expect(recordPlanEventMock).toHaveBeenCalledWith(env, "user-1", "app:article-import");
   });
 });

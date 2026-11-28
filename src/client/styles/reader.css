@@ -1350,6 +1350,14 @@ mark.saved-passage--dario {
   z-index: 35;
 }
 
+.reader-hint-toast--interactive {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
 .reader-status-toast {
   position: fixed;
   bottom: calc(6rem + env(safe-area-inset-bottom, 0px));

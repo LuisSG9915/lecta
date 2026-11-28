@@ -439,7 +439,7 @@
     }
 
     var rawTokens = chosenText.toLowerCase().match(/[a-zA-ZÀ-ÿ'’-]+/g) || [];
-    var sampleWordCounts = {};
+    var sampleWordCounts = Object.create(null);
     var sampleTotalTokens = 0;
     for (var t = 0; t < rawTokens.length; t += 1) {
       var clean = rawTokens[t].replace(/^['’-]+|['’-]+$/g, "");
@@ -605,6 +605,59 @@
 
   if (typeof document === "undefined") {
     return;
+  }
+
+  function resolveNivelSource() {
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        var kept = sessionStorage.getItem("lecta:nivel-src");
+        if (kept) return kept;
+      }
+    } catch {
+      /* sin almacenamiento */
+    }
+    var src = "";
+    try {
+      if (typeof location !== "undefined") {
+        src = new URLSearchParams(location.search).get("utm_source") || "";
+        if (!src && document.referrer) {
+          var host = new URL(document.referrer).hostname;
+          if (host !== location.hostname) src = host;
+        }
+      }
+    } catch {
+      /* referrer o URL ilegible */
+    }
+    src =
+      src
+        .trim()
+        .toLowerCase()
+        .replace(/^www\./, "")
+        .replace(/[^a-z0-9._-]/g, "")
+        .slice(0, 32) || "direct";
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.setItem("lecta:nivel-src", src);
+      }
+    } catch {
+      /* sin almacenamiento */
+    }
+    return src;
+  }
+
+  var nivelSource = resolveNivelSource();
+  function trackNivel(event) {
+    var body = JSON.stringify({ event: event, source: nivelSource });
+    try {
+      if (typeof navigator !== "undefined" && navigator.sendBeacon && navigator.sendBeacon("/api/landing-events", body)) {
+        return;
+      }
+      if (typeof fetch === "function") {
+        fetch("/api/landing-events", { method: "POST", body: body, keepalive: true }).catch(function () {});
+      }
+    } catch {
+      /* medir nunca rompe la página */
+    }
   }
 
   var level = "intermediate";
@@ -815,6 +868,7 @@
         }
       }
       customEpub = { sample: sample, entriesByForm: entriesByForm };
+      trackNivel("nivel:epub");
       syncPressed("[data-book]", "data-book", "");
       setEpubStatus("Listo: «" + sample.title + "» analizado localmente.", false);
       render();
@@ -878,6 +932,18 @@
     });
   }
 
+  if (ctaEl) {
+    ctaEl.addEventListener("click", function () {
+      trackNivel("nivel:cta");
+    });
+  }
+  if (headerOpenEl) {
+    headerOpenEl.addEventListener("click", function () {
+      trackNivel("nivel:cta");
+    });
+  }
+
+  trackNivel("nivel:view");
   render();
   fetchVocab(selectedId);
 })();

@@ -181,4 +181,37 @@ describe("M1 — /nivel escáner EPUB 100 % local", () => {
     expect(beg.words[0]?.gloss).toBeTruthy();
     expect(adv.words.map((w) => w.word)).toEqual(["recondite"]);
   });
+
+  it("extractEpubSample evita colisiones con Object.prototype (p. ej. constructor)", async () => {
+    const epub = buildZip([
+      {
+        name: "META-INF/container.xml",
+        content: `<?xml version="1.0"?><container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>`,
+      },
+      {
+        name: "content.opf",
+        content: `<package><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Builder</dc:title></metadata><manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>`,
+      },
+      {
+        name: "c1.xhtml",
+        content: `<html><body><p>The constructor met another constructor near the house river lantern.</p></body></html>`,
+      },
+    ]);
+
+    const sample = await helpers.extractEpubSample(epub);
+    expect(sample.sampleWordCounts.constructor).toBe(2);
+    const res = helpers.scoreCustomEpub(
+      sample,
+      {
+        constructor: [{ lemma: "constructor", pos: "sustantivo", zipf: 3.1, senses: [{ definition: "constructor" }] }],
+        house: [{ lemma: "house", pos: "sustantivo", zipf: 5.8, senses: [{ definition: "casa" }] }],
+        river: [{ lemma: "river", pos: "sustantivo", zipf: 4.8, senses: [{ definition: "río" }] }],
+        lantern: [{ lemma: "lantern", pos: "sustantivo", zipf: 4.0, senses: [{ definition: "farol" }] }],
+        another: [{ lemma: "another", pos: "det", zipf: 5.7, senses: [{ definition: "otro" }] }],
+        near: [{ lemma: "near", pos: "prep", zipf: 5.6, senses: [{ definition: "cerca" }] }],
+      },
+      "intermediate",
+    );
+    expect(Number.isFinite(res.percent)).toBe(true);
+  });
 });

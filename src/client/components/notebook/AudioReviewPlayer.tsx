@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import { trackPlanEvent } from "../../lib/plan-events";
 import {
   createAudioReviewRunner,
   type AudioReviewSnapshot,
@@ -40,6 +41,7 @@ export default function AudioReviewPlayer({ words, onClose }: AudioReviewPlayerP
       },
     });
     runnerRef.current = runner;
+    if (words.length > 0) trackPlanEvent("app:audio-review");
     void runner.start(0).catch(() => undefined);
     return () => {
       runner.stop();

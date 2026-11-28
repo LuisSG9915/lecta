@@ -11,6 +11,7 @@ import {
   type QuoteCardTheme,
 } from "../lib/quote-card";
 import { triggerHaptic } from "../lib/haptics";
+import { trackPlanEvent } from "../lib/plan-events";
 import { useCompanionSafe } from "./CompanionProvider";
 import { resolveCoatId } from "../../shared/companion-data";
 import Icon from "./Icon";
@@ -119,6 +120,7 @@ export default function QuoteCardModal({
       const blob = await generateQuoteCardBlob(config);
       triggerHaptic("selection");
       const outcome = await shareQuoteCard(blob, config);
+      trackPlanEvent("app:share-postal");
       if (outcome === "shared") {
         setStatusMsg("Compartido.");
       } else if (outcome === "copied") {
@@ -146,6 +148,7 @@ export default function QuoteCardModal({
         downloadQuoteCard(blob);
         setStatusMsg("Copia no soportada; imagen descargada.");
       }
+      trackPlanEvent("app:share-postal");
     } catch {
       setStatusMsg("No se pudo copiar.");
     } finally {
@@ -159,6 +162,7 @@ export default function QuoteCardModal({
       const blob = await generateQuoteCardBlob(config);
       triggerHaptic("light");
       downloadQuoteCard(blob);
+      trackPlanEvent("app:share-postal");
       setStatusMsg("Descargando imagen…");
     } catch {
       setStatusMsg("No se pudo descargar.");

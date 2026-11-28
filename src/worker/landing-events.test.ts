@@ -92,9 +92,34 @@ describe("eventos de plan (app:)", () => {
     expect(parseLandingEvent({ event: "app:trial-warning:7" })).toBeNull();
   });
 
-  it("checkout-start/complete no entran por el endpoint público", () => {
+  it("checkout-start/complete y article-import no entran por el endpoint público", () => {
     expect(parseLandingEvent({ event: "app:checkout-start:monthly" })).toBeNull();
     expect(parseLandingEvent({ event: "app:checkout-complete:yearly" })).toBeNull();
+    expect(parseLandingEvent({ event: "app:article-import", source: "plus" })).toBeNull();
+  });
+
+  it("acepta eventos M4 de /nivel con fuente normalizada y señales app:* solo con plan", () => {
+    expect(parseLandingEvent({ event: "nivel:view", source: "WWW.Reddit.com" })).toEqual({
+      event: "nivel:view",
+      source: "reddit.com",
+    });
+    expect(parseLandingEvent({ event: "nivel:epub", source: "bad source!" })).toEqual({
+      event: "nivel:epub",
+      source: "direct",
+    });
+    expect(parseLandingEvent({ event: "nivel:cta" })).toEqual({
+      event: "nivel:cta",
+      source: "direct",
+    });
+    for (const event of [
+      "app:share-postal",
+      "app:share-exlibris",
+      "app:article-share-target",
+      "app:audio-review",
+    ]) {
+      expect(parseLandingEvent({ event, source: "trial" })).toEqual({ event, source: "trial" });
+      expect(parseLandingEvent({ event, source: "reddit.com" })).toEqual({ event, source: "unknown" });
+    }
   });
 });
 
