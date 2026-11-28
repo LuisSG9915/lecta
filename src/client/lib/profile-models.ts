@@ -544,3 +544,46 @@ export function recordChapterCompleted(lang = "es"): UserLanguageProfile {
   saveUserLanguageProfile(updated);
   return updated;
 }
+
+const INITIAL_LEVEL_THETA_MAP: Record<string, number> = {
+  beginner: -0.5,
+  principiante: -0.5,
+  intermediate: 0.35,
+  intermedio: 0.35,
+  advanced: 1.15,
+  avanzado: 1.15,
+};
+
+/**
+ * Siembra una estimación inicial suave desde `?nivel=` (p. ej. desde `/nivel`)
+ * sin pisar perfiles que ya tienen calibración o progreso previo.
+ */
+export function seedInitialLevelFromParam(
+  rawLevel: string | null | undefined,
+  lang = "en",
+): boolean {
+  if (!rawLevel) return false;
+  const key = rawLevel.trim().toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(INITIAL_LEVEL_THETA_MAP, key)) return false;
+  const seededTheta = INITIAL_LEVEL_THETA_MAP[key]!;
+  const normLang = lang.slice(0, 2).toLowerCase() || "en";
+  const profile = loadUserLanguageProfile();
+  const prevChapters = profile.chaptersCompletedByLang[normLang] ?? 0;
+  const prevUncertainty = profile.uncertaintyByLang[normLang] ?? 1.0;
+  const prevTheta = profile.thetaByLang[normLang] ?? 0;
+  if (prevChapters > 0 || prevUncertainty < 0.85 || prevTheta !== 0) {
+    return false;
+  }
+  saveUserLanguageProfile({
+    ...profile,
+    thetaByLang: {
+      ...profile.thetaByLang,
+      [normLang]: seededTheta,
+    },
+    uncertaintyByLang: {
+      ...profile.uncertaintyByLang,
+      [normLang]: 0.85,
+    },
+  });
+  return true;
+}

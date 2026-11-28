@@ -16,6 +16,7 @@ import {
   fsrsRetrievability,
   estimateWordKnowProbability,
   updateThetaForLanguageSignal,
+  seedInitialLevelFromParam,
   type MultilingualThetaProfile,
   DEFAULT_THETA_L1,
   DEFAULT_THETA_L2,
@@ -221,6 +222,63 @@ describe("Modelo Psicométrico Rasch 1PL y theta por idioma (Track 6)", () => {
         "passive_frontier",
       );
       expect(afterPassiveFar.thetaByLang.es).toBe(0.0);
+    });
+  });
+
+  describe("seedInitialLevelFromParam (M1 /nivel → lector)", () => {
+    it("siembra beginner/intermediate/advanced y aliases ES cuando el perfil está virgen", () => {
+      window.localStorage.clear();
+      expect(seedInitialLevelFromParam("beginner", "en")).toBe(true);
+      let prof = loadUserLanguageProfile();
+      expect(prof.thetaByLang.en).toBe(-0.5);
+      expect(prof.uncertaintyByLang.en).toBe(0.85);
+
+      window.localStorage.clear();
+      expect(seedInitialLevelFromParam("Intermedio", "en")).toBe(true);
+      prof = loadUserLanguageProfile();
+      expect(prof.thetaByLang.en).toBe(0.35);
+
+      window.localStorage.clear();
+      expect(seedInitialLevelFromParam("advanced", "en")).toBe(true);
+      prof = loadUserLanguageProfile();
+      expect(prof.thetaByLang.en).toBe(1.15);
+
+      window.localStorage.clear();
+      expect(seedInitialLevelFromParam("Avanzado", "en")).toBe(true);
+      expect(loadUserLanguageProfile().thetaByLang.en).toBe(1.15);
+    });
+
+    it("no sobrescribe perfiles con calibración, theta o capítulos previos", () => {
+      window.localStorage.clear();
+      saveUserLanguageProfile({
+        ...DEFAULT_USER_LANGUAGE_PROFILE,
+        thetaByLang: { es: 0, en: 0.9 },
+        uncertaintyByLang: { es: 1.0, en: 0.85 },
+      });
+      expect(seedInitialLevelFromParam("beginner", "en")).toBe(false);
+      expect(loadUserLanguageProfile().thetaByLang.en).toBe(0.9);
+
+      window.localStorage.clear();
+      saveUserLanguageProfile({
+        ...DEFAULT_USER_LANGUAGE_PROFILE,
+        uncertaintyByLang: { es: 1.0, en: 0.45 },
+      });
+      expect(seedInitialLevelFromParam("advanced", "en")).toBe(false);
+      expect(loadUserLanguageProfile().thetaByLang.en).toBe(0);
+
+      window.localStorage.clear();
+      saveUserLanguageProfile({
+        ...DEFAULT_USER_LANGUAGE_PROFILE,
+        chaptersCompletedByLang: { es: 0, en: 2 },
+      });
+      expect(seedInitialLevelFromParam("advanced", "en")).toBe(false);
+    });
+
+    it("ignora valores vacíos o desconocidos", () => {
+      window.localStorage.clear();
+      expect(seedInitialLevelFromParam(null, "en")).toBe(false);
+      expect(seedInitialLevelFromParam("", "en")).toBe(false);
+      expect(seedInitialLevelFromParam("experto", "en")).toBe(false);
     });
   });
 });

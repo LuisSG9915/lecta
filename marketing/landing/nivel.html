@@ -115,6 +115,11 @@ main{flex:1;padding:clamp(2rem,5vw,3.75rem) 0 clamp(3rem,6vw,4.5rem)}
 
 .result-cta{margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}
 .result-cta__note{width:100%;font-size:.9rem;color:var(--ink-soft)}
+.epub-dropzone{border:1.5px dashed var(--rule-strong);border-radius:var(--r-2);background:var(--paper);padding:.95rem 1rem;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;transition:border-color .15s,background .15s}
+.epub-dropzone[data-dragging="true"],.epub-dropzone:hover{border-color:var(--vermilion);background:var(--vermilion-wash)}
+.epub-dropzone__text{font-size:.94rem;color:var(--ink-soft);flex:1 1 12rem}
+.epub-status{margin-top:.55rem;font-size:.88rem;color:var(--ink-soft);min-height:1.25em}
+.epub-status[data-error="true"]{color:var(--vermilion);font-weight:500}
 
 footer{border-top:1px solid var(--rule);padding:1.5rem 0;color:var(--ink-soft);font-size:.92rem}
 footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem}
@@ -129,7 +134,7 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75re
     </a>
     <nav class="nav__links" aria-label="Navegación">
       <a href="/inicio/">Inicio</a>
-      <a class="btn btn--primary" href="/?src=nivel">Abrir Lecta</a>
+      <a class="btn btn--primary" id="headerOpenCta" href="/?src=nivel&nivel=intermediate">Abrir Lecta</a>
     </nav>
   </div>
 </header>
@@ -209,6 +214,17 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75re
             </button>
           </div>
         </div>
+
+        <div class="step-block">
+          <h2 class="step-title">3. O analiza tu propio archivo EPUB</h2>
+          <p class="step-hint">Se analiza 100 % en tu navegador; tu archivo nunca se sube ni se guarda en servidores.</p>
+          <div class="epub-dropzone" id="epubDropzone" data-dragging="false">
+            <span class="epub-dropzone__text">Arrastra tu EPUB aquí o elígelo desde tu dispositivo.</span>
+            <button type="button" class="btn" id="epubPickBtn">Elegir archivo EPUB</button>
+            <input type="file" id="epubFileInput" accept=".epub,application/epub+zip" hidden>
+          </div>
+          <p class="epub-status" id="epubStatus" role="status"></p>
+        </div>
       </section>
 
       <section class="panel result-card" id="resultPanel" aria-live="polite" aria-labelledby="resultBookTitle">
@@ -235,9 +251,9 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75re
         </div>
 
         <div class="result-cta">
-          <a class="btn btn--primary btn--lg" id="tryBookCta" href="/?probar=alice-wonderland&src=nivel">Leer gratis en Lecta</a>
+          <a class="btn btn--primary btn--lg" id="tryBookCta" href="/?probar=alice-wonderland&src=nivel&nivel=intermediate">Leer gratis en Lecta</a>
           <a class="btn" href="/inicio/">Conocer Lecta</a>
-          <p class="result-cta__note">Se abre directo en tu navegador, gratis y sin tarjeta.</p>
+          <p class="result-cta__note" id="ctaNote">Se abre directo en tu navegador, gratis y sin tarjeta.</p>
         </div>
       </section>
     </div>

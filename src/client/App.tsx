@@ -170,6 +170,7 @@ export default function App() {
     const deleted = params.get("cuenta") === "eliminada";
     const gato = params.get("gato");
     const src = params.get("src");
+    const nivel = params.get("nivel");
     // 1 = abrir el Carné; gracias / cancelado = vuelta de Checkout.
     const carneParam = params.get("carne");
     const carne =
@@ -200,8 +201,8 @@ export default function App() {
     if (gato) rememberStarterCoat(gato);
     rememberLandingSource(src);
     if (
-      token || urlError || deleted || gato !== null || src !== null || carneRaw || probar !== null ||
-      abrir !== null || fromShareUrl
+      token || urlError || deleted || gato !== null || src !== null || nivel !== null ||
+      carneRaw || probar !== null || abrir !== null || fromShareUrl
     ) {
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -210,11 +211,18 @@ export default function App() {
       urlError,
       deleted,
       carne,
+      nivel,
       trial: parseTrialBook(probar),
       openHash: parseOpenBookParam(abrir),
       sharedArticleUrl,
     };
   });
+  useEffect(() => {
+    if (!authLink.nivel) return;
+    void import("./lib/profile-models")
+      .then((m) => m.seedInitialLevelFromParam(authLink.nivel, "en"))
+      .catch(() => undefined);
+  }, [authLink.nivel]);
   const [sharedArticleUrl, setSharedArticleUrl] = useState<string | null>(
     authLink.sharedArticleUrl,
   );
